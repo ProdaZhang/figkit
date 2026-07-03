@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>figma2html · login 示例</title>
+  <style>
+    /* 示例不带子集字体(合成屏无需);真项目用 scripts/subset_font.py 产 woff2 + @font-face 'FigCJK' */
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #1a1a2e; overflow: hidden; width: 100vw; height: 100vh; font-family: 'FigCJK', 'Source Han Sans SC', 'Noto Sans SC', 'Microsoft YaHei', sans-serif; }
+    #stage-wrap { position: fixed; inset: 0; overflow: hidden; }
+    #stage { position: relative; background: #000; }
+    .screen-layer { position: absolute; inset: 0; }
+    #boot-err { position: fixed; left: 0; right: 0; top: 4px; text-align: center; font-size: 14px; color: #7fd; z-index: 999; pointer-events: none; }
+  </style>
+</head>
+<body>
+  <div id="boot-err"></div>
+  <div id="stage-wrap">
+    <div id="stage">
+      <div id="layer-base" class="screen-layer"></div>   <!-- 底屏 -->
+      <div id="modal-layers"></div>                       <!-- 弹窗层(引擎注入) -->
+    </div>
+  </div>
+
+  <!-- 运行时(直接引 skill 的 runtime;拷出去部署时把这两个文件放同目录即可) -->
+  <script src="../../runtime/render.js"></script>
+  <script src="../../runtime/assemble.js"></script>
+  <!-- mock 通信层(window.NET + window.MOCK);接真后端换掉本文件 -->
+  <script src="net.js"></script>
+  <!-- app 专属 hook -->
+  <script src="app.js"></script>
+
+  <script>
+  (function () {
+    function loadSync(p) {
+      const x = new XMLHttpRequest(); x.open('GET', p, false); x.send(null);
+      return (x.status === 200 || x.status === 0) ? JSON.parse(x.responseText) : null;
+    }
+    const FLOW = loadSync('flow.json');            // 流程声明:base/modals/events/list/bindings/caps
+    const caps = {};
+    Object.keys(FLOW.caps || {}).forEach(k => caps[k] = loadSync(FLOW.caps[k]));   // 各屏 .ui.json
+    const net = window.NET || null;
+    if (window.APPHOOK && window.APPHOOK.register) window.APPHOOK.register(window.FigApp);
+    window.FigApp.build(FLOW, caps, net);
+    if (window.APPHOOK && window.APPHOOK.init) window.APPHOOK.init(window.FigApp, net);
+  })();
+  </script>
+</body>
+</html>

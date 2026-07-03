@@ -1,0 +1,136 @@
+[gd_scene load_steps=5 format=3]
+
+[sub_resource type="StyleBoxFlat" id="sb_1_10"]
+bg_color = Color(1, 0.9843, 0.949, 1)
+corner_radius_top_left = 45
+corner_radius_top_right = 45
+corner_radius_bottom_right = 45
+corner_radius_bottom_left = 45
+
+[sub_resource type="StyleBoxFlat" id="sb_1_12"]
+bg_color = Color(0.5451, 0.7569, 0.1765, 1)
+corner_radius_top_left = 23
+corner_radius_top_right = 23
+corner_radius_bottom_right = 23
+corner_radius_bottom_left = 23
+
+[sub_resource type="StyleBoxFlat" id="sb_1_20"]
+bg_color = Color(0.9373, 0.749, 0, 1)
+corner_radius_top_left = 55
+corner_radius_top_right = 55
+corner_radius_bottom_right = 55
+corner_radius_bottom_left = 55
+
+[sub_resource type="StyleBoxFlat" id="sb_1_30"]
+bg_color = Color(1, 1, 1, 0.2)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(1, 1, 1, 1)
+
+[node name="screen-login" type="Control"]
+offset_right = 1080.0
+offset_bottom = 1920.0
+
+[node name="StageBg" type="ColorRect" parent="."]
+offset_right = 1080.0
+offset_bottom = 1920.0
+mouse_filter = 2
+color = Color(0.0784, 0.1961, 0.2314, 1)
+
+[node name="1_3" type="Label" parent="."]
+offset_left = 0.0
+offset_top = 260.0
+offset_right = 1080.0
+offset_bottom = 370.0
+text = "示例登录"
+horizontal_alignment = 1
+vertical_alignment = 1
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 88
+
+[node name="1_40" type="Label" parent="."]
+offset_left = 900.0
+offset_top = 80.0
+offset_right = 1040.0
+offset_bottom = 128.0
+text = "公告"
+horizontal_alignment = 1
+vertical_alignment = 1
+theme_override_colors/font_color = Color(1, 0.8431, 0.4157, 1)
+theme_override_font_sizes/font_size = 36
+
+[node name="1_10" type="Panel" parent="."]
+offset_left = 260.0
+offset_top = 1280.0
+offset_right = 820.0
+offset_bottom = 1370.0
+theme_override_styles/panel = SubResource("sb_1_10")
+
+[node name="1_12" type="Panel" parent="1_10"]
+offset_left = 26.0
+offset_top = 22.0
+offset_right = 72.0
+offset_bottom = 68.0
+theme_override_styles/panel = SubResource("sb_1_12")
+
+[node name="1_11" type="Label" parent="1_10"]
+offset_left = 90.0
+offset_top = 20.0
+offset_right = 430.0
+offset_bottom = 70.0
+text = "未选择"
+vertical_alignment = 1
+theme_override_colors/font_color = Color(0.2235, 0.2235, 0.2235, 1)
+theme_override_font_sizes/font_size = 40
+
+[node name="1_13" type="Label" parent="."]
+offset_left = 850.0
+offset_top = 1300.0
+offset_right = 970.0
+offset_bottom = 1350.0
+text = "切换"
+horizontal_alignment = 1
+vertical_alignment = 1
+theme_override_colors/font_color = Color(1, 0.8431, 0.4157, 1)
+theme_override_font_sizes/font_size = 34
+
+[node name="1_20" type="Panel" parent="."]
+offset_left = 300.0
+offset_top = 1450.0
+offset_right = 780.0
+offset_bottom = 1560.0
+theme_override_styles/panel = SubResource("sb_1_20")
+
+[node name="1_21" type="Label" parent="1_20"]
+offset_left = 0.0
+offset_top = 28.0
+offset_right = 480.0
+offset_bottom = 82.0
+text = "开始游戏"
+horizontal_alignment = 1
+vertical_alignment = 1
+theme_override_colors/font_color = Color(0.2275, 0.1647, 0, 1)
+theme_override_font_sizes/font_size = 48
+
+[node name="1_30" type="Panel" parent="."]
+offset_left = 300.0
+offset_top = 1640.0
+offset_right = 336.0
+offset_bottom = 1676.0
+theme_override_styles/panel = SubResource("sb_1_30")
+
+[node name="1_31" type="Label" parent="."]
+offset_left = 352.0
+offset_top = 1638.0
+offset_right = 972.0
+offset_bottom = 1678.0
+text = "已阅读并同意《示例用户协议》"
+vertical_alignment = 1
+theme_override_colors/font_color = Color(1, 1, 1, 0.85)
+theme_override_font_sizes/font_size = 28

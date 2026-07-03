@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>figma2html app</title>
+  <style>
+    /* 子集字体(scripts/subset_font.py 产出),离线可移植 */
+    @font-face { font-family: 'FigCJK'; src: url('fonts/cjk.woff2') format('woff2'); font-weight: 100 900; font-display: block; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #1a1a2e; overflow: hidden; width: 100vw; height: 100vh; font-family: 'FigCJK', sans-serif; }
+    #stage-wrap { position: fixed; inset: 0; overflow: hidden; }
+    #stage { position: relative; background: #000; }
+    .screen-layer { position: absolute; inset: 0; }
+  </style>
+</head>
+<body>
+  <div id="stage-wrap">
+    <div id="stage">
+      <div id="layer-base" class="screen-layer"></div>   <!-- 底屏 -->
+      <div id="modal-layers"></div>                       <!-- 弹窗层(引擎注入) -->
+    </div>
+  </div>
+
+  <!-- 运行时 -->
+  <script src="render.js"></script>
+  <script src="assemble.js"></script>
+  <!-- 可选:通信层(提供 window.NET);静态展示可省 -->
+  <script src="net.js"></script>
+  <!-- app 专属 hook:导出 window.APPHOOK = { register(app){…注册 actions/rowHook}, init(app,net){…后置:applyBoot} } -->
+  <script src="app.js"></script>
+
+  <script>
+  (function () {
+    function loadSync(p) {
+      const x = new XMLHttpRequest(); x.open('GET', p, false); x.send(null);
+      return (x.status === 200 || x.status === 0) ? JSON.parse(x.responseText) : null;
+    }
+    const FLOW = loadSync('flow.json');            // 流程声明:base/modals/events/list/bindings/caps
+    const caps = {};
+    Object.keys(FLOW.caps || {}).forEach(k => caps[k] = loadSync(FLOW.caps[k]));   // 各屏 .ui.json
+    const net = window.NET || null;
+    if (window.APPHOOK && window.APPHOOK.register) window.APPHOOK.register(window.FigApp);
+    window.FigApp.build(FLOW, caps, net);
+    if (window.APPHOOK && window.APPHOOK.init) window.APPHOOK.init(window.FigApp, net);
+  })();
+  </script>
+</body>
+</html>

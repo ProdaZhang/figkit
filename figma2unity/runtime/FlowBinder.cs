@@ -1,0 +1,646 @@
+// FlowBinder.cs — figma2unity 运行时 flow 绑定器(通用引擎,不含任何域内语义)
+// 目标 Unity 2022.3+ / UI Toolkit。2026-07-03 于 Unity 6000.4.8f1 batchmode 编译冒烟通过(零错零警告);
+// 视觉/交互链未实机点验。
+//
+// 语义 1:1 对齐 figma2html/runtime/assemble.js:
+//   - 架构 = 底屏常驻 + 弹窗叠加(非 swap):底部 UI 只一份,状态唯一不串;
+//   - 弹窗 = 从对应屏的 UXML 实例里按 flow.modals[*].roots 抽子树,叠到 overlay 层,
+//     配半透明黑 backdrop(对应 render.js 的 subtreeOf + assemble 的 modal 层);
+//   - 事件按 flow.events 声明接线(el = figma node id,':' 换 '_' 即 UXML name;
+//     特殊选择器 @any:<modal> / @panelOutside:<modal>);
+//   - guard:state 里列出的键全"真"才放行,否则触发 onGuardFail;
+//   - 内置 do:openModal / closeModal / toggleFlag / send;其余 do 名查注册的 action;
+//   - 列表:RenderRows 克隆容器下模板行 + 回调填充 + 行点击委托(onRowClick);
+//   - bindings.checkbox:flag → 双态(选中底色+勾 / 未选底色+空)。
+//
+// 域内语义(数据→行、回填、状态色)一律走 IAppHook,引擎不写死 —— 见 IAppHook.cs。
+//
+// Inspector 配置:
+//   uiDocument   —— 场景里的 UIDocument(其 PanelSettings 建议 Scale With Screen Size,
+//                    参考分辨率 = flow.stage.w × flow.stage.h,见 references/mapping.md)
+//   flowJson     —— flow.json 拖成 TextAsset
+//   screens      —— capName(flow.caps 里的键,如 "base"/"notice") → 对应屏的 UXML(VisualTreeAsset)
+//   appHookBehaviour —— 实现 IAppHook 的 MonoBehaviour(可空;空则 GetComponent 自查)
+
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Text;
+using UnityEngine;
+using UnityEngine.UIElements;
+
+namespace Figma2Unity
+{
+    public class FlowBinder : MonoBehaviour
+    {
+        [Serializable]
+        public struct ScreenAsset
+        {
+            public string capName;          // flow.caps 的键名(如 "base"、"serverlist")
+            public VisualTreeAsset asset;   // ui_to_unity.py 生成的对应屏 UXML
+        }
+
+        public UIDocument uiDocument;
+        public TextAsset flowJson;
+        public ScreenAsset[] screens;
+        public MonoBehaviour appHookBehaviour;
+
+        /// <summary>action 签名:arg = flow 事件的 arg(或行点击时的行元素),ev = 原始事件声明(可空)。</summary>
+        public delegate void FlowAction(object arg, Dictionary<string, object> ev);
+
+        /// <summary>运行时状态(flow.state 的活副本)。改动请走 SetFlag/SetValue 以触发绑定刷新。</summary>
+        public Dictionary<string, object> State { get; private set; } = new Dictionary<string, object>();
+
+        /// <summary>可选:app 在状态刷新后补域内绑定(对应 app.js 的 syncBindings(base))。参数 = 底屏根。</summary>
+        public Action<VisualElement> SyncBindingsHook;
+
+        public VisualElement Stage { get { return _stage; } }
+        public VisualElement BaseLayer { get { return _baseLayer; } }
+        public string CurrentModal { get { return _current; } }
+
+        class ModalInfo
+        {
+            public VisualElement layer;
+            public string panelId;      // "点面板外关闭"判定用(原始 figma id)
+            public string capName;      // 行克隆时需重新实例化该 cap
+        }
+
+        Dictionary<string, object> _flow;
+        readonly Dictionary<string, VisualTreeAsset> _assets = new Dictionary<string, VisualTreeAsset>();
+        readonly Dictionary<string, FlowAction> _actions = new Dictionary<string, FlowAction>();
+        readonly Dictionary<string, ModalInfo> _modals = new Dictionary<string, ModalInfo>();
+        VisualElement _stage, _baseLayer, _modalWrap;
+        string _current;
+        IAppHook _hook;
+
+        // 行克隆缓存(首次 RenderRows 时从模板行采样)
+        class ListInfo { public string templateName; public float baseTop; public float step; public bool sampled; }
+        readonly Dictionary<string, ListInfo> _listInfo = new Dictionary<string, ListInfo>();
+
+        /// <summary>figma id → UXML name(':' 换 '_',与 ui_to_unity.py 同一约定)。</summary>
+        public static string SafeName(string figmaId) { return figmaId == null ? null : figmaId.Replace(':', '_'); }
+
+        public void RegisterAction(string name, FlowAction fn) { _actions[name] = fn; }
+        public void RegisterActions(Dictionary<string, FlowAction> map)
+        {
+            foreach (var kv in map) _actions[kv.Key] = kv.Value;
+        }
+
+        /// <summary>底屏内按 figma id 找元素(事件/绑定都只在底屏找,同 assemble.baseEl)。</summary>
+        public VisualElement BaseQ(string figmaId)
+        {
+            return _baseLayer != null ? _baseLayer.Q(SafeName(figmaId)) : null;
+        }
+
+        /// <summary>某弹窗层内按 figma id 找元素。</summary>
+        public VisualElement ModalQ(string modalName, string figmaId)
+        {
+            ModalInfo m;
+            return _modals.TryGetValue(modalName, out m) ? m.layer.Q(SafeName(figmaId)) : null;
+        }
+
+        void OnEnable() { Build(); }
+
+        // ── 构建(对应 assemble.build)────────────────────────────────────
+        void Build()
+        {
+            if (uiDocument == null || flowJson == null)
+            {
+                Debug.LogError("[FlowBinder] uiDocument / flowJson 未配置");
+                return;
+            }
+            _flow = MiniJson.Parse(flowJson.text) as Dictionary<string, object>;
+            if (_flow == null) { Debug.LogError("[FlowBinder] flow.json 解析失败"); return; }
+
+            _assets.Clear();
+            if (screens != null)
+                foreach (var s in screens)
+                    if (!string.IsNullOrEmpty(s.capName) && s.asset != null) _assets[s.capName] = s.asset;
+
+            State = new Dictionary<string, object>();
+            var st = Get(_flow, "state") as Dictionary<string, object>;
+            if (st != null) foreach (var kv in st) State[kv.Key] = kv.Value;
+
+            _hook = appHookBehaviour as IAppHook;
+            if (_hook == null) _hook = GetComponent<IAppHook>();
+            if (_hook != null) _hook.RegisterActions(this);   // 事件接线前注册,同 app.js register
+
+            // stage:固定 flow.stage 尺寸;视口适配交给 PanelSettings(Scale With Screen Size)
+            float w = GetNum(Get(_flow, "stage", "w"), 1080f);
+            float h = GetNum(Get(_flow, "stage", "h"), 1920f);
+            var root = uiDocument.rootVisualElement;
+            root.Clear();
+            _stage = new VisualElement { name = "flow-stage" };
+            _stage.style.position = Position.Absolute;
+            _stage.style.left = 0; _stage.style.top = 0;
+            _stage.style.width = w; _stage.style.height = h;
+            _stage.style.overflow = Overflow.Hidden;
+            root.Add(_stage);
+
+            // 底屏(常驻)
+            _baseLayer = MakeLayer("flow-base", w, h);
+            _stage.Add(_baseLayer);
+            var baseCap = Get(_flow, "base") as string;
+            if (baseCap != null && _assets.ContainsKey(baseCap))
+                _baseLayer.Add(InstantiateScreen(baseCap));
+            else
+                Debug.LogWarning("[FlowBinder] 底屏 cap 未配置资产: " + baseCap);
+
+            // 弹窗层容器
+            _modalWrap = MakeLayer("flow-modals", w, h);
+            _stage.Add(_modalWrap);
+
+            // 弹窗 = backdrop + 按 roots 抽子树叠加(对应 subtreeOf:roots 是帧顶层节点,
+            // 其 USS 坐标本就是相对帧原点的绝对 px,抽出来放进同尺寸层位置天然正确)
+            var modals = Get(_flow, "modals") as Dictionary<string, object>;
+            _modals.Clear();
+            if (modals != null)
+            {
+                foreach (var kv in modals)
+                {
+                    var decl = kv.Value as Dictionary<string, object>;
+                    if (decl == null) continue;
+                    var layer = MakeLayer("flow-modal-" + kv.Key, w, h);
+                    layer.style.display = DisplayStyle.None;
+
+                    var backdrop = new VisualElement { name = "flow-backdrop" };
+                    backdrop.style.position = Position.Absolute;
+                    backdrop.style.left = 0; backdrop.style.top = 0;
+                    backdrop.style.width = w; backdrop.style.height = h;
+                    backdrop.style.backgroundColor = new Color(0f, 0f, 0f, 0.5f);
+                    layer.Add(backdrop);
+
+                    var capName = Get(decl, "cap") as string;
+                    var rootIds = Get(decl, "roots") as List<object>;
+                    if (capName != null && _assets.ContainsKey(capName) && rootIds != null)
+                    {
+                        var tc = InstantiateScreen(capName);           // 完整屏实例(带样式表)
+                        var sheets = CollectStyleSheets(tc);
+                        foreach (var rid in rootIds)
+                        {
+                            var el = tc.Q(SafeName(rid as string));
+                            if (el == null) { Debug.LogWarning("[FlowBinder] 弹窗根未找到: " + rid); continue; }
+                            el.RemoveFromHierarchy();
+                            foreach (var ss in sheets) el.styleSheets.Add(ss);   // 抽离后样式表跟着走
+                            layer.Add(el);
+                        }
+                        // 其余(screen-root 等)丢弃 —— 等价 subtreeOf 只保留根子树、stageBg 置空
+                    }
+
+                    _modalWrap.Add(layer);
+                    _modals[kv.Key] = new ModalInfo
+                    {
+                        layer = layer,
+                        panelId = Get(decl, "panel") as string,
+                        capName = capName
+                    };
+                }
+            }
+
+            WireEvents();
+            SyncBindings();
+            if (_hook != null) _hook.Init(this);   // 对应 onReady / APPHOOK.init
+        }
+
+        VisualElement MakeLayer(string name, float w, float h)
+        {
+            var v = new VisualElement { name = name };
+            v.style.position = Position.Absolute;
+            v.style.left = 0; v.style.top = 0;
+            v.style.width = w; v.style.height = h;
+            return v;
+        }
+
+        VisualElement InstantiateScreen(string capName)
+        {
+            var tc = _assets[capName].Instantiate();
+            tc.style.position = Position.Absolute;
+            tc.style.left = 0; tc.style.top = 0;
+            return tc;
+        }
+
+        /// <summary>收集实例树上挂的全部样式表(UXML &lt;Style&gt; 落点因版本而异,树上扫一遍最稳)。</summary>
+        static List<StyleSheet> CollectStyleSheets(VisualElement treeRoot)
+        {
+            var found = new List<StyleSheet>();
+            Collect(treeRoot, found);
+            return found;
+        }
+        static void Collect(VisualElement el, List<StyleSheet> into)
+        {
+            for (int i = 0; i < el.styleSheets.count; i++)
+                if (!into.Contains(el.styleSheets[i])) into.Add(el.styleSheets[i]);
+            foreach (var c in el.Children()) Collect(c, into);
+        }
+
+        // ── 弹窗显隐(底屏常驻,同 assemble.openModal/closeModal)────────
+        public void OpenModal(string name)
+        {
+            foreach (var kv in _modals) kv.Value.layer.style.display = DisplayStyle.None;
+            ModalInfo m;
+            if (_modals.TryGetValue(name, out m)) m.layer.style.display = DisplayStyle.Flex;
+            _current = name;
+        }
+
+        public void CloseModal()
+        {
+            foreach (var kv in _modals) kv.Value.layer.style.display = DisplayStyle.None;
+            _current = null;
+        }
+
+        // ── 状态与守卫 ────────────────────────────────────────────────
+        public void SetFlag(string name, object val) { State[name] = val; SyncBindings(); }
+        public void SetValue(string name, object val) { State[name] = val; SyncBindings(); }
+
+        /// <summary>guard 判定:null/false/0/"" 皆为假(同 assemble.guardOk)。</summary>
+        public static bool Truthy(object v)
+        {
+            if (v == null) return false;
+            if (v is bool) return (bool)v;
+            if (v is double) return Math.Abs((double)v) > double.Epsilon;
+            if (v is string) return ((string)v).Length > 0;
+            return true;
+        }
+
+        bool GuardOk(List<object> guards)
+        {
+            if (guards == null) return true;
+            foreach (var g in guards)
+            {
+                object v;
+                if (!(g is string) || !State.TryGetValue((string)g, out v) || !Truthy(v)) return false;
+            }
+            return true;
+        }
+
+        // ── 事件接线(对应 assemble.wireEvents)──────────────────────────
+        void WireEvents()
+        {
+            var events = Get(_flow, "events") as List<object>;
+            if (events != null)
+            {
+                foreach (var evo in events)
+                {
+                    var ev = evo as Dictionary<string, object>;
+                    if (ev == null) continue;
+                    var elDecl = Get(ev, "el");
+                    var sels = elDecl is List<object> ? (List<object>)elDecl : new List<object> { elDecl };
+                    foreach (var selo in sels)
+                    {
+                        var sel = selo as string;
+                        if (sel == null) continue;
+                        WireOne(sel, ev);
+                    }
+                }
+            }
+
+            // 列表行点击委托(行由 RenderRows 打上 flow-row 类,同 data-row)
+            var list = Get(_flow, "list") as Dictionary<string, object>;
+            if (list != null)
+            {
+                var modalName = Get(list, "modal") as string;
+                var onRowClick = Get(list, "onRowClick") as string;
+                ModalInfo m;
+                if (modalName != null && _modals.TryGetValue(modalName, out m) && onRowClick != null)
+                {
+                    var mi = m;
+                    m.layer.RegisterCallback<ClickEvent>(e =>
+                    {
+                        var row = FindAncestorWithClass(e.target as VisualElement, "flow-row", mi.layer);
+                        FlowAction fn;
+                        if (row != null && _actions.TryGetValue(onRowClick, out fn)) fn(row, null);
+                    });
+                }
+            }
+        }
+
+        void WireOne(string sel, Dictionary<string, object> ev)
+        {
+            // 特殊选择器 @any:<modal> / @panelOutside:<modal>
+            if (sel.Length > 0 && sel[0] == '@')
+            {
+                int colon = sel.IndexOf(':');
+                if (colon < 0) return;
+                string kind = sel.Substring(1, colon - 1), modal = sel.Substring(colon + 1);
+                ModalInfo m;
+                if (!_modals.TryGetValue(modal, out m)) return;
+                var mi = m;
+                m.layer.RegisterCallback<ClickEvent>(e =>
+                {
+                    if (kind == "any") { Dispatch(ev); return; }
+                    if (kind == "panelOutside")
+                    {
+                        var panel = mi.panelId != null ? mi.layer.Q(SafeName(mi.panelId)) : null;
+                        if (panel == null || !IsInside(e.target as VisualElement, panel)) Dispatch(ev);
+                    }
+                });
+                return;
+            }
+
+            var el = BaseQ(sel);
+            if (el == null) { Debug.LogWarning("[FlowBinder] 事件元素未找到: " + sel); return; }
+            el.pickingMode = PickingMode.Position;
+            el.RegisterCallback<ClickEvent>(e => { e.StopPropagation(); Dispatch(ev); });
+        }
+
+        static bool IsInside(VisualElement el, VisualElement ancestor)
+        {
+            while (el != null) { if (el == ancestor) return true; el = el.parent; }
+            return false;
+        }
+
+        static VisualElement FindAncestorWithClass(VisualElement el, string cls, VisualElement stopAt)
+        {
+            while (el != null && el != stopAt)
+            {
+                if (el.ClassListContains(cls)) return el;
+                el = el.parent;
+            }
+            return null;
+        }
+
+        // ── 派发(对应 assemble.dispatch)────────────────────────────────
+        public void Dispatch(Dictionary<string, object> ev)
+        {
+            var guards = Get(ev, "guard") as List<object>;
+            if (!GuardOk(guards))
+            {
+                FlowAction gf;
+                if (_actions.TryGetValue("onGuardFail", out gf)) gf(null, ev);
+                return;
+            }
+            var doName = Get(ev, "do") as string;
+            var arg = Get(ev, "arg");
+            switch (doName)
+            {
+                case "openModal": OpenModal(arg as string); break;
+                case "closeModal": CloseModal(); break;
+                case "toggleFlag":
+                    var flag = arg as string;
+                    if (flag != null)
+                    {
+                        object cur; State.TryGetValue(flag, out cur);
+                        SetFlag(flag, !Truthy(cur));
+                    }
+                    break;
+                case "send":
+                    FlowAction send;
+                    if (_actions.TryGetValue("send", out send)) send(arg, ev);
+                    else Debug.LogWarning("[FlowBinder] send 未注册(IAppHook.RegisterActions 里注册)");
+                    break;
+                default:
+                    FlowAction fn;
+                    if (doName != null && _actions.TryGetValue(doName, out fn)) fn(arg, ev);
+                    else Debug.LogWarning("[FlowBinder] 未知 action: " + doName);
+                    break;
+            }
+        }
+
+        // ── 通用绑定:checkbox 双态(对应 assemble.syncBindings)──────────
+        public void SyncBindings()
+        {
+            var bindings = Get(_flow, "bindings") as Dictionary<string, object>;
+            var cb = bindings != null ? Get(bindings, "checkbox") as Dictionary<string, object> : null;
+            if (cb != null && _baseLayer != null)
+            {
+                var box = BaseQ(Get(cb, "el") as string);
+                if (box != null)
+                {
+                    object fv; State.TryGetValue(Get(cb, "flag") as string ?? "", out fv);
+                    bool on = Truthy(fv);
+                    box.style.backgroundColor = ParseCssColor(
+                        (on ? Get(cb, "checkedBg") : Get(cb, "uncheckedBg")) as string,
+                        on ? Color.white : new Color(1f, 1f, 1f, 0.2f));
+
+                    // VisualElement 没有 text:勾号用子 Label(首次补建,居中铺满)
+                    var mark = box.Q<Label>("flow-check-mark");
+                    if (mark == null)
+                    {
+                        mark = new Label { name = "flow-check-mark" };
+                        mark.style.position = Position.Absolute;
+                        mark.style.left = 0; mark.style.top = 0;
+                        mark.style.right = 0; mark.style.bottom = 0;
+                        mark.style.unityTextAlign = TextAnchor.MiddleCenter;
+                        mark.style.fontSize = 24;
+                        mark.style.unityFontStyleAndWeight = FontStyle.Bold;
+                        mark.pickingMode = PickingMode.Ignore;   // 点击穿透给 box(box 上绑 toggleFlag)
+                        box.Add(mark);
+                    }
+                    mark.style.color = ParseCssColor(Get(cb, "markColor") as string, new Color(0.106f, 0.298f, 0.341f));
+                    mark.text = on ? ((Get(cb, "mark") as string) ?? "✓") : "";
+                }
+            }
+            if (SyncBindingsHook != null) SyncBindingsHook(_baseLayer);
+        }
+
+        // ── 列表:模板行克隆 + 回调填充(对应 assemble.renderRows)──────────
+        // 注意:UI Toolkit 无 VisualElement 深克隆,这里"克隆"=重新实例化该 cap 的
+        // VisualTreeAsset、抽出模板行(带样式表)。请在布局完成后调用(IAppHook.Init
+        // 中可用 schedule.Execute 延一帧),因为行距采样读 resolvedStyle。
+        public void RenderRows(string modalName, string containerId, int count, Action<VisualElement, int> fillRow)
+        {
+            ModalInfo m;
+            if (!_modals.TryGetValue(modalName, out m)) { Debug.LogWarning("[FlowBinder] 弹窗未找到: " + modalName); return; }
+            var container = m.layer.Q(SafeName(containerId));
+            if (container == null) { Debug.LogWarning("[FlowBinder] 列表容器未找到: " + containerId); return; }
+
+            var key = modalName + "/" + containerId;
+            ListInfo info;
+            if (!_listInfo.TryGetValue(key, out info) || !info.sampled)
+            {
+                var rows = new List<VisualElement>(container.Children());
+                if (rows.Count == 0) { Debug.LogWarning("[FlowBinder] 无模板行: " + containerId); return; }
+                info = new ListInfo { templateName = rows[0].name, sampled = true };
+                info.baseTop = rows[0].resolvedStyle.top;
+                info.step = rows.Count > 1
+                    ? rows[1].resolvedStyle.top - info.baseTop
+                    : Math.Max(1f, rows[0].resolvedStyle.height);
+                _listInfo[key] = info;
+            }
+
+            container.Clear();
+            container.style.overflow = Overflow.Hidden;   // USS 无滚动,溢出裁切;滚动可由 hook 换 ScrollView
+            for (int i = 0; i < count; i++)
+            {
+                var row = CloneRow(m.capName, info.templateName);
+                if (row == null) return;
+                row.style.top = info.baseTop + i * info.step;
+                row.AddToClassList("flow-row");           // 等价 data-row,行点击委托靠它识别
+                if (fillRow != null) fillRow(row, i);
+                container.Add(row);
+            }
+        }
+
+        VisualElement CloneRow(string capName, string templateName)
+        {
+            if (capName == null || !_assets.ContainsKey(capName)) return null;
+            var tc = _assets[capName].Instantiate();
+            var row = tc.Q(templateName);
+            if (row == null) { Debug.LogWarning("[FlowBinder] 模板行未找到: " + templateName); return null; }
+            var sheets = CollectStyleSheets(tc);
+            row.RemoveFromHierarchy();
+            foreach (var ss in sheets) row.styleSheets.Add(ss);
+            return row;
+        }
+
+        // ── 辅助:flow dict 取值 / CSS 颜色解析 ──────────────────────────
+        static object Get(Dictionary<string, object> d, string key)
+        {
+            object v; return d != null && d.TryGetValue(key, out v) ? v : null;
+        }
+        static object Get(Dictionary<string, object> d, string k1, string k2)
+        {
+            return Get(Get(d, k1) as Dictionary<string, object>, k2);
+        }
+        static float GetNum(object v, float dft) { return v is double ? (float)(double)v : dft; }
+
+        /// <summary>解析 IR 里的 CSS 颜色字符串:rgba(r,g,b,a) / rgb(r,g,b) / #rrggbb[aa]。</summary>
+        public static Color ParseCssColor(string s, Color fallback)
+        {
+            if (string.IsNullOrEmpty(s)) return fallback;
+            s = s.Trim();
+            try
+            {
+                if (s.StartsWith("rgb"))
+                {
+                    int lp = s.IndexOf('('), rp = s.LastIndexOf(')');
+                    if (lp < 0 || rp <= lp) return fallback;
+                    var parts = s.Substring(lp + 1, rp - lp - 1).Split(',');
+                    if (parts.Length < 3) return fallback;
+                    float r = float.Parse(parts[0], CultureInfo.InvariantCulture) / 255f;
+                    float g = float.Parse(parts[1], CultureInfo.InvariantCulture) / 255f;
+                    float b = float.Parse(parts[2], CultureInfo.InvariantCulture) / 255f;
+                    float a = parts.Length > 3 ? float.Parse(parts[3], CultureInfo.InvariantCulture) : 1f;
+                    return new Color(r, g, b, a);
+                }
+                if (s.StartsWith("#"))
+                {
+                    Color c;
+                    if (ColorUtility.TryParseHtmlString(s, out c)) return c;
+                }
+            }
+            catch (FormatException) { /* 落到 fallback */ }
+            return fallback;
+        }
+
+        // ── MiniJson:极简 JSON 解析器(JsonUtility 不支持字典/异构数组,flow.json 需要)──
+        // object → Dictionary<string,object>;array → List<object>;
+        // number → double;其余 → string / bool / null。只解析,不序列化。
+        static class MiniJson
+        {
+            public static object Parse(string json)
+            {
+                int i = 0;
+                var v = ParseValue(json, ref i);
+                SkipWs(json, ref i);
+                return v;
+            }
+
+            static void SkipWs(string s, ref int i)
+            {
+                while (i < s.Length && (s[i] == ' ' || s[i] == '\t' || s[i] == '\n' || s[i] == '\r')) i++;
+            }
+
+            static object ParseValue(string s, ref int i)
+            {
+                SkipWs(s, ref i);
+                if (i >= s.Length) throw new FormatException("JSON 意外结束");
+                char c = s[i];
+                if (c == '{') return ParseObject(s, ref i);
+                if (c == '[') return ParseArray(s, ref i);
+                if (c == '"') return ParseString(s, ref i);
+                if (c == 't') { Expect(s, ref i, "true"); return true; }
+                if (c == 'f') { Expect(s, ref i, "false"); return false; }
+                if (c == 'n') { Expect(s, ref i, "null"); return null; }
+                return ParseNumber(s, ref i);
+            }
+
+            static void Expect(string s, ref int i, string word)
+            {
+                if (i + word.Length > s.Length || s.Substring(i, word.Length) != word)
+                    throw new FormatException("JSON 非法字面量 @" + i);
+                i += word.Length;
+            }
+
+            static Dictionary<string, object> ParseObject(string s, ref int i)
+            {
+                var d = new Dictionary<string, object>();
+                i++; // {
+                SkipWs(s, ref i);
+                if (i < s.Length && s[i] == '}') { i++; return d; }
+                while (true)
+                {
+                    SkipWs(s, ref i);
+                    string key = ParseString(s, ref i);
+                    SkipWs(s, ref i);
+                    if (i >= s.Length || s[i] != ':') throw new FormatException("JSON 缺 ':' @" + i);
+                    i++;
+                    d[key] = ParseValue(s, ref i);
+                    SkipWs(s, ref i);
+                    if (i < s.Length && s[i] == ',') { i++; continue; }
+                    if (i < s.Length && s[i] == '}') { i++; return d; }
+                    throw new FormatException("JSON 对象未闭合 @" + i);
+                }
+            }
+
+            static List<object> ParseArray(string s, ref int i)
+            {
+                var a = new List<object>();
+                i++; // [
+                SkipWs(s, ref i);
+                if (i < s.Length && s[i] == ']') { i++; return a; }
+                while (true)
+                {
+                    a.Add(ParseValue(s, ref i));
+                    SkipWs(s, ref i);
+                    if (i < s.Length && s[i] == ',') { i++; continue; }
+                    if (i < s.Length && s[i] == ']') { i++; return a; }
+                    throw new FormatException("JSON 数组未闭合 @" + i);
+                }
+            }
+
+            static string ParseString(string s, ref int i)
+            {
+                if (s[i] != '"') throw new FormatException("JSON 期望字符串 @" + i);
+                i++;
+                var sb = new StringBuilder();
+                while (i < s.Length)
+                {
+                    char c = s[i++];
+                    if (c == '"') return sb.ToString();
+                    if (c == '\\' && i < s.Length)
+                    {
+                        char e = s[i++];
+                        switch (e)
+                        {
+                            case '"': sb.Append('"'); break;
+                            case '\\': sb.Append('\\'); break;
+                            case '/': sb.Append('/'); break;
+                            case 'b': sb.Append('\b'); break;
+                            case 'f': sb.Append('\f'); break;
+                            case 'n': sb.Append('\n'); break;
+                            case 'r': sb.Append('\r'); break;
+                            case 't': sb.Append('\t'); break;
+                            case 'u':
+                                if (i + 4 > s.Length) throw new FormatException("JSON \\u 不完整");
+                                sb.Append((char)Convert.ToInt32(s.Substring(i, 4), 16));
+                                i += 4;
+                                break;
+                            default: throw new FormatException("JSON 非法转义 \\" + e);
+                        }
+                    }
+                    else sb.Append(c);
+                }
+                throw new FormatException("JSON 字符串未闭合");
+            }
+
+            static object ParseNumber(string s, ref int i)
+            {
+                int start = i;
+                while (i < s.Length && ("+-0123456789.eE".IndexOf(s[i]) >= 0)) i++;
+                if (i == start) throw new FormatException("JSON 非法字符 @" + i);
+                return double.Parse(s.Substring(start, i - start), CultureInfo.InvariantCulture);
+            }
+        }
+    }
+}

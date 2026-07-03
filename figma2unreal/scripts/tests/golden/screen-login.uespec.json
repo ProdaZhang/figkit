@@ -1,0 +1,409 @@
+{
+ "version": 1,
+ "frame": "1:1",
+ "w": 1080,
+ "h": 1920,
+ "stageBg": {
+  "type": "solid",
+  "rgba": [
+   20,
+   50,
+   59,
+   1
+  ]
+ },
+ "els": [
+  {
+   "id": "1:3",
+   "name": "title",
+   "type": "TEXT",
+   "parent": "",
+   "absX": 0,
+   "absY": 260,
+   "localX": 0,
+   "localY": 260,
+   "w": 1080,
+   "h": 110,
+   "z": 1,
+   "rot": 0,
+   "opacity": 1,
+   "radius": null,
+   "border": null,
+   "shadow": [],
+   "blur": null,
+   "fill": null,
+   "img": null,
+   "text": {
+    "content": "示例登录",
+    "rgba": [
+     255,
+     255,
+     255,
+     1
+    ],
+    "size": 88,
+    "weight": 700,
+    "family": "Source Han Sans SC",
+    "lh": 0,
+    "ls": 0,
+    "alignH": "center",
+    "alignV": "center",
+    "textAlign": "center",
+    "stroke": null
+   },
+   "vec": false
+  },
+  {
+   "id": "1:40",
+   "name": "notice-link",
+   "type": "TEXT",
+   "parent": "",
+   "absX": 900,
+   "absY": 80,
+   "localX": 900,
+   "localY": 80,
+   "w": 140,
+   "h": 48,
+   "z": 2,
+   "rot": 0,
+   "opacity": 1,
+   "radius": null,
+   "border": null,
+   "shadow": [],
+   "blur": null,
+   "fill": null,
+   "img": null,
+   "text": {
+    "content": "公告",
+    "rgba": [
+     255,
+     215,
+     106,
+     1
+    ],
+    "size": 36,
+    "weight": 500,
+    "family": "Source Han Sans SC",
+    "lh": 0,
+    "ls": 0,
+    "alignH": "center",
+    "alignV": "center",
+    "textAlign": "center",
+    "stroke": null
+   },
+   "vec": false
+  },
+  {
+   "id": "1:10",
+   "name": "server-pill",
+   "type": "FRAME",
+   "parent": "",
+   "absX": 260,
+   "absY": 1280,
+   "localX": 260,
+   "localY": 1280,
+   "w": 560,
+   "h": 90,
+   "z": 3,
+   "rot": 0,
+   "opacity": 1,
+   "radius": [
+    45,
+    45,
+    45,
+    45
+   ],
+   "border": null,
+   "shadow": [],
+   "blur": null,
+   "fill": {
+    "type": "solid",
+    "rgba": [
+     255,
+     251,
+     242,
+     1
+    ]
+   },
+   "img": null,
+   "text": null,
+   "vec": false
+  },
+  {
+   "id": "1:12",
+   "name": "gem",
+   "type": "RECTANGLE",
+   "parent": "1:10",
+   "absX": 286,
+   "absY": 1302,
+   "localX": 26,
+   "localY": 22,
+   "w": 46,
+   "h": 46,
+   "z": 4,
+   "rot": 0,
+   "opacity": 1,
+   "radius": [
+    23,
+    23,
+    23,
+    23
+   ],
+   "border": null,
+   "shadow": [],
+   "blur": null,
+   "fill": {
+    "type": "solid",
+    "rgba": [
+     139,
+     193,
+     45,
+     1
+    ]
+   },
+   "img": null,
+   "text": null,
+   "vec": false
+  },
+  {
+   "id": "1:11",
+   "name": "server-name",
+   "type": "TEXT",
+   "parent": "1:10",
+   "absX": 350,
+   "absY": 1300,
+   "localX": 90,
+   "localY": 20,
+   "w": 340,
+   "h": 50,
+   "z": 5,
+   "rot": 0,
+   "opacity": 1,
+   "radius": null,
+   "border": null,
+   "shadow": [],
+   "blur": null,
+   "fill": null,
+   "img": null,
+   "text": {
+    "content": "未选择",
+    "rgba": [
+     57,
+     57,
+     57,
+     1
+    ],
+    "size": 40,
+    "weight": 500,
+    "family": "Source Han Sans SC",
+    "lh": 0,
+    "ls": 0,
+    "alignH": "start",
+    "alignV": "center",
+    "textAlign": "left",
+    "stroke": null
+   },
+   "vec": false
+  },
+  {
+   "id": "1:13",
+   "name": "switch-link",
+   "type": "TEXT",
+   "parent": "",
+   "absX": 850,
+   "absY": 1300,
+   "localX": 850,
+   "localY": 1300,
+   "w": 120,
+   "h": 50,
+   "z": 6,
+   "rot": 0,
+   "opacity": 1,
+   "radius": null,
+   "border": null,
+   "shadow": [],
+   "blur": null,
+   "fill": null,
+   "img": null,
+   "text": {
+    "content": "切换",
+    "rgba": [
+     255,
+     215,
+     106,
+     1
+    ],
+    "size": 34,
+    "weight": 500,
+    "family": "Source Han Sans SC",
+    "lh": 0,
+    "ls": 0,
+    "alignH": "center",
+    "alignV": "center",
+    "textAlign": "center",
+    "stroke": null
+   },
+   "vec": false
+  },
+  {
+   "id": "1:20",
+   "name": "enter-btn",
+   "type": "FRAME",
+   "parent": "",
+   "absX": 300,
+   "absY": 1450,
+   "localX": 300,
+   "localY": 1450,
+   "w": 480,
+   "h": 110,
+   "z": 7,
+   "rot": 0,
+   "opacity": 1,
+   "radius": [
+    55,
+    55,
+    55,
+    55
+   ],
+   "border": null,
+   "shadow": [],
+   "blur": null,
+   "fill": {
+    "type": "solid",
+    "rgba": [
+     239,
+     191,
+     0,
+     1
+    ]
+   },
+   "img": null,
+   "text": null,
+   "vec": false
+  },
+  {
+   "id": "1:21",
+   "name": "enter-txt",
+   "type": "TEXT",
+   "parent": "1:20",
+   "absX": 300,
+   "absY": 1478,
+   "localX": 0,
+   "localY": 28,
+   "w": 480,
+   "h": 54,
+   "z": 8,
+   "rot": 0,
+   "opacity": 1,
+   "radius": null,
+   "border": null,
+   "shadow": [],
+   "blur": null,
+   "fill": null,
+   "img": null,
+   "text": {
+    "content": "开始游戏",
+    "rgba": [
+     58,
+     42,
+     0,
+     1
+    ],
+    "size": 48,
+    "weight": 800,
+    "family": "Source Han Sans SC",
+    "lh": 0,
+    "ls": 0,
+    "alignH": "center",
+    "alignV": "center",
+    "textAlign": "center",
+    "stroke": null
+   },
+   "vec": false
+  },
+  {
+   "id": "1:30",
+   "name": "agree-box",
+   "type": "RECTANGLE",
+   "parent": "",
+   "absX": 300,
+   "absY": 1640,
+   "localX": 300,
+   "localY": 1640,
+   "w": 36,
+   "h": 36,
+   "z": 9,
+   "rot": 0,
+   "opacity": 1,
+   "radius": [
+    8,
+    8,
+    8,
+    8
+   ],
+   "border": {
+    "width": 2,
+    "rgba": [
+     255,
+     255,
+     255,
+     1
+    ]
+   },
+   "shadow": [],
+   "blur": null,
+   "fill": {
+    "type": "solid",
+    "rgba": [
+     255,
+     255,
+     255,
+     0.2
+    ]
+   },
+   "img": null,
+   "text": null,
+   "vec": false
+  },
+  {
+   "id": "1:31",
+   "name": "agree-txt",
+   "type": "TEXT",
+   "parent": "",
+   "absX": 352,
+   "absY": 1638,
+   "localX": 352,
+   "localY": 1638,
+   "w": 620,
+   "h": 40,
+   "z": 10,
+   "rot": 0,
+   "opacity": 1,
+   "radius": null,
+   "border": null,
+   "shadow": [],
+   "blur": null,
+   "fill": null,
+   "img": null,
+   "text": {
+    "content": "已阅读并同意《示例用户协议》",
+    "rgba": [
+     255,
+     255,
+     255,
+     0.85
+    ],
+    "size": 28,
+    "weight": 400,
+    "family": "Source Han Sans SC",
+    "lh": 0,
+    "ls": 0,
+    "alignH": "start",
+    "alignV": "center",
+    "textAlign": "left",
+    "stroke": null
+   },
+   "vec": false
+  }
+ ]
+}

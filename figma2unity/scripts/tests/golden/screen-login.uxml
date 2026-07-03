@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- screen-login.uxml — ui_to_unity.py 生成(源 frame 1:1,1080x1920)。
+     name = figma id(':' 换 '_');兄弟顺序 = 绘制顺序(按 z 排,USS 无 z-index)。
+     丢弃/降级项(known-loss)见同名 .uss 文件头注释。 -->
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+  <ui:VisualElement name="screen-root" class="screen-root">
+    <Style src="screen-login.uss" />
+    <ui:Label name="1_3" class="el-1_3" text="示例登录" />
+    <ui:Label name="1_40" class="el-1_40" text="公告" />
+    <ui:VisualElement name="1_10" class="el-1_10">
+      <ui:VisualElement name="1_12" class="el-1_12" />
+      <ui:Label name="1_11" class="el-1_11" text="未选择" />
+    </ui:VisualElement>
+    <ui:Label name="1_13" class="el-1_13" text="切换" />
+    <ui:VisualElement name="1_20" class="el-1_20">
+      <ui:Label name="1_21" class="el-1_21" text="开始游戏" />
+    </ui:VisualElement>
+    <ui:VisualElement name="1_30" class="el-1_30" />
+    <ui:Label name="1_31" class="el-1_31" text="已阅读并同意《示例用户协议》" />
+  </ui:VisualElement>
+</ui:UXML>

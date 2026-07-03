@@ -1,0 +1,174 @@
+/* screen-login.uss — ui_to_unity.py 生成(源 frame 1:1,1080x1920,确定性输出无时间戳)。
+ * 选择器 = .el-<name> 类(name 可能以数字开头,#id 选择器会非法)。
+ * known-loss —— 本文件相对 IR 丢弃/降级的项(诚实降级,勿静默):
+ *   - 1:3: font-family 'Source Han Sans SC' 未映射(Unity 需 FontAsset,见 mapping.md)
+ *   - 1:40: font-weight 500 近似为 normal(USS 只有 normal/bold)
+ *   - 1:40: font-family 'Source Han Sans SC' 未映射(Unity 需 FontAsset,见 mapping.md)
+ *   - 1:11: font-weight 500 近似为 normal(USS 只有 normal/bold)
+ *   - 1:11: font-family 'Source Han Sans SC' 未映射(Unity 需 FontAsset,见 mapping.md)
+ *   - 1:13: font-weight 500 近似为 normal(USS 只有 normal/bold)
+ *   - 1:13: font-family 'Source Han Sans SC' 未映射(Unity 需 FontAsset,见 mapping.md)
+ *   - 1:21: font-weight 800 近似为 bold(USS 只有 normal/bold)
+ *   - 1:21: font-family 'Source Han Sans SC' 未映射(Unity 需 FontAsset,见 mapping.md)
+ *   - 1:31: font-family 'Source Han Sans SC' 未映射(Unity 需 FontAsset,见 mapping.md)
+ */
+
+.screen-root {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1080px;
+  height: 1920px;
+  overflow: hidden;
+  background-color: rgba(20,50,59,1);
+}
+
+.el-1_3 {
+  position: absolute;
+  left: 0px;
+  top: 260px;
+  width: 1080px;
+  height: 110px;
+  margin: 0;
+  padding: 0;
+  color: rgba(255,255,255,1);
+  font-size: 88px;
+  -unity-font-style: bold;
+  -unity-text-align: middle-center;
+  white-space: nowrap;
+  overflow: visible;
+}
+
+.el-1_40 {
+  position: absolute;
+  left: 900px;
+  top: 80px;
+  width: 140px;
+  height: 48px;
+  margin: 0;
+  padding: 0;
+  color: rgba(255,215,106,1);
+  font-size: 36px;
+  -unity-font-style: normal;
+  -unity-text-align: middle-center;
+  white-space: nowrap;
+  overflow: visible;
+}
+
+.el-1_10 {
+  position: absolute;
+  left: 260px;
+  top: 1280px;
+  width: 560px;
+  height: 90px;
+  border-top-left-radius: 45px;
+  border-top-right-radius: 45px;
+  border-bottom-right-radius: 45px;
+  border-bottom-left-radius: 45px;
+  background-color: rgba(255,251,242,1);
+}
+
+.el-1_12 {
+  position: absolute;
+  left: 26px;
+  top: 22px;
+  width: 46px;
+  height: 46px;
+  border-top-left-radius: 23px;
+  border-top-right-radius: 23px;
+  border-bottom-right-radius: 23px;
+  border-bottom-left-radius: 23px;
+  background-color: rgba(139,193,45,1);
+}
+
+.el-1_11 {
+  position: absolute;
+  left: 90px;
+  top: 20px;
+  width: 340px;
+  height: 50px;
+  margin: 0;
+  padding: 0;
+  color: rgba(57,57,57,1);
+  font-size: 40px;
+  -unity-font-style: normal;
+  -unity-text-align: middle-left;
+  white-space: nowrap;
+  overflow: visible;
+}
+
+.el-1_13 {
+  position: absolute;
+  left: 850px;
+  top: 1300px;
+  width: 120px;
+  height: 50px;
+  margin: 0;
+  padding: 0;
+  color: rgba(255,215,106,1);
+  font-size: 34px;
+  -unity-font-style: normal;
+  -unity-text-align: middle-center;
+  white-space: nowrap;
+  overflow: visible;
+}
+
+.el-1_20 {
+  position: absolute;
+  left: 300px;
+  top: 1450px;
+  width: 480px;
+  height: 110px;
+  border-top-left-radius: 55px;
+  border-top-right-radius: 55px;
+  border-bottom-right-radius: 55px;
+  border-bottom-left-radius: 55px;
+  background-color: rgba(239,191,0,1);
+}
+
+.el-1_21 {
+  position: absolute;
+  left: 0px;
+  top: 28px;
+  width: 480px;
+  height: 54px;
+  margin: 0;
+  padding: 0;
+  color: rgba(58,42,0,1);
+  font-size: 48px;
+  -unity-font-style: bold;
+  -unity-text-align: middle-center;
+  white-space: nowrap;
+  overflow: visible;
+}
+
+.el-1_30 {
+  position: absolute;
+  left: 300px;
+  top: 1640px;
+  width: 36px;
+  height: 36px;
+  border-top-left-radius: 8px;
+  border-top-right-radius: 8px;
+  border-bottom-right-radius: 8px;
+  border-bottom-left-radius: 8px;
+  border-width: 2px;
+  border-color: rgba(255,255,255,1);
+  background-color: rgba(255,255,255,0.2);
+}
+
+.el-1_31 {
+  position: absolute;
+  left: 352px;
+  top: 1638px;
+  width: 620px;
+  height: 40px;
+  margin: 0;
+  padding: 0;
+  color: rgba(255,255,255,0.85);
+  font-size: 28px;
+  -unity-font-style: normal;
+  -unity-text-align: middle-left;
+  white-space: nowrap;
+  overflow: visible;
+}

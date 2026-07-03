@@ -1,0 +1,3 @@
+# Golden tests compare bytes — keep LF everywhere, on every platform.
+* text=auto eol=lf
+*.png binary

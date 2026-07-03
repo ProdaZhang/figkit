@@ -1,0 +1,133 @@
+{
+ "version": 1,
+ "frame": "2:1",
+ "w": 1080,
+ "h": 1920,
+ "stageBg": {
+  "type": "solid",
+  "rgba": [
+   20,
+   50,
+   59,
+   1
+  ]
+ },
+ "els": [
+  {
+   "id": "2:10",
+   "name": "notice-panel",
+   "type": "FRAME",
+   "parent": "",
+   "absX": 160,
+   "absY": 460,
+   "localX": 160,
+   "localY": 460,
+   "w": 760,
+   "h": 900,
+   "z": 1,
+   "rot": 0,
+   "opacity": 1,
+   "radius": [
+    24,
+    24,
+    24,
+    24
+   ],
+   "border": null,
+   "shadow": [],
+   "blur": null,
+   "fill": {
+    "type": "solid",
+    "rgba": [
+     255,
+     251,
+     242,
+     1
+    ]
+   },
+   "img": null,
+   "text": null,
+   "vec": false
+  },
+  {
+   "id": "2:11",
+   "name": "notice-title",
+   "type": "TEXT",
+   "parent": "2:10",
+   "absX": 160,
+   "absY": 505,
+   "localX": 0,
+   "localY": 45,
+   "w": 760,
+   "h": 60,
+   "z": 2,
+   "rot": 0,
+   "opacity": 1,
+   "radius": null,
+   "border": null,
+   "shadow": [],
+   "blur": null,
+   "fill": null,
+   "img": null,
+   "text": {
+    "content": "公告",
+    "rgba": [
+     57,
+     57,
+     57,
+     1
+    ],
+    "size": 44,
+    "weight": 700,
+    "family": "Source Han Sans SC",
+    "lh": 0,
+    "ls": 0,
+    "alignH": "center",
+    "alignV": "center",
+    "textAlign": "center",
+    "stroke": null
+   },
+   "vec": false
+  },
+  {
+   "id": "2:12",
+   "name": "notice-body",
+   "type": "TEXT",
+   "parent": "2:10",
+   "absX": 220,
+   "absY": 610,
+   "localX": 60,
+   "localY": 150,
+   "w": 640,
+   "h": 680,
+   "z": 3,
+   "rot": 0,
+   "opacity": 1,
+   "radius": null,
+   "border": null,
+   "shadow": [],
+   "blur": null,
+   "fill": null,
+   "img": null,
+   "text": {
+    "content": "(占位正文,运行时由 app 填充)",
+    "rgba": [
+     87,
+     80,
+     63,
+     1
+    ],
+    "size": 30,
+    "weight": 400,
+    "family": "Source Han Sans SC",
+    "lh": 48,
+    "ls": 0,
+    "alignH": "start",
+    "alignV": "start",
+    "textAlign": "left",
+    "stroke": null
+   },
+   "vec": false
+  }
+ ]
+}
