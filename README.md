@@ -60,6 +60,8 @@ python figma2unity/scripts/ui_to_unity.py figma2html/examples/login/screen-login
 
 Per-skill usage lives in each `figma2*/SKILL.md`; the folders double as [Claude Code skills](https://docs.claude.com/en/docs/claude-code) — drop any of them into `.claude/skills/` and the workflow becomes conversational.
 
+> **Language note**: this README is English; the skill docs (`SKILL.md`, `references/mapping.md`) are currently **zh-CN**. The code, tests, specs and known-loss tables are language-independent; translation PRs are welcome.
+
 ## Design principles
 
 - **IR spec is frozen** ([`spec/`](spec/), v1.0): additive evolution only; backends never extend it privately.
