@@ -25,7 +25,7 @@ figma REST ──► figma_capture ──►  IR: <screen>.ui.json (pixels) + fl
 | figma2godot | ✅ 16 | ✅ **Godot 4.3**: .tscn rendered, pixel-compared vs HTML; GDScript compiles clean |
 | figma2unity | ✅ 11 | ✅ **Unity 6000.4.8f1**: C# compiles zero-warning, UXML/USS pass Unity's importer, CloneTree structure asserted (visual pass pending) |
 | figma2unreal | ✅ 10 | ⏳ source + integration guide; not yet compiled in UE (risk self-assessment in `references/mapping.md`) |
-| figma2cocos | ✅ 7 | ⏳ source + integration guide; not yet run in Creator |
+| figma2cocos | ✅ 7 | 🟡 TS strict-typechecks against official `@cocos/creator-types` (engine d.ts, decorators incl.); not yet run in Creator |
 
 Same IR geometry rendered by two independent backends:
 

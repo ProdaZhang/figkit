@@ -3,7 +3,7 @@
 输入 IR = figma2html 管线的 `.ui.json`(像素)+ `flow.json`(交互),字段语义见
 `../../figma2html/references/ui.json-schema.md` 与 `flow-events.md`。本表是 `runtime/*.ts` 的实现契约。
 
-> **交付态声明:runtime 下的 TS 未在 Cocos Creator 内实机运行验证。交付物 = 源码 + 本集成说明,
+> **交付态声明(2026-07-06 更新):runtime 下的 TS 已过严格类型编译门(tsc 对 `@cocos/creator-types` 官方 engine 声明,零错),但未在 Cocos Creator 内实机运行验证。交付物 = 源码 + 本集成说明,
 > 逻辑对齐 figma2html 的 render.js / assemble.js(已实跑验证的参照实现),cc API 用法靠 review + 类型自洽。
 > 首次接入请按 §6 集成清单冒烟。**
 
