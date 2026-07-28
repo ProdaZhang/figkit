@@ -13,6 +13,7 @@ A full-fidelity structured snapshot of one Figma frame: every visible node plus 
 
 ```jsonc
 {
+  "spec": "1.0",                          // IR contract version this capture follows (see spec/)
   "frame": "46:8241", "w": 1080, "h": 1920,
   "stageBg": "url(_assets/s17/bg.png) center/cover no-repeat",   // frame backdrop (solid colour / gradient also allowed)
   "els": [{
@@ -29,6 +30,7 @@ A full-fidelity structured snapshot of one Figma frame: every visible node plus 
 }
 ```
 
+- `spec` names the IR contract version the file was captured against. It is **advisory**: consumers treat a missing field as `"1.0"` (files captured before the field existed), ignore a differing *minor* (the freeze discipline makes those additive, so an older backend simply doesn't see the new optional fields), and warn on a differing *major* rather than refuse — a loud "I am reading this by the old rules" beats silence.
 - Geometry is absolute px relative to the frame origin; `render.js` converts to parent-relative while nesting.
 - `subtreeOf(cap, rootId | [rootId, ...])` extracts a subtree (used for modal overlays).
 - Full per-field semantics live in figma2dsl's `references/界面DSL规范-figma2dsl扩展.md` §C/§0 (still zh-CN).

@@ -214,6 +214,84 @@ def test_kitchen_sink_is_fresh():
     del tmp
 
 
+# ── 输入守门:各后端必须**一致地**拒绝同一批畸形 IR ─────────────────────────────
+
+BAD_IRS = {
+    "顶层缺 els": {"w": 100, "h": 100},
+    "顶层 w 不是数字": {"w": "wide", "h": 100, "els": []},
+    "元素缺 id": {"w": 100, "h": 100, "els": [{"x": 0, "y": 0, "w": 1, "h": 1}]},
+    "元素 id 重复": {"w": 100, "h": 100, "els": [
+        {"id": "a", "x": 0, "y": 0, "w": 1, "h": 1},
+        {"id": "a", "x": 0, "y": 0, "w": 1, "h": 1}]},
+    "元素几何不是数字": {"w": 100, "h": 100, "els": [
+        {"id": "a", "x": "left", "y": 0, "w": 1, "h": 1}]},
+    "parent 指向不存在的元素": {"w": 100, "h": 100, "els": [
+        {"id": "a", "x": 0, "y": 0, "w": 1, "h": 1, "parent": "ghost"}]},
+}
+
+
+def _feed(cap_obj, tag):
+    """把一份 IR 喂给三个后端 → {backend: (returncode, 合并输出)}。"""
+    tmp = tempfile.mkdtemp(prefix="figkit_bad_")
+    p = os.path.join(tmp, "%s.ui.json" % tag)
+    with io.open(p, "w", encoding="utf-8", newline="") as f:
+        json.dump(cap_obj, f, ensure_ascii=False)
+    out = {}
+    for name, (pkg, script, _) in BACKENDS.items():
+        r = subprocess.run([sys.executable, os.path.join(ROOT, pkg, script), p,
+                            os.path.join(tmp, "out")],
+                           capture_output=True, text=True, encoding="utf-8", errors="replace")
+        out[name] = (r.returncode, (r.stdout or "") + (r.stderr or ""))
+    return out
+
+
+def test_malformed_ir_is_rejected_consistently():
+    """畸形 IR 必须被**每个**后端挡下:退出码非 0,且不是 traceback。
+
+    此前 6 个后端里只有 cocos 有校验器,其余喂进畸形 IR 就是 KeyError 或静默错渲染。
+    校验代码在各后端里各带一份(skill 必须自足、不能跨目录 import),所以"一致"这件事
+    没法靠共享代码保证 —— 只能靠这条测试。"""
+    bad = []
+    for tag, obj in sorted(BAD_IRS.items()):
+        res = _feed(obj, tag.replace(" ", "_"))
+        for backend, (rc, text) in sorted(res.items()):
+            if rc == 0:
+                bad.append("%s:%s 居然接受了" % (backend, tag))
+            elif "Traceback" in text:
+                bad.append("%s:%s 抛了 traceback 而不是给人话" % (backend, tag))
+    assert not bad, "输入守门不一致:\n  " + "\n  ".join(bad)
+
+
+def test_good_ir_still_passes_the_guard():
+    """守门别把正常输入也拦了 —— kitchen-sink 必须照常通过(前面的用例已覆盖,这里做反向锚)。"""
+    for backend, (rc, text) in sorted(_feed(
+            json.loads(io.open(CAP, encoding="utf-8").read()), "good").items()):
+        assert rc == 0, "%s 把合法 IR 也拒了(rc=%d):\n%s" % (backend, rc, text[:400])
+
+
+def test_spec_version_is_advisory():
+    """版本字段是**参考**不是门禁:主版本不同要吭声,次版本与缺失都照常跑。"""
+    base = json.loads(io.open(CAP, encoding="utf-8").read())
+    cases = [("2.0", True), ("1.7", False), (None, False)]
+    bad = []
+    for ver, want_warn in cases:
+        obj = dict(base)
+        obj.pop("spec", None) if ver is None else obj.update(spec=ver)
+        for backend, (rc, text) in sorted(_feed(obj, "ver").items()):
+            if rc != 0:
+                bad.append("%s 因 spec=%r 直接失败了(版本应是参考,不是门禁)" % (backend, ver))
+            got_warn = "[ir-spec]" in text
+            if got_warn != want_warn:
+                bad.append("%s 对 spec=%r %s告警" % (backend, ver, "不该" if got_warn else "该"))
+    assert not bad, "版本处置不一致:\n  " + "\n  ".join(bad)
+
+
+def test_capture_stamps_the_spec_version():
+    """夹具必须带版本 —— 不带的话上面那条测试测的是空气。"""
+    cap = json.loads(io.open(CAP, encoding="utf-8").read())
+    assert cap.get("spec") == "1.0", "kitchen-sink 没带 spec 字段: %r" % cap.get("spec")
+
+
 def _run():
     ok = True
     for name, fn in sorted(globals().items()):

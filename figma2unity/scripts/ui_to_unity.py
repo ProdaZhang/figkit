@@ -346,6 +346,7 @@ def convert_file(in_path, outdir):
             break
     with open(in_path, "r", encoding="utf-8") as f:
         cap = json.load(f)
+    guard_or_die(cap, sys, in_path)   # 畸形 IR → 说清哪儿不对再退,别抛 traceback
     uxml_str, uss_str, _ = convert(cap, stem)
     os.makedirs(outdir, exist_ok=True)
     uxml_path = os.path.join(outdir, stem + ".uxml")
@@ -355,6 +356,70 @@ def convert_file(in_path, outdir):
     with open(uss_path, "w", encoding="utf-8", newline="\n") as f:
         f.write(uss_str)
     return uxml_path, uss_path
+
+
+IR_SPEC_SUPPORTED = '1.0'
+
+
+def check_ir(cap):
+    """输入 .ui.json 的守门:→ (errors, warnings)。errors 非空 = 别往下跑。
+
+    为什么每个后端各带一份而不抽公共模块:skill 文件夹必须自足、可单独安装
+    (CONTRIBUTING「Conventions」),跨目录 import 会在装成插件时直接断。
+    重复由 tools/conformance 的"各后端必须一致地拒绝同一批畸形 IR"兜住。
+    """
+    errors, warns = [], []
+    if not isinstance(cap, dict):
+        return ['.ui.json 顶层不是对象(读到 %s)' % type(cap).__name__], warns
+
+    got = str(cap.get('spec') or IR_SPEC_SUPPORTED)     # 缺失 = 冻结前的老产物
+    if got.split('.')[0] != IR_SPEC_SUPPORTED.split('.')[0]:
+        warns.append('输入声称 IR v%s,本后端按 v%s 实现 —— 主版本不同,'
+                     '新语义会被按旧规矩解释' % (got, IR_SPEC_SUPPORTED))
+
+    els = cap.get('els')
+    if not isinstance(els, list):
+        errors.append("缺 'els' 数组(它是 IR 的主体,见 spec/ui.json-schema.md)")
+        return errors, warns
+    for k in ('w', 'h'):
+        if not isinstance(cap.get(k), (int, float)):
+            errors.append("顶层 '%s' 不是数字(读到 %r)" % (k, cap.get(k)))
+
+    ids = set()
+    for i, e in enumerate(els):
+        if not isinstance(e, dict):
+            errors.append('els[%d] 不是对象' % i)
+            continue
+        eid = e.get('id')
+        if not isinstance(eid, str) or not eid:
+            errors.append('els[%d] 缺 id(元素靠 figma node id 与 flow.json 对账)' % i)
+            continue
+        if eid in ids:
+            errors.append('els[%d] 的 id %r 重复' % (i, eid))
+        ids.add(eid)
+        for k in ('x', 'y', 'w', 'h'):
+            if not isinstance(e.get(k), (int, float)):
+                errors.append('元素 %s 的 %r 不是数字(读到 %r)' % (eid, k, e.get(k)))
+    for e in els:
+        if isinstance(e, dict):
+            p = e.get('parent') or ''
+            if p and p not in ids:
+                errors.append('元素 %s 的 parent %r 不在本屏内' % (e.get('id'), p))
+    return errors, warns
+
+
+def guard_or_die(cap, sys_mod, src=''):
+    """守门 + 打印 + 退出码。errors → 写 stderr 并 SystemExit(2)。"""
+    errors, warns = check_ir(cap)
+    for w in warns:
+        sys_mod.stderr.write('[ir-spec] %s\n' % w)
+    if errors:
+        sys_mod.stderr.write('[ir-check] %s 不是合法的 .ui.json:\n' % (src or '输入'))
+        for e in errors[:20]:
+            sys_mod.stderr.write('  - %s\n' % e)
+        if len(errors) > 20:
+            sys_mod.stderr.write('  ...(还有 %d 条)\n' % (len(errors) - 20))
+        raise SystemExit(2)
 
 
 def main(argv):

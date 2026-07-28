@@ -159,6 +159,8 @@ def main(argv=None):
     ap.add_argument("--lang", choices=sorted(COPY), default="en",
                     help="文案语言(默认 en;各后端 tests/fixtures 用 zh)")
     ap.add_argument("--out", default=None, help="产物目录(默认本脚本所在目录)")
+    ap.add_argument("--bundle", action="store_true",
+                    help="强制产 fixtures.js(默认只在写回 demo 自己那个目录时产)")
     args = ap.parse_args(argv)
 
     here = os.path.dirname(os.path.abspath(__file__))
@@ -177,9 +179,11 @@ def main(argv=None):
             json.dump(cap, f, ensure_ascii=False, indent=1)
         print("wrote %s (%d els, %dx%d)" % (stem + ".ui.json", len(cap["els"]), cap["w"], cap["h"]))
 
-    # fixtures.js:只有 app.html 那份(带 flow.json 的目录)才需要
+    # fixtures.js 是 **demo 专用**的内联夹具(让 app.html 在 file:// 下可跑)。
+    # 各后端 tests/fixtures 目录里也有 flow.json,但那儿只喂离线转换器测试,
+    # 不该多出一个要维护新鲜度的生成物 —— 所以只在写回 demo 自己那个目录时产。
     flow_path = os.path.join(outdir, "flow.json")
-    if os.path.exists(flow_path):
+    if (args.bundle or outdir == here) and os.path.exists(flow_path):
         with open(flow_path, encoding="utf-8") as f:
             bundle = {"flow.json": json.load(f)}
         bundle.update(caps)

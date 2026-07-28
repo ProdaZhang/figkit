@@ -25,9 +25,11 @@ def _read(p):
         return f.read()
 
 
-def _regen(lang, outdir):
-    r = subprocess.run([sys.executable, os.path.join(EX, "make_fixture.py"),
-                        "--lang", lang, "--out", outdir],
+def _regen(lang, outdir, bundle=False):
+    argv = [sys.executable, os.path.join(EX, "make_fixture.py"), "--lang", lang, "--out", outdir]
+    if bundle:                      # fixtures.js 默认只在 demo 目录产,临时目录要显式要
+        argv.append("--bundle")
+    r = subprocess.run(argv,
                        capture_output=True, text=True, encoding="utf-8", errors="replace")
     assert r.returncode == 0, "make_fixture.py 退出码 %d\n%s" % (r.returncode, r.stderr)
 
@@ -50,7 +52,7 @@ def test_fixtures_js_matches_the_ui_json():
     try:
         for fn in GEN + ["flow.json"]:
             shutil.copy(os.path.join(EX, fn), os.path.join(tmp, fn))
-        _regen("en", tmp)
+        _regen("en", tmp, bundle=True)
         got, want = _read(os.path.join(tmp, "fixtures.js")), _read(os.path.join(EX, "fixtures.js"))
         assert got == want, ("fixtures.js 已过期 —— 在 examples/login/ 里跑 "
                              "`python3 make_fixture.py` 并提交结果")

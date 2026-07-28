@@ -17,6 +17,13 @@
 """
 import sys, json, io, os, math, html
 
+# 产物写进 .ui.json 顶层的 `spec` 字段 = 本次捕获遵循的 IR 契约版本(见 spec/)。
+# 为什么要写:契约是 v1.0 FROZEN、只允许 additive,但产物里若不带版本,
+# 将来 v1.1 的 capture 产物喂给旧后端时**两边都无从察觉** —— 消费者连"我看不懂这个"
+# 都说不出口。带上之后,后端至少能在主版本对不上时告警(而不是静默按旧规矩解释)。
+# 缺失该字段的旧产物一律按 "1.0" 处理,向后兼容。
+IR_SPEC = '1.0'
+
 VEC = {'VECTOR', 'BOOLEAN_OPERATION', 'STAR', 'LINE', 'REGULAR_POLYGON'}
 
 
@@ -280,7 +287,8 @@ def capture(root, asset_dir, asset_rel):
 
     for ch in root.get('children') or []:
         emit(ch, '')
-    return dict(frame=root.get('id'), w=SW, h=SH, stageBg=stage_bg, els=records), missing
+    return dict(spec=IR_SPEC, frame=root.get('id'), w=SW, h=SH,
+                stageBg=stage_bg, els=records), missing
 
 
 # ---- 序列化器 ----

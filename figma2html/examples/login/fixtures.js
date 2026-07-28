@@ -389,6 +389,7 @@ window.__FIGKIT_FIXTURES = {
   ],
   "frame": "1:1",
   "h": 1920,
+  "spec": "1.0",
   "stageBg": "rgba(20,50,59,1)",
   "w": 1080
  },
@@ -487,6 +488,7 @@ window.__FIGKIT_FIXTURES = {
   ],
   "frame": "2:1",
   "h": 1920,
+  "spec": "1.0",
   "stageBg": "rgba(20,50,59,1)",
   "w": 1080
  },
@@ -773,6 +775,7 @@ window.__FIGKIT_FIXTURES = {
   ],
   "frame": "3:1",
   "h": 1920,
+  "spec": "1.0",
   "stageBg": "rgba(20,50,59,1)",
   "w": 1080
  }
