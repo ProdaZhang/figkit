@@ -15,6 +15,14 @@ import os
 import subprocess
 import sys
 
+# 测试输出含中文;Windows 控制台默认代码页(CI 上是非 CJK)会让 print 抛 UnicodeEncodeError,
+# 整套测试因此在 windows-latest 上红 —— 与被测逻辑毫无关系。各套 run_all.py 里也有同样一段。
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 _HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(_HERE)
 BACKENDS = ["figma2dsl", "figma2html", "figma2unity",
