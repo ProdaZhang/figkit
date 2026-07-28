@@ -144,6 +144,10 @@ private:
 	UPROPERTY(Transient)
 	TMap<FString, TObjectPtr<UCanvasPanel>> PanelById;
 
+	// GC-OK: FFigmaElementSlot::ParentPanel 是**索引**不是持有 —— 所有面板都由
+	// WidgetTree->ConstructWidget 建、归 UUserWidget::WidgetTree 所有(并镜像在上面的
+	// UPROPERTY PanelById 里),且本表与 Widget 树同生共灭(BuildFromSpec 里 Empty、
+	// CloneListRows 删行时同步 Remove),不会指向已被 GC 的对象。
 	TMap<FString, FFigmaElementSlot> SlotById;
 	TMap<FString, TArray<TSharedPtr<FJsonObject>>> ChildrenByParent;
 	FVector2D FrameSize = FVector2D(1080.0, 1920.0);
