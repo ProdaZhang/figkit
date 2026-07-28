@@ -1,0 +1,78 @@
+{
+  "_why": [
+    "跨后端一致性的声明表。每个特性由 kitchen-sink 里的一个元素承载,每个后端必须为它",
+    "声明一种处置方式,测试再去产物里核对声明是否属实。",
+    "此前没有这层:各后端只跟自己手写的期望比,谁都不知道别人怎么解同一份 IR ——",
+    "capture 对每个 ELLIPSE 都产的 radius:'50%' 因此在 godot 被整个丢掉、在 cocos 被",
+    "当成 50px,而两边的测试都是绿的。"
+  ],
+  "_status_meaning": {
+    "render": "产物用引擎自己的词汇表达了它 —— 检测器必须在产物里找到信号",
+    "approx": "表达了,但是有记录在案的近似 —— 必须找到信号,且必须有降级说明",
+    "known-loss": "刻意不表达 —— 产物里必须找不到信号,且必须有降级说明留痕",
+    "carry": "仅 unreal:python 段是预处理器,原样带进 uespec,取舍在 C++ 运行时"
+  },
+  "_scope": [
+    "在测范围内的是三个**产物型**后端(godot/unity/unreal)。figma2html 与 figma2cocos 是",
+    "**解释器**:直接在运行时吃 .ui.json,没有可静态检查的产物,不在本套内 ——",
+    "它们分别由自己的渲染测试与 runtime 源码守卫覆盖。这是本套已知的覆盖边界。"
+  ],
+  "features": {
+    "radius-px": {
+      "el": "k:radius-px", "doc": "圆角",
+      "godot": "render", "unity": "render", "unreal": "carry"
+    },
+    "radius-pct": {
+      "el": "k:radius-pct", "doc": "50%",
+      "godot": "render", "unity": "render", "unreal": "carry"
+    },
+    "radius-pct-oblong": {
+      "el": "k:radius-pct-oblong", "doc": "50%",
+      "godot": "approx", "unity": "render", "unreal": "carry"
+    },
+    "border": {
+      "el": "k:border", "doc": "border",
+      "godot": "render", "unity": "render", "unreal": "carry"
+    },
+    "shadow": {
+      "el": "k:shadow", "doc": "shadow",
+      "godot": "approx", "unity": "known-loss", "unreal": "carry"
+    },
+    "blur": {
+      "el": "k:blur", "doc": "blur",
+      "godot": "known-loss", "unity": "known-loss", "unreal": "carry"
+    },
+    "rot": {
+      "el": "k:rot", "doc": "rot",
+      "godot": "render", "unity": "render", "unreal": "carry"
+    },
+    "opacity": {
+      "el": "k:opacity", "doc": "opacity",
+      "godot": "render", "unity": "render", "unreal": "carry"
+    },
+    "img": {
+      "el": "k:img-cover", "doc": "img",
+      "godot": "render", "unity": "render", "unreal": "carry"
+    },
+    "vec": {
+      "el": "k:vec", "doc": "vec",
+      "godot": "render", "unity": "render", "unreal": "carry"
+    },
+    "gradient-linear": {
+      "el": "k:gradient-linear", "doc": "gradient",
+      "godot": "render", "unity": "known-loss", "unreal": "carry"
+    },
+    "gradient-radial": {
+      "el": "k:gradient-radial", "doc": "gradient",
+      "godot": "known-loss", "unity": "known-loss", "unreal": "carry"
+    },
+    "text": {
+      "el": "k:text", "doc": "content",
+      "godot": "render", "unity": "render", "unreal": "carry"
+    },
+    "text-stroke": {
+      "el": "k:text-stroke", "doc": "stroke",
+      "godot": "render", "unity": "known-loss", "unreal": "carry"
+    }
+  }
+}

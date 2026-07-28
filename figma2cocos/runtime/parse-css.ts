@@ -36,10 +36,23 @@ export function parseColor(s: string): RGBA | null {
 }
 
 /** radius 字符串 → 四角 px。CSS 1~4 值展开规则:1→全部;2→tl/br, tr/bl;3→tl, tr/bl, br;4→tl tr br bl。 */
-export function parseRadius(s: string): Corners {
+/**
+ * CSS border-radius 简写 → 四角像素值。
+ *
+ * `w`/`h` 是元素尺寸,百分比要用:capture 对**每个 figma ELLIPSE** 都产 `radius: "50%"`
+ * (头像/圆点/徽章/胶囊按钮全走这条)。JS 的 `parseFloat("50%")` 返回 **50** 而不是报错,
+ * 于是百分比会被静默当成 50px —— 比丢弃更坏,错得还随元素尺寸变。
+ * 口径与 figma2unreal / figma2godot 对齐:百分比取 min(w,h) 的比例。
+ */
+export function parseRadius(s: string, w = 0, h = 0): Corners {
   const zero: Corners = { tl: 0, tr: 0, br: 0, bl: 0 };
   if (!s) return zero;
-  const v = s.trim().split(/\s+/).map(p => parseFloat(p) || 0);
+  const base = w && h ? Math.min(w, h) : 0;
+  const v = s.trim().split(/\s+/).map(p => {
+    const n = parseFloat(p);
+    if (!isFinite(n)) return 0;
+    return p.trim().endsWith('%') ? (base * n) / 100 : n;
+  });
   if (v.length === 1) return { tl: v[0], tr: v[0], br: v[0], bl: v[0] };
   if (v.length === 2) return { tl: v[0], tr: v[1], br: v[0], bl: v[1] };
   if (v.length === 3) return { tl: v[0], tr: v[1], br: v[2], bl: v[1] };

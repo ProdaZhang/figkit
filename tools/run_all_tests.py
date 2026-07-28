@@ -51,9 +51,12 @@ def main(argv):
         return 2
 
     failed = []
-    if picked == BACKENDS:      # 只在跑全量时校验 spec 与随包副本的一致性
+    if picked == BACKENDS:      # 只在跑全量时校验 spec 一致性与跨后端一致性
         if not _run("spec parity", [os.path.join("tools", "spec_parity.py")], ROOT):
             failed.append("spec-parity")
+        if not _run("conformance (cross-backend)", ["run_all.py"],
+                    os.path.join(ROOT, "tools", "conformance")):
+            failed.append("conformance")
 
     for b in picked:
         d = os.path.join(ROOT, b, "scripts", "tests")
@@ -67,7 +70,7 @@ def main(argv):
     if failed:
         print("FAILED: " + ", ".join(failed), file=sys.stderr)
         return 1
-    print("ALL GREEN (%d 套)" % (len(picked) + (1 if picked == BACKENDS else 0)))
+    print("ALL GREEN (%d 套)" % (len(picked) + (2 if picked == BACKENDS else 0)))
     return 0
 
 

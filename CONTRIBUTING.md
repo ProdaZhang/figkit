@@ -5,7 +5,7 @@
 One entry point, works on Windows / macOS / Linux, pure stdlib, no pytest:
 
 ```bash
-python3 tools/run_all_tests.py            # spec parity + all six suites
+python3 tools/run_all_tests.py            # spec parity + cross-backend conformance + all six suites
 python3 tools/run_all_tests.py godot dsl  # just those backends
 python3 tools/run_all_tests.py --list     # what's available
 ```
@@ -19,10 +19,11 @@ CI (`.github/workflows/tests.yml`) runs the same script on **ubuntu / windows / 
 1. **The IR is the spine.** `spec/ui.json-schema.md` + `spec/flow-events.md` are **v1.0 FROZEN**: additive changes only (new optional fields / enum values); a structural change needs a real gap hit by a backend, and bumps the spec version. Backends consume the IR — they never invent private extensions to it.
 2. **One capture, master copy in `figma2html/scripts/figma_capture.py`.** `figma2dsl` carries a byte-identical mirror guarded by `figma2dsl/scripts/tests/test_capture_parity.py`. Change capture in figma2html first, then sync the mirror.
 3. **Preview = runtime, locked by tests.** `figma_capture.py rec_to_css` and `runtime/render.js applyRecStyle` are the same styling logic in two places; a whitespace-parity test guards them. Keep any style change in both.
-4. **Honest degradation (known-loss).** When a backend cannot represent an IR feature (blur, gradients, text-stroke, …) it must degrade *loudly*: an entry in that backend's `references/mapping.md` known-loss table, plus a generated-file header comment or runtime log. Never drop silently.
-5. **Converters are deterministic**: argv-driven, pure stdlib, no timestamps/randomness — same input, byte-identical output, enforced by per-backend golden tests.
-6. **Project-neutral**: no real product names, protocol ids, or Figma file keys in code or fixtures. File keys come from `FIGMA_FILE_KEY` / `--file-key`; screen metadata comes from an external `--meta` file. `FIGMA_TOKEN` is read by a single subprocess and never written to any file.
-7. **Engine-side code states its verification level.** Python is test-verified here; C# / GDScript / C++ / TS declare in their file headers what has and hasn't been verified in-engine (compile / import / render / interaction). Update the header when you raise the level — never claim beyond it.
+4. **Honest degradation (known-loss).** When a backend cannot represent an IR feature (blur, gradients, text-stroke, …) it must degrade *loudly*: an entry in that backend's `references/mapping.md` known-loss table, plus a generated-file header comment or a log line at generation/runtime. Never drop silently. **This is enforced**, not just documented — see the conformance suite below.
+5. **Cross-backend conformance.** Per-backend tests only compare a backend against its own hand-written expectations; nothing there notices when two backends read the same IR differently. `tools/conformance/` closes that gap: one `kitchen-sink.ui.json` exercising every visual feature, and `expectations.json` where each backend declares, per feature, whether it renders it, approximates it, or drops it. The suite then checks the declaration against the real artifact, that every approximation/drop leaves a trace, and that it is actually written down in that backend's `mapping.md`. Adding an IR feature or a backend means extending both files. (This is how `radius: "50%"` — which capture emits for *every* Figma ellipse — was found silently dropped by the Godot backend and misread as `50px` by the Cocos one, while every existing test stayed green.)
+6. **Converters are deterministic**: argv-driven, pure stdlib, no timestamps/randomness — same input, byte-identical output, enforced by per-backend golden tests.
+7. **Project-neutral**: no real product names, protocol ids, or Figma file keys in code or fixtures. File keys come from `FIGMA_FILE_KEY` / `--file-key`; screen metadata comes from an external `--meta` file. `FIGMA_TOKEN` is read by a single subprocess and never written to any file.
+8. **Engine-side code states its verification level.** Python is test-verified here; C# / GDScript / C++ / TS declare in their file headers what has and hasn't been verified in-engine (compile / import / render / interaction). Update the header when you raise the level — never claim beyond it.
 
 ## How to add things
 

@@ -82,14 +82,26 @@ def color_str(c):
     return 'Color(%s, %s, %s, %s)' % tuple(cnum(x) for x in c)
 
 
-def parse_radius(s):
-    """CSS border-radius 简写('45px' / 'a b c d')→ (TL, TR, BR, BL) 四角 int。"""
+def parse_radius(s, w=0, h=0):
+    """CSS border-radius 简写('45px' / 'a b c d' / '50%')→ (TL, TR, BR, BL) 四角 int。
+
+    百分比不是边角料:capture 对**每个 figma ELLIPSE** 都产 `radius: "50%"`
+    (见 figma_capture.py 的 ELLIPSE 分支),头像/圆点/徽章/胶囊按钮全走这条。
+    早先 float('50%') 抛 ValueError → 返回 None → 圆角整个丢掉、椭圆渲染成方块,
+    而且不打日志。口径与 figma2unreal 对齐:百分比取 min(w,h) 的比例(Godot 的
+    corner_radius 是标量,非正方形元素上是近似,已记在 mapping.md known-loss)。"""
     if not s:
         return None
-    try:
-        vals = [float(v.replace('px', '')) for v in s.split()]
-    except ValueError:
-        return None
+    base = min(w, h) if (w and h) else 0
+    vals = []
+    for tok in s.split():
+        try:
+            if tok.endswith('%'):
+                vals.append(base * float(tok[:-1]) / 100.0)
+            else:
+                vals.append(float(tok.replace('px', '')))
+        except ValueError:
+            return None
     if not vals:
         return None
     if len(vals) == 1:
@@ -279,7 +291,7 @@ def _stylebox(sid, e, fill_c):
     else:
         L.append('bg_color = Color(0, 0, 0, 0)')
         L.append('draw_center = false')
-    rad = parse_radius(e.get('radius') or '')
+    rad = parse_radius(e.get('radius') or '', e.get('w') or 0, e.get('h') or 0)
     if rad and any(rad):
         for key, v in zip(('top_left', 'top_right', 'bottom_right', 'bottom_left'), rad):
             L.append('corner_radius_%s = %d' % (key, v))
@@ -420,6 +432,37 @@ def _emit_el(em, e, parent_path, parent_rec, used):
     return name
 
 
+def collect_losses(cap):
+    """扫一遍 IR,列出本后端**表达不了或降级**的项 → ["<元素id>: 说明", ...]。
+
+    仓库原则(README「Honest degradation」/ CONTRIBUTING #4):不能表达的特性必须既进
+    mapping.md 的 known-loss 表,又在**生成时或运行时留痕**,不许静默丢失。
+    figma2unity 是把清单写进 .uss 头注释;.tscn 这边不塞注释(没有引擎可验证 Godot 的
+    文本资源解析器怎么吃它,弄坏场景比丢个模糊更糟),改为生成时写 stderr。
+
+    与 mapping.md 的 known-loss 表一一对应,tools/conformance 会核对两边不脱节。"""
+    out = []
+    for e in cap.get('els') or []:
+        eid = e.get('id', '?')
+        if e.get('blur'):
+            out.append("%s: blur '%s' 丢弃(Godot 无逐控件模糊;需要的话自建 "
+                       "BackBufferCopy + 着色器)" % (eid, e['blur']))
+        if e.get('shadow'):
+            out.append("%s: 阴影用 shadow_size 近似 CSS 的 blur+spread(且最小 1,"
+                       "Godot size=0 不绘制,硬阴影会消失)" % eid)
+        fill = e.get('fill') or ''
+        if fill.startswith('radial-gradient'):
+            out.append("%s: 径向渐变降级为色标平均色(Godot GradientTexture1D 只做线性)" % eid)
+        rad = e.get('radius') or ''
+        if '%' in rad and e.get('w') != e.get('h'):
+            out.append("%s: 百分比圆角在非正方形元素上取 min(w,h) 近似"
+                       "(Godot corner_radius 是标量,画不出椭圆角)" % eid)
+    bg = (cap.get('stageBg') or '')
+    if bg.startswith('radial-gradient'):
+        out.append("stageBg: 径向渐变降级为色标平均色(同上)")
+    return out
+
+
 def convert(cap, stem):
     """cap(.ui.json dict)→ tscn 文本(str)。stem = 场景/根节点名。"""
     els = cap.get('els') or []
@@ -505,6 +548,8 @@ def main(argv):
     out = os.path.join(outdir, stem + '.tscn')
     with open(out, 'w', encoding='utf-8', newline='\n') as f:
         f.write(convert(cap, stem))
+    for line in collect_losses(cap):          # 诚实降级:丢什么必须说,不许静默
+        sys.stderr.write('[known-loss] ' + line + '\n')
     print(out)
     return 0
 

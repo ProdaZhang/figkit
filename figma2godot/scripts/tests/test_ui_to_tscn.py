@@ -117,6 +117,20 @@ def _run():
           and 'modulate = Color(1, 1, 1, 0.5)' in t6,
           'rot 45° → rotation 0.785398 rad + pivot 中心;opacity → modulate a=0.5')
 
+    # 11. 百分比圆角:capture 对每个 ELLIPSE 都产 "50%",曾被 float() 抛异常吞掉
+    #     → 圆角全丢、椭圆渲染成方块且无告警。口径须与 figma2unreal 一致(min(w,h) 的比例)。
+    cap7 = {'frame': 'X', 'w': 200, 'h': 200, 'stageBg': '', 'els': [
+        _el('7:1', fill='rgba(255,0,0,1)', radius='50%', w=100, h=100)]}
+    t7 = M.convert(cap7, 'ellipse-case')
+    check('corner_radius_top_left = 50' in t7 and 'corner_radius_bottom_right = 50' in t7,
+          '百分比圆角 50% + 100x100 → 四角 50(椭圆不再变方块)')
+    check(M.parse_radius('50%', 300, 80) == (40, 40, 40, 40),
+          '非正方形 300x80 的 50% → min(w,h)/2 = 40(与 unreal 同口径)')
+    check(M.parse_radius('50%') is None or M.parse_radius('50%') == (0, 0, 0, 0),
+          '缺尺寸时百分比退化为 0/None,不瞎猜')
+    check(M.parse_radius('bogus', 100, 100) is None,
+          '真正解析不了的仍返回 None')
+
     ok = all(results)
     print('  %d/%d 通过' % (sum(results), len(results)))
     return ok

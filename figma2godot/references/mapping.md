@@ -41,6 +41,7 @@ tscn 节点名不允许 `. : @ / " %` —— **统一换 `_`**:figma id `1:40` �
 | `fill: rgba(r,g,b,a)` | `bg_color` | 0-255 → 0-1,4 位小数 |
 | `fill` 为空但有描边/阴影 | `bg_color = Color(0,0,0,0)` + `draw_center = false` | 只画边/影 |
 | `radius: "45px"` / `"a b c d"`(CSS 简写 1/2/3/4 值) | `corner_radius_top_left/top_right/bottom_right/bottom_left`(四角独立) | CSS 序 TL TR BR BL |
+| `radius: "50%"`(capture 对**每个 ELLIPSE** 都产) | 四角同取 `min(w,h) × 50%` | **正方形精确、非正方形近似**:Godot 的 corner_radius 是标量,画不出椭圆角。口径与 figma2unreal 一致。曾因 `float('50%')` 抛异常而**整个丢掉**(椭圆渲染成方块且无告警),现由 tools/conformance 守着 |
 | `border: "2.0px solid rgba(...)"` | `border_width_left/top/right/bottom` + `border_color` | 宽度取整、最小 1;Godot 边框向内画,CSS `box-sizing: border-box` 同语义 |
 | `shadow: "ox oy blur [spread] rgba(...)"` | `shadow_color` + `shadow_offset = Vector2(ox, oy)` + `shadow_size` | **Godot 原生支持,别丢**。`shadow_size ≈ blur + spread`、最小 1(size=0 时 Godot 不绘制,CSS 的 0-blur 硬阴影会消失,故兜底 1) |
 | `fill: linear-gradient(角度, 色标…)` | 节点改为 `TextureRect` + `GradientTexture2D`(`Gradient` 存 offsets/colors;角度 → `fill_from/fill_to` UV:CSS 0deg=向上、90deg=向右) | 真渐变;色标缺位置按 CSS 规则插值 |

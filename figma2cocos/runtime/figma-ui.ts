@@ -78,7 +78,7 @@ export function paintRect(node: Node, el: CapEl, fillOverride?: string): void {
   g.clear();
   const w = el.w, h = el.h;
   const x0 = -ut.anchorX * w, y0 = -ut.anchorY * h;   // 局部系矩形左下角
-  const c = parseRadius(el.radius);
+  const c = parseRadius(el.radius, w, h);
   let r = c.tl;
   if (c.tr !== c.tl || c.br !== c.tl || c.bl !== c.tl) {
     console.warn('[figma-ui] 四角不等圆角统一取 tl(known-loss):', el.id, el.radius);
