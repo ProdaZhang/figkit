@@ -32,14 +32,18 @@ CI (`.github/workflows/tests.yml`) runs the same script on **ubuntu / windows / 
 
 ## Translation
 
-Most prose in this repo is **zh-CN** (see the language note in the README). Translation is the easiest way to contribute and needs no Figma account, no engine install, and no deep knowledge of the pipeline. Priority order, highest value first:
+`spec/` is English (done — the zh original lives on as `spec/*.zh.md`). Most other prose is still **zh-CN**. Translation is the easiest way to contribute: no Figma account, no engine install, no deep knowledge of the pipeline. Priority order, highest value first:
 
-1. **`spec/ui.json-schema.md` + `spec/flow-events.md`** (98 lines total) — the IR contract every backend depends on. Translating these unblocks everyone else.
-2. **`figma2html/references/*.md`** — the working copies of the same two files. They must stay byte-identical to `spec/` except for the version header; `tools/spec_parity.py` enforces this, so translate both in the same PR and run it.
-3. **One backend's `references/mapping.md`** — the full IR→engine mapping plus its known-loss table. Pick the engine you actually use.
-4. **`SKILL.md` files** — usage docs for each skill.
+1. **One backend's `references/mapping.md`** — the full IR→engine mapping plus its known-loss table, ~100 lines. Pick the engine you actually use; this is what a user reads to know what will and won't survive the conversion.
+2. **`SKILL.md` files** — usage docs for each skill.
+3. **`figma2html/examples/login/README.md`** — the demo walkthrough.
 
-Conventions for translations: keep the file path and name unchanged (an English mirror belongs at `<name>.en.md` only if the zh version must stay authoritative), keep all identifiers, field names, code blocks and table structure byte-identical, and do not "improve" the technical claims while translating — if you think a claim is wrong, open an issue instead. Tests must stay green (`python3 tools/run_all_tests.py`).
+Conventions for translations:
+
+- Keep the file path and name unchanged. Only add a `<name>.zh.md` mirror when the zh version must remain readable to its maintainer — that's what `spec/` does.
+- Keep all identifiers, field names, code blocks and table structure byte-identical. Don't "improve" a technical claim while translating: if you think one is wrong, open an issue instead.
+- `spec/` has two guards, both in `tools/spec_parity.py`: the English file must stay byte-identical to the `figma2html/references/` shipped copy apart from the version header, and its **code blocks (comments stripped)** must still match `spec/*.zh.md`, so a schema change can't land in one language only.
+- Tests must stay green: `python3 tools/run_all_tests.py`.
 
 ## Conventions
 

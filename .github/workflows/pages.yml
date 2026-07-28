@@ -49,6 +49,11 @@ jobs:
           HTML
 
       - uses: actions/configure-pages@v5
+        with:
+          # 首次运行时自动把 Pages 的 Source 设成 GitHub Actions,省掉手点仓库设置。
+          # 若组织策略不允许由 workflow 启用,这一步会失败 —— 那就去
+          # Settings → Pages → Source 选 "GitHub Actions",再重跑本 workflow。
+          enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:
           path: figma2html

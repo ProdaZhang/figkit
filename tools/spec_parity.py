@@ -1,13 +1,24 @@
 # -*- coding: utf-8 -*-
-"""spec parity — spec/ 权威版 vs figma2html/references/ 随包副本 一致性守卫。
+"""spec parity — spec/ authority vs shipped copy, plus en/zh structural parity.
 
-spec/<name>.md = 版本头(连续的 "> " 引用行 + 一个空行) + 副本原文。
-本脚本剥掉版本头后与 figma2html/references/<name>.md 逐字节比对。
-用法: python3 tools/spec_parity.py   (仓库根执行;exit 0=一致, 1=漂移)
-改法: 内容改动先落 figma2html/references/(随 skill 分发),再同步进 spec/(保留版本头,
-      结构性变更须按冻结纪律升版本号并更新头部变更史)。
+Check 1 (byte parity):
+    spec/<name>.md = version header (leading "> " quote lines + one blank line) + the body.
+    Strip that header and it must equal figma2html/references/<name>.md byte for byte.
+
+Check 2 (cross-language structure):
+    spec/<name>.zh.md is a convenience mirror of the English authority. Prose cannot be
+    compared across languages, but the fenced code blocks can be: strip `//` comments and
+    whitespace and what remains is the schema itself, which is language-independent.
+    This catches "someone changed the schema in English and forgot the zh mirror".
+
+Usage: python3 tools/spec_parity.py   (run from the repo root; exit 0 = consistent, 1 = drift)
+How to change things: land content edits in figma2html/references/ first (that's what ships
+with the skill), then sync into spec/ (keeping the version header). Structural changes must
+follow the freeze discipline: bump the version and update the changelog line in the header.
+Then mirror the same edit into spec/<name>.zh.md.
 """
 import os
+import re
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -24,18 +35,45 @@ def strip_header(text):
     return "\n".join(lines[i:])
 
 
+def code_skeleton(text):
+    """Fenced code blocks, with // comments and whitespace removed → the language-independent part."""
+    out = []
+    for block in re.findall(r"```[a-zA-Z]*\n(.*?)```", text, re.S):
+        block = re.sub(r"//[^\n]*", "", block)          # drop line comments (they're translated)
+        out.append(re.sub(r"\s+", "", block))
+    return out
+
+
+def _read(*parts):
+    with open(os.path.join(ROOT, *parts), encoding="utf-8") as f:
+        return f.read()
+
+
 def main():
     bad = []
     for name in FILES:
-        spec = open(os.path.join(ROOT, "spec", name), encoding="utf-8").read()
-        ref = open(os.path.join(ROOT, "figma2html", "references", name), encoding="utf-8").read()
+        spec, ref = _read("spec", name), _read("figma2html", "references", name)
         if strip_header(spec) != ref:
             bad.append(name)
-            print("DRIFT:", name, "(spec 剥头后 != figma2html/references 副本)")
+            print("DRIFT:", name, "(spec minus header != figma2html/references copy)")
         else:
             print("OK:", name)
+
+        zh_path = os.path.join(ROOT, "spec", name.replace(".md", ".zh.md"))
+        if not os.path.exists(zh_path):
+            continue                                     # zh mirror is optional
+        zh_name = os.path.basename(zh_path)
+        en_code, zh_code = code_skeleton(spec), code_skeleton(_read("spec", zh_name))
+        if en_code != zh_code:
+            bad.append(zh_name)
+            print("DRIFT:", zh_name, "(code blocks differ from the English authority — "
+                                     "%d vs %d blocks)" % (len(en_code), len(zh_code)))
+        else:
+            print("OK:", zh_name, "(%d code blocks match)" % len(en_code))
+
     if bad:
-        print("FAIL: spec 与随包副本漂移 —— 改动先落 references/ 再同步 spec/(保留版本头)。")
+        print("FAIL: spec drift — land edits in references/ first, then sync spec/ "
+              "(keep the version header) and mirror into the .zh.md copy.")
         return 1
     print("spec parity holds.")
     return 0

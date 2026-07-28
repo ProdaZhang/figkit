@@ -29,7 +29,9 @@ figma REST ──► figma_capture ──►  IR: <screen>.ui.json (pixels) + fl
 
 ## Try it (no Figma account, no install, ~10 seconds)
 
-**Clone and double-click [`figma2html/examples/login/app.html`](figma2html/examples/login/app.html).** No server, no build step — the demo's fixtures are inlined into `fixtures.js`, so it runs straight off `file://`. Click through: notice modal, server list (row cloning), agreement guard, enter.
+### ▶ [Open the live demo](https://prodazhang.github.io/figkit/)
+
+Or clone and **double-click [`figma2html/examples/login/app.html`](figma2html/examples/login/app.html)** — no server, no build step: the demo's fixtures are inlined into `fixtures.js`, so it runs straight off `file://`. Click through: notice modal, server list (row cloning), agreement guard, enter.
 
 ![the login demo: notice modal, server list with row cloning, agreement guard, enter](docs/shots/demo.gif)
 
@@ -66,7 +68,7 @@ Each `figma2*/` folder doubles as a [Claude Code](https://code.claude.com/docs) 
 
 Prefer no plugin machinery? Just copy a folder into `.claude/skills/` — each one is self-contained. Per-skill usage lives in its `SKILL.md`.
 
-> **Language note (honest version)**: English is currently limited to **this README and `CONTRIBUTING.md`**. Everything else — the six `SKILL.md`, every `references/mapping.md` (including the known-loss tables), and **the `spec/` IR contract itself** — is written in **zh-CN** prose. What *is* language-independent: all code, all tests, all JSON/field names, and the mapping tables' structure. Translating `spec/` (98 lines, the contract every backend depends on) is the highest-value translation PR; see [Translation in CONTRIBUTING](CONTRIBUTING.md#translation).
+> **Language note (honest version)**: English covers **this README, `CONTRIBUTING.md`, and the [`spec/`](spec/) IR contract** — the parts you need to understand or extend the format. Still **zh-CN**: the six `SKILL.md` usage docs and every `references/mapping.md` (including the known-loss tables). Always language-independent: all code, all tests, all JSON/field names, and the mapping tables' structure. The zh original of the spec is kept at `spec/*.zh.md` as a mirror, and `tools/spec_parity.py` compares the two so the schema can't drift apart. Translating one backend's `mapping.md` is now the highest-value PR — see [Translation in CONTRIBUTING](CONTRIBUTING.md#translation).
 
 ## Design principles
 
