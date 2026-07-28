@@ -1,6 +1,6 @@
 {
   "name": "figma2unreal",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "FigKit IR -> Unreal uespec + UMG C++ runtime",
   "author": {
     "name": "ProdaZhang",
