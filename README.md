@@ -29,7 +29,9 @@ figma REST ──► figma_capture ──►  IR: <screen>.ui.json (pixels) + fl
 
 ## Try it (no Figma account, no install, ~10 seconds)
 
-**Clone and double-click [`figma2html/examples/login/app.html`](figma2html/examples/login/app.html).** No server, no build step — the demo's fixtures are inlined into `fixtures.js`, so it runs straight off `file://`. Click through: notice modal, server list (row cloning), agreement guard, enter.
+### ▶ [Open the live demo](https://prodazhang.github.io/figkit/)
+
+Or clone and **double-click [`figma2html/examples/login/app.html`](figma2html/examples/login/app.html)** — no server, no build step: the demo's fixtures are inlined into `fixtures.js`, so it runs straight off `file://`. Either way, click through: notice modal, server list (row cloning), agreement guard, enter.
 
 ![the login demo: notice modal, server list with row cloning, agreement guard, enter](docs/shots/demo.gif)
 
