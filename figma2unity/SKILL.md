@@ -26,7 +26,7 @@ references/ mapping.md(IR→USS/UXML 映射全表 + known-loss 表 + 坐标缩�
 ## 用法(管线)
 
 1. **拿 IR**:用 figma2html 跑到第 5 步,得到各屏 `.ui.json` + 手写的 `flow.json`
-2. **转换**:每屏一次 `python scripts/ui_to_unity.py <屏.ui.json> <outdir>` → `<stem>.uxml + <stem>.uss`
+2. **转换**:每屏一次 `python3 scripts/ui_to_unity.py <屏.ui.json> <outdir>` → `<stem>.uxml + <stem>.uss`
 3. **进 Unity**:UXML/USS 与 `_assets/` 同放一目录(url 相对 USS 解析);PanelSettings 设 **Scale With Screen Size**,参考分辨率 = `cap.w × cap.h`(见 references/mapping.md)
 4. **挂绑定器**:场景放 UIDocument + `FlowBinder`,Inspector 配 flow.json(TextAsset)+ `screens[]`(capName→VisualTreeAsset,capName 用 flow.caps 的键名)
 5. **写 hook**:实现 `IAppHook`(RegisterActions 注册 send/selectServer 等域内 action;Init 里拉数据 → `binder.RenderRows(...)`、回填)
@@ -44,4 +44,4 @@ references/ mapping.md(IR→USS/UXML 映射全表 + known-loss 表 + 坐标缩�
 - 产物与脚本一律 **UTF-8 无 BOM**。
 - `ui_to_unity.py` 纯标准库、**确定性输出**(禁时间戳/随机),同输入必逐字节同产物(golden 测试守着)。
 - `FlowBinder.cs` 目标 **Unity 2022.3+ / UI Toolkit**。**2026-07-03 已实机冒烟(Unity 6000.4.8f1 batchmode)**:FlowBinder.cs/IAppHook.cs **编译零错零警告**;三屏生成 UXML/USS 全部通过 Unity 导入器(VisualTreeAsset/StyleSheet 非空);CloneTree 结构断言过(name 映射 1_21→"开始游戏"、嵌套 1_12∈1_10、元素数 12/5/13)。**视觉渲染与交互链未实机点验**(batchmode 无图形;同一 IR 几何在 html/godot 已双双眼比对齐),接入后按 mapping.md 集成步骤跑一眼。
-- 改转换逻辑必跑 `python scripts/tests/run_all.py` 全绿;映射有意变更时同步重生成 `tests/golden/` 并在 mapping.md 更新对应行。
+- 改转换逻辑必跑 `python3 scripts/tests/run_all.py` 全绿;映射有意变更时同步重生成 `tests/golden/` 并在 mapping.md 更新对应行。

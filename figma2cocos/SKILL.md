@@ -31,7 +31,7 @@ scripts/    ui_check.py(离线校验:caps 可载入、el id 引用完整、列�
 ## 用法(管线)
 
 1. **capture**(figma2html):figma 帧 → `screen-*.ui.json` ×N + 手写 `flow.json` + 导出图片素材。
-2. **离线校验**:`python scripts/ui_check.py <flow.json> <capDir>` —— 全部引用过了才进 Cocos;
+2. **离线校验**:`python3 scripts/ui_check.py <flow.json> <capDir>` —— 全部引用过了才进 Cocos;
    顺手产出 `assets-manifest.json`(去重图片清单)。
 3. **资产导入**:manifest 里的图放进 `assets/resources/<assetRoot>/`(保持 `_assets/...` 路径、文件名 stem 不变);
    `.ui.json` / `flow.json` 拷进工程任意 assets 目录(Creator 自动导成 JsonAsset,名为路径 stem 如 `screen-login.ui`)。
@@ -47,7 +47,7 @@ scripts/    ui_check.py(离线校验:caps 可载入、el id 引用完整、列�
 - **坐标转换是本 skill 的命门**:IR 是 y 向下/左上原点的绝对 px,Creator 是 y 向上/锚点系。
   约定 = 每节点锚 (0,1),`child.position = (dx, -dy)`;旋转节点换锚 (0.5,0.5) 补偿。改动前必读 `references/mapping.md §2/§3`。
 - **TS 验证等级(2026-07-06)**:三件 runtime TS 已过 **严格类型编译门**(tsc --noEmit 对 Cocos 官方 `@cocos/creator-types` engine 声明,含 @ccclass 装饰器路径;故意错用 API 会被抓=门有牙);**Creator 内实机运行仍未验证**,交付态 = 源码 + 集成说明(mapping.md 顶部有声明);python 侧
-  `python scripts/tests/run_all.py` 必须全绿才算校验器可用。
+  `python3 scripts/tests/run_all.py` 必须全绿才算校验器可用。
 - 引擎 vs hook 边界不破:runtime 只管结构与机制,任何"某个项目的某块颜色/数据"都进 hook,不进引擎。
 - 项目无关、可移植;中文文档、英文标识符;UTF-8 无 BOM。
 - 上游 IR 契约(字段、已知限制如实例内 rot=0)以 figma2html `references/` 为准,本 skill 不复制不改写。

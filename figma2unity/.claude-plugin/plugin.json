@@ -1,0 +1,18 @@
+{
+  "name": "figma2unity",
+  "version": "0.1.0",
+  "description": "FigKit IR -> Unity UI Toolkit (UXML/USS + FlowBinder)",
+  "author": {
+    "name": "ProdaZhang",
+    "url": "https://github.com/ProdaZhang"
+  },
+  "homepage": "https://github.com/ProdaZhang/figkit",
+  "repository": "https://github.com/ProdaZhang/figkit",
+  "license": "MIT",
+  "keywords": [
+    "figma",
+    "unity",
+    "ui-toolkit",
+    "design-to-code"
+  ]
+}

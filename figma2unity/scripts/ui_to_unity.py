@@ -2,7 +2,7 @@
 """ui_to_unity.py — figma2html 的 .ui.json(IR)→ Unity UI Toolkit 资产(UXML + USS)。
 
 用法:
-    python ui_to_unity.py <cap.ui.json> <outdir>
+    python3 ui_to_unity.py <cap.ui.json> <outdir>
 产物:
     <outdir>/<stem>.uxml + <outdir>/<stem>.uss
     (stem = 输入文件名去掉 .ui.json / .json 后缀,如 screen-login)
@@ -359,7 +359,7 @@ def convert_file(in_path, outdir):
 
 def main(argv):
     if len(argv) != 3:
-        sys.stderr.write("用法: python ui_to_unity.py <cap.ui.json> <outdir>\n")
+        sys.stderr.write("用法: python3 ui_to_unity.py <cap.ui.json> <outdir>\n")
         return 2
     in_path, outdir = argv[1], argv[2]
     if not os.path.isfile(in_path):

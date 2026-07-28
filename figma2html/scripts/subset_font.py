@@ -3,10 +3,14 @@
 依赖 fonttools + brotli(pip install fonttools brotli)。
 
 用法:
-  python subset_font.py <源字体.ttf/.otf> <out.woff2> <ui.json...> [--extra "✓ "]
+  python3 subset_font.py <源字体.ttf/.otf> <out.woff2> <ui.json...> [--extra "✓ "]
 """
 import sys, json
-from fontTools import subset
+try:
+    from fontTools import subset
+except ImportError:                      # 唯一的外部依赖,别让人对着 ModuleNotFoundError 猜
+    print("需要 fonttools:  pip install fonttools brotli", file=sys.stderr)
+    raise SystemExit(2)
 
 
 def collect_chars(ui_paths):
@@ -25,6 +29,12 @@ if __name__ == '__main__':
     extra = ''
     if '--extra' in args:
         i = args.index('--extra'); extra = args[i + 1]; del args[i:i + 2]
+    if len(args) < 2:
+        print("用法: python3 subset_font.py <src.ttf/otf> <out.woff2> [<cap.ui.json> ...] [--extra 额外字符]\n"
+              "  按若干 .ui.json 里出现过的字符做子集化,CJK 字体能从几 MB 压到几十 KB。\n"
+              "  依赖 fonttools(pip install fonttools brotli)。",
+              file=sys.stderr)
+        raise SystemExit(2)
     src, out = args[0], args[1]
     ui_paths = args[2:]
     chars = collect_chars(ui_paths) | set(extra)

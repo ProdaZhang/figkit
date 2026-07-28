@@ -46,7 +46,7 @@
    "img": "",
    "imgSize": "",
    "text": {
-    "content": "公告",
+    "content": "Notice",
     "color": "rgba(57,57,57,1)",
     "size": 44,
     "family": "Source Han Sans SC",
@@ -80,7 +80,7 @@
    "img": "",
    "imgSize": "",
    "text": {
-    "content": "(占位正文,运行时由 app 填充)",
+    "content": "(placeholder body, filled by the app at runtime)",
     "color": "rgba(87,80,63,1)",
     "size": 30,
     "family": "Source Han Sans SC",

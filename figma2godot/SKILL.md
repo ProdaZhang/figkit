@@ -32,7 +32,7 @@ references/ mapping.md(IR→Godot 映射全表 + known-loss 表 + 坐标/缩放/
 ## 用法(管线)
 
 1. **上游**:用 figma2html 跑到第 5 步,拿到每屏 `<stem>.ui.json` + 手写 `flow.json` + `_assets/`。
-2. **编场景**:每屏一跑 `python scripts/ui_to_tscn.py <stem>.ui.json <godot工程>/scenes/`
+2. **编场景**:每屏一跑 `python3 scripts/ui_to_tscn.py <stem>.ui.json <godot工程>/scenes/`
    → `scenes/<stem>.tscn`。
 3. **摆素材**:`_assets/` 整目录原样拷进 Godot 工程根(ext_resource 按 `res://<IR路径>` 引用);
    配一个 CJK 字体主题(字体/字重映射见 `references/mapping.md §6`)。
@@ -52,4 +52,4 @@ references/ mapping.md(IR→Godot 映射全表 + known-loss 表 + 坐标/缩放/
   一律走 action 注册,不许写死进引擎。
 - `flow_binder.gd` 目标 Godot 4.2+。**2026-07-03 已实机冒烟(Godot 4.3-stable)**:ui_to_tscn 产的 screen-login.tscn 实例化渲染与 figma2html 截图逐项对齐(底色/标题/圆角条/宝石/按钮/勾选框/CJK 字体),flow_binder.gd + app_hook.example.gd 编译零错。**坑:直接 `godot --path <proj>` 跑从未导入过的工程,`class_name` 全局注册缓存(.godot/)不存在会报"找不到类型 FlowBinder"——先跑一次 `godot --headless --import --path <proj>`**。事件/弹窗/列表交互链未实机点验,接入后按下方冒烟清单过一遍
   再叠业务。
-- 改动本 skill 的转换逻辑后必跑 `python scripts/tests/run_all.py` 全绿。
+- 改动本 skill 的转换逻辑后必跑 `python3 scripts/tests/run_all.py` 全绿。

@@ -1,0 +1,18 @@
+{
+  "name": "figma2cocos",
+  "version": "0.1.0",
+  "description": "FigKit IR -> Cocos Creator TypeScript interpreter",
+  "author": {
+    "name": "ProdaZhang",
+    "url": "https://github.com/ProdaZhang"
+  },
+  "homepage": "https://github.com/ProdaZhang/figkit",
+  "repository": "https://github.com/ProdaZhang/figkit",
+  "license": "MIT",
+  "keywords": [
+    "figma",
+    "cocos-creator",
+    "typescript",
+    "design-to-code"
+  ]
+}

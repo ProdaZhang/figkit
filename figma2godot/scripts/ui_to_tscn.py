@@ -3,7 +3,7 @@
 """ui_to_tscn.py — figma2html 全保真 .ui.json → Godot 4 文本场景(.tscn, format=3)
 
 用法:
-    python ui_to_tscn.py <cap.ui.json> <outdir>
+    python3 ui_to_tscn.py <cap.ui.json> <outdir>
 产出:
     <outdir>/<stem>.tscn    (stem = 输入文件名去掉 .ui.json / .json 后缀)
 
@@ -491,7 +491,7 @@ def _emit_stage_bg(em, bg, w, h):
 
 def main(argv):
     if len(argv) != 3:
-        sys.stderr.write('用法: python ui_to_tscn.py <cap.ui.json> <outdir>\n')
+        sys.stderr.write('用法: python3 ui_to_tscn.py <cap.ui.json> <outdir>\n')
         return 2
     src, outdir = argv[1], argv[2]
     with open(src, 'r', encoding='utf-8') as f:

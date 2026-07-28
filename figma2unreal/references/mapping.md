@@ -3,6 +3,13 @@
 > **声明:C++ 运行时(runtime/)未在引擎内编译验证** —— 交付态 = 源码 + 本集成说明。
 > 目标引擎 **UE 5.3+**;首次集成请按下文步骤编译,若个别 API 因引擎小版本有出入,
 > 均为局部修正(集中在 FSlateBrush/FSlateFontInfo 字段与 UMG Setter),不影响架构。
+>
+> **无引擎门(已有,CI 每次跑)**:装不了引擎也不等于零把关,两道确定性静态门顶着 ——
+> `scripts/uespec_contract.py`(python 产出字段 ↔ C++ 读取字段双向对账,§4 的 known-loss
+> 逐条对应它的 WAIVERS 声明)与 `scripts/uht_lint.py`(UE 反射规约 R1-R6:generated.h 末位、
+> GENERATED_BODY、UINTERFACE 配对、BlueprintNativeEvent 走 Execute_、UObject 成员 GC 可见性、
+> include 模块登记 ⊆ §5 的 Build.cs)。**它们查规约与契约,不查 API 真值** ——
+> `FSlateFontInfo` 到底有没有 `LetterSpacing` 这类问题,仍然只有真编译能回答。
 
 架构分工(与 figma2html 双层对齐):
 
@@ -29,7 +36,7 @@
 | `shadow: "0px 4px 0px rgba(..)"` | `[{dx,dy,blur,rgba}]` | **不渲染 + UE_LOG(Verbose)**(known-loss) | 丢失 |
 | `blur: "blur(4px)"` | `{radius}` | **不渲染 + UE_LOG(Verbose)**(known-loss;`UBackgroundBlur` 只糊背板非自身,不等价) | 丢失 |
 | `img` / `imgSize` | `{path,mode}`(mode:cover/contain/stretch/tile) | `UImage` + `LoadObject<UTexture2D>`(路径约定见 §3);**缺图回退透明 + UE_LOG(Warning)**,不平涂 | 高(cover≈stretch:figma 导出图长宽比=元素比;contain/tile 拉伸回退) |
-| `vec:true`(矢量簇折叠图) | `vec` | 同 img;缺图即透明占位 | 同 img |
+| `vec:true`(矢量簇折叠图) | `vec`(仅记录) | 走 `img` 的通用图片路径(capture 已把矢量簇折成 png);缺图即透明占位。**运行时不消费 `vec` 标志本身** | 同 img |
 | `stageBg` | `{type:solid/linear/radial/image,...}` | 全帧底 UBorder/UImage,ZOrder −10000(弹窗层不画) | 同 fill/img |
 
 ## 2. 文字映射

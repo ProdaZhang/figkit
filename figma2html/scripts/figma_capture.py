@@ -10,7 +10,7 @@
 - DSL(figma_to_dsl.py)是派生的语义视图,渲染**不依赖**它。
 
 用法:
-  python figma_capture.py <nodes.json> <frameId> <sNN> <assetDir> <assetRelPrefix> <out_basepath>
+  python3 figma_capture.py <nodes.json> <frameId> <sNN> <assetDir> <assetRelPrefix> <out_basepath>
 产物:
   <out_basepath>.ui.json   全保真节点记录(render.js / aigd 消费)
   <out_basepath>.tree.html 高保真静态预览(等价旧 tree.html)
@@ -335,7 +335,23 @@ def to_html(cap, sNN):
             '<body><div class="stage">%s</div></body></html>' % (sNN, cap['w'], cap['h'], bg, divs))
 
 
+USAGE = """用法: python3 figma_capture.py <nodes.json> <frameId> <sNN> <assetDir> <assetRel> <outBase>
+
+  nodes.json  figma REST 的响应: GET /v1/files/<key>/nodes?ids=<frameId>
+  frameId     要抓的帧 node id(如 "1:2"),必须是 nodes.json 里的键
+  sNN         屏编号前缀(如 s01),只用于产物里的标识
+  assetDir    本地素材目录(png 从这里找;缺图会被列进 missing 而不是静默)
+  assetRel    素材在产物里的相对前缀(如 assets)
+  outBase     产物前缀,产 <outBase>.ui.json 与 <outBase>.tree.html
+
+不需要 token:本脚本只读已经落地的 nodes.json。拉取那步见 README「Real Figma input」。
+想先看看跑起来什么样、又没有 figma 文件:examples/login/make_fixture.py 会合成三屏喂给本管线。"""
+
+
 if __name__ == '__main__':
+    if len(sys.argv) < 7:
+        print(USAGE, file=sys.stderr)
+        sys.exit(2)
     nodes_json, frame_id, sNN, asset_dir, asset_rel, out_base = sys.argv[1:7]
     d = json.load(open(nodes_json, encoding='utf-8'))
     root = d['nodes'][frame_id]['document']

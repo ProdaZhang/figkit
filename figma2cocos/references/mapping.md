@@ -117,7 +117,7 @@ Canvas (cc.Canvas, designResolution = cap.w × cap.h)
 
 ## 6. 集成冒烟清单(首次接入必做)
 
-1. `python scripts/ui_check.py flow.json <capDir>` 全绿,按 `assets-manifest.json` 把图放进 `assets/resources/<assetRoot>/`(保持 `_assets/...` 相对路径、Creator 里 stem 同名)。
+1. `python3 scripts/ui_check.py flow.json <capDir>` 全绿,按 `assets-manifest.json` 把图放进 `assets/resources/<assetRoot>/`(保持 `_assets/...` 相对路径、Creator 里 stem 同名)。
 2. `.ui.json` / `flow.json` 拷进工程(Creator 会把 `screen-login.ui.json` 导成名为 `screen-login.ui` 的 JsonAsset —— FlowBinder 按此 stem 匹配)。
 3. 按 §4 建 Canvas + FigmaRoot,先挂 **FigmaUI** 单屏对照 figma 截图核几何(重点:左上对齐、子元素相对位置、z 序)。
 4. 再挂 **FlowBinder**,hook 组件在自身 `onLoad` 里 `FlowBinder.registerHook({register, init})`(FlowBinder 在 `start()` 构建,onLoad 注册必然来得及)。

@@ -1,26 +1,29 @@
 name: tests
 
-# FigKit checker/converter tests: six pure-stdlib suites (not pytest), one per skill.
-# Each run_all.py discovers test_*.py and exits nonzero on any failure.
+# 唯一入口 = tools/run_all_tests.py(spec parity + 六套纯标准库测试,不是 pytest)。
+# 这里不再抄一份 shell 循环 —— 文档、CI、本地跑的是同一个脚本,才不会各说各话。
+#
+# 平台矩阵的理由:本仓在 Windows 上开发,而 CI 曾经只跑 ubuntu —— 主力平台反倒没人守。
+# 三平台都跑,顺带盯住路径分隔符、换行、编码这类只在某一边现形的问题。
 on:
   push:
   pull_request:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ["3.x"]
+        include:
+          # 版本下限只在一个平台上守,够用且省额度。改下限记得同步 CONTRIBUTING。
+          - os: ubuntu-latest
+            python-version: "3.9"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.x"
-      - name: Spec parity (spec/ authority vs bundled copy)
-        run: python tools/spec_parity.py
-      - name: Run all six suites
-        run: |
-          rc=0
-          for d in figma2dsl figma2html figma2unity figma2godot figma2unreal figma2cocos; do
-            echo "== $d =="
-            (cd "$d/scripts/tests" && python run_all.py) || rc=1
-          done
-          exit $rc
+          python-version: ${{ matrix.python-version }}
+      - run: python tools/run_all_tests.py

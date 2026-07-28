@@ -3,7 +3,7 @@
 
 spec/<name>.md = 版本头(连续的 "> " 引用行 + 一个空行) + 副本原文。
 本脚本剥掉版本头后与 figma2html/references/<name>.md 逐字节比对。
-用法: python tools/spec_parity.py   (仓库根执行;exit 0=一致, 1=漂移)
+用法: python3 tools/spec_parity.py   (仓库根执行;exit 0=一致, 1=漂移)
 改法: 内容改动先落 figma2html/references/(随 skill 分发),再同步进 spec/(保留版本头,
       结构性变更须按冻结纪律升版本号并更新头部变更史)。
 """

@@ -1,0 +1,56 @@
+name: pages
+
+# 把 login demo 发到 GitHub Pages,让访客不 clone 也能点开看。
+# 站点内容 = figma2html/ 整个目录(examples/login/app.html 用相对路径引 ../../runtime/*.js,
+# 所以必须连 runtime/ 一起发,不能只发 examples/)。
+# 首次启用:仓库 Settings → Pages → Source 选 "GitHub Actions"(或用 API 设 build_type=workflow)。
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "figma2html/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Don't ship a stale demo
+        # fixtures.js 是 file:// 下唯一数据源,过期了页面照样渲染、只是渲染旧内容。
+        # 新鲜度由 figma2html/scripts/tests/test_fixtures_fresh.py 判定(tests.yml 每次也跑)。
+        working-directory: figma2html/scripts/tests
+        run: python3 test_fixtures_fresh.py
+
+      - name: Landing page → figma2html/index.html
+        # Pages 根目录需要一个落地页,把访客直接送进 demo。
+        run: |
+          cat > figma2html/index.html <<'HTML'
+          <!DOCTYPE html>
+          <meta charset="utf-8">
+          <title>FigKit — live demo</title>
+          <meta http-equiv="refresh" content="0; url=examples/login/app.html">
+          <p>Redirecting to the <a href="examples/login/app.html">FigKit login demo</a>…</p>
+          HTML
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: figma2html
+      - id: deploy
+        uses: actions/deploy-pages@v4

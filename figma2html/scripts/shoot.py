@@ -3,7 +3,7 @@
 本机 540×960 稳、1080×1920 易黑屏)。
 
 用法:
-  python shoot.py <url> <out.png> [--w 540 --h 960 --wait 4500]
+  python3 shoot.py <url> <out.png> [--w 540 --h 960 --wait 4500]
 """
 import sys, os, tempfile, subprocess
 
@@ -35,6 +35,12 @@ if __name__ == '__main__':
             opt[args[i]] = args[i + 1]; i += 2
         else:
             pos.append(args[i]); i += 1
+    if len(pos) < 2:
+        print("用法: python3 shoot.py <url> <out.png> [--w 540] [--h 960] [--wait 2000]\n"
+              "  用无头 Edge 截图核验渲染结果;url 可以是 http:// 也可以是 file://。\n"
+              "  例: python3 shoot.py http://localhost:8321/examples/login/app.html out.png --w 540 --h 960",
+              file=sys.stderr)
+        raise SystemExit(2)
     url, out = pos[0], pos[1]
     udd = tempfile.mkdtemp(prefix='shoot_')
     cmd = [find_edge(), '--headless=new', '--disable-gpu', '--no-sandbox',

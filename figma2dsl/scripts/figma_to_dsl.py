@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """Figma 节点树 -> 界面DSL(.md)  确定性转换器(项目无关)
-用法: python figma_to_dsl.py <nodes.json> <frameId> <NN> <屏名> <outdir>
+用法: python3 figma_to_dsl.py <nodes.json> <frameId> <NN> <屏名> <outdir>
                              [--prefix screen] [--brand figma] [--file-key KEY] [--meta meta.json]
   --prefix    产物文件名/标题前缀(默认 screen → screen-<NN>.md)
   --brand     来源品牌串(默认 figma;写进标题与来源行)

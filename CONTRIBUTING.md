@@ -2,15 +2,17 @@
 
 ## Running tests
 
-Six pure-stdlib suites, one per skill (**not pytest** — each `run_all.py` discovers its `test_*.py` and exits nonzero on failure):
+One entry point, works on Windows / macOS / Linux, pure stdlib, no pytest:
 
 ```bash
-for d in figma2dsl figma2html figma2unity figma2godot figma2unreal figma2cocos; do
-  (cd "$d/scripts/tests" && python run_all.py)
-done
+python3 tools/run_all_tests.py            # spec parity + all six suites
+python3 tools/run_all_tests.py godot dsl  # just those backends
+python3 tools/run_all_tests.py --list     # what's available
 ```
 
-CI (`.github/workflows/tests.yml`) runs all six on push/PR. A change must keep everything green.
+Each backend's `scripts/tests/run_all.py` discovers its own `test_*.py` and exits nonzero on failure; you can still run one directly while iterating.
+
+CI (`.github/workflows/tests.yml`) runs the same script on **ubuntu / windows / macos** with the current Python, plus one **Python 3.9** leg on ubuntu that fixes the supported floor. A change must keep every leg green.
 
 ## Core principles (understand before changing)
 
@@ -27,6 +29,17 @@ CI (`.github/workflows/tests.yml`) runs all six on push/PR. A change must keep e
 - **A new backend (`figma2<engine>/`)**: consume the IR only (no capture); implement the flow semantics of `figma2html/runtime/assemble.js` (base + modal overlay, guards, toggleFlag/send, list row cloning, checkbox binding); ship `SKILL.md`, `references/mapping.md` (full mapping + known-loss), and an offline `scripts/tests/` suite with a golden test against the shared login fixtures.
 - **A converter change**: keep goldens intentional — regenerate them in the same PR and note the mapping change in `mapping.md`.
 - **A capture change**: figma2html first (see principle 2), keep the whitespace-parity test green.
+
+## Translation
+
+Most prose in this repo is **zh-CN** (see the language note in the README). Translation is the easiest way to contribute and needs no Figma account, no engine install, and no deep knowledge of the pipeline. Priority order, highest value first:
+
+1. **`spec/ui.json-schema.md` + `spec/flow-events.md`** (98 lines total) — the IR contract every backend depends on. Translating these unblocks everyone else.
+2. **`figma2html/references/*.md`** — the working copies of the same two files. They must stay byte-identical to `spec/` except for the version header; `tools/spec_parity.py` enforces this, so translate both in the same PR and run it.
+3. **One backend's `references/mapping.md`** — the full IR→engine mapping plus its known-loss table. Pick the engine you actually use.
+4. **`SKILL.md` files** — usage docs for each skill.
+
+Conventions for translations: keep the file path and name unchanged (an English mirror belongs at `<name>.en.md` only if the zh version must stay authoritative), keep all identifiers, field names, code blocks and table structure byte-identical, and do not "improve" the technical claims while translating — if you think a claim is wrong, open an issue instead. Tests must stay green (`python3 tools/run_all_tests.py`).
 
 ## Conventions
 

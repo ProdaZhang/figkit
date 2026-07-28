@@ -46,7 +46,7 @@
    "img": "",
    "imgSize": "",
    "text": {
-    "content": "选择服务器",
+    "content": "Select a server",
     "color": "rgba(57,57,57,1)",
     "size": 44,
     "family": "Source Han Sans SC",
@@ -168,7 +168,7 @@
    "img": "",
    "imgSize": "",
    "text": {
-    "content": "一区·晨曦",
+    "content": "S1 - Dawn",
     "color": "rgba(57,57,57,1)",
     "size": 34,
     "family": "Source Han Sans SC",
@@ -268,7 +268,7 @@
    "img": "",
    "imgSize": "",
    "text": {
-    "content": "二区·薄暮",
+    "content": "S2 - Dusk",
     "color": "rgba(57,57,57,1)",
     "size": 34,
     "family": "Source Han Sans SC",

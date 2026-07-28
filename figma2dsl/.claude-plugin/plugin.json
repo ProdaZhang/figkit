@@ -1,0 +1,18 @@
+{
+  "name": "figma2dsl",
+  "version": "0.1.0",
+  "description": "Figma capture -> semantic UI-DSL markdown",
+  "author": {
+    "name": "ProdaZhang",
+    "url": "https://github.com/ProdaZhang"
+  },
+  "homepage": "https://github.com/ProdaZhang/figkit",
+  "repository": "https://github.com/ProdaZhang/figkit",
+  "license": "MIT",
+  "keywords": [
+    "figma",
+    "ui-dsl",
+    "documentation",
+    "design-to-code"
+  ]
+}

@@ -19,7 +19,7 @@
 ### `figma_capture.py` 用法
 
 ```
-python figma_capture.py <nodes.json> <frameId> <sNN> <assetDir> <assetRelPrefix> <out_basepath>
+python3 figma_capture.py <nodes.json> <frameId> <sNN> <assetDir> <assetRelPrefix> <out_basepath>
 # 产物: <out_basepath>.ui.json  +  <out_basepath>.tree.html
 ```
 

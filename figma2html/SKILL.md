@@ -18,7 +18,7 @@ figma 帧 → **全保真 `.ui.json`(像素)** + **`flow.json`(声明的交互/E
 
 ```
 scripts/   figma_capture.py(节点树→ui.json+tree.html)· subset_font.py(字体子集woff2)· shoot.py(Edge无头截图)
-           tests/(capture 冒烟:夹具→断言 records;`python scripts/tests/run_all.py`)
+           tests/(capture 冒烟:夹具→断言 records;`python3 scripts/tests/run_all.py`)
 runtime/   render.js(ui.json→DOM,subtreeOf抽子树)· assemble.js(通用引擎:flow→底屏+弹窗+事件+绑定)· app.tmpl.html
 references/ ui.json-schema.md(含「已知限制:旋转」)· flow-events.md(flow/Events 契约)
 examples/login/ 自足可跑示例:make_fixture.py(合成三屏,走真 capture 管线)+ screen-*.ui.json + flow.json + app.js + net.js(mock)+ app.html + README(起 http.server 即点;Edge 截图已核验)
@@ -27,11 +27,11 @@ examples/login/ 自足可跑示例:make_fixture.py(合成三屏,走真 capture �
 ## 用法(管线)
 
 1. **拉节点树**:figma REST `/v1/files/<key>/nodes?ids=…` → `nodes.json`(token 只进单子进程、用完即删)
-2. **捕获**:`python scripts/figma_capture.py nodes.json <frameId> <sNN> <assetDir> <assetRel> <out>` → `.ui.json` + `.tree.html`
+2. **捕获**:`python3 scripts/figma_capture.py nodes.json <frameId> <sNN> <assetDir> <assetRel> <out>` → `.ui.json` + `.tree.html`
 3. **导素材**:位图填充走 `/v1/files/<key>/images`(按 imageRef,**不卡配额**);矢量图标走 `/v1/images`(**有配额**)。缺图:`vec` 回退透明、`img` 回退无背景。
-4. **字体**:`python scripts/subset_font.py <font.ttf> fonts/cjk.woff2 <ui.json...>` → 几十 KB,@font-face 离线可移植
+4. **字体**:`python3 scripts/subset_font.py <font.ttf> fonts/cjk.woff2 <ui.json...>` → 几十 KB,@font-face 离线可移植
 5. **写 flow.json**:声明 base / modals(抽哪些根叠加)/ events / list / bindings(见 `references/flow-events.md`)
-6. **组装**:`app.tmpl.html` 套 `render.js + assemble.js + flow.json + app.js(hook)` → 可跑;`python scripts/shoot.py <url> out.png` 截图核验
+6. **组装**:`app.tmpl.html` 套 `render.js + assemble.js + flow.json + app.js(hook)` → 可跑;`python3 scripts/shoot.py <url> out.png` 截图核验
 
 ## 关键规则(都在 figma_capture / assemble 里)
 

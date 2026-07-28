@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>figma2html · login 示例</title>
+  <title>FigKit · figma2html login demo</title>
   <style>
     /* 示例不带子集字体(合成屏无需);真项目用 scripts/subset_font.py 产 woff2 + @font-face 'FigCJK' */
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -26,6 +26,8 @@
   <!-- 运行时(直接引 skill 的 runtime;拷出去部署时把这两个文件放同目录即可) -->
   <script src="../../runtime/render.js"></script>
   <script src="../../runtime/assemble.js"></script>
+  <!-- 内联夹具(make_fixture.py 生成):让 file:// 双击打开也能跑,见下面 loadSync -->
+  <script src="fixtures.js"></script>
   <!-- mock 通信层(window.NET + window.MOCK);接真后端换掉本文件 -->
   <script src="net.js"></script>
   <!-- app 专属 hook -->
@@ -33,11 +35,25 @@
 
   <script>
   (function () {
+    // 优先用内联夹具:file:// 下浏览器会拦掉对本地文件的 XHR,不内联就只能白屏。
+    // 起了 http server 时两条路都通,内联仍优先(少几次请求,且与 fixtures.js 同源真值)。
     function loadSync(p) {
-      const x = new XMLHttpRequest(); x.open('GET', p, false); x.send(null);
-      return (x.status === 200 || x.status === 0) ? JSON.parse(x.responseText) : null;
+      const B = window.__FIGKIT_FIXTURES;
+      if (B && Object.prototype.hasOwnProperty.call(B, p)) return B[p];
+      try {
+        const x = new XMLHttpRequest(); x.open('GET', p, false); x.send(null);
+        if (x.status === 200 || x.status === 0) return JSON.parse(x.responseText);
+      } catch (e) { /* file:// 下 send() 直接抛,落到下面的提示 */ }
+      return null;
     }
     const FLOW = loadSync('flow.json');            // 流程声明:base/modals/events/list/bindings/caps
+    if (!FLOW) {
+      document.getElementById('boot-err').innerHTML =
+        'Could not load <code>flow.json</code>. Run <code>python3 make_fixture.py</code> in this folder ' +
+        'to regenerate <code>fixtures.js</code>, or serve this directory over HTTP.';
+      document.getElementById('boot-err').style.color = '#f99';
+      return;
+    }
     const caps = {};
     Object.keys(FLOW.caps || {}).forEach(k => caps[k] = loadSync(FLOW.caps[k]));   // 各屏 .ui.json
     const net = window.NET || null;

@@ -1,5 +1,5 @@
 """figma 节点 → PNG 批量导出(per-element 素材)。
-用法: python export_assets.py <fileKey> <nodeIds 逗号分隔> <outdir> [--token T] [--scale 2]
+用法: python3 export_assets.py <fileKey> <nodeIds 逗号分隔> <outdir> [--token T] [--scale 2]
 token 取 --token 或环境变量 FIGMA_TOKEN。需要网络;限流时分批重试。"""
 import sys, os, json, time, urllib.request, urllib.parse, urllib.error
 
@@ -19,7 +19,7 @@ def _get(url, token, tries=6):
 
 def main(argv):
     if len(argv) < 3:
-        print("用法: python export_assets.py <fileKey> <nodeIds> <outdir> [--token T] [--scale N]"); return 2
+        print("用法: python3 export_assets.py <fileKey> <nodeIds> <outdir> [--token T] [--scale N]"); return 2
     file_key, ids_csv, outdir = argv[0], argv[1], argv[2]
     token = os.environ.get("FIGMA_TOKEN", "")
     scale = "2"

@@ -20,7 +20,8 @@ def _run():
     golden = os.path.join(D, 'golden', 'screen-login.tscn')
     with tempfile.TemporaryDirectory() as tmp:
         p = subprocess.run([sys.executable, SCRIPT, src, tmp],
-                           capture_output=True, text=True)
+                           capture_output=True, text=True,
+                           encoding="utf-8", errors="replace")
         check(p.returncode == 0, 'CLI 退出码 0(argv 驱动真跑)')
         out = os.path.join(tmp, 'screen-login.tscn')
         check(os.path.isfile(out), '产出 <stem>.tscn 文件名正确')

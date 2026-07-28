@@ -25,7 +25,8 @@ def test_fixtures_pass_exit0():
     # 真跑 CLI:登录三屏夹具应全绿 exit 0
     ui_check = os.path.join(os.path.dirname(HERE), "ui_check.py")
     r = subprocess.run([sys.executable, ui_check, FLOW, FIX],
-                       capture_output=True, text=True)
+                       capture_output=True, text=True,
+                           encoding="utf-8", errors="replace")
     assert r.returncode == 0, r.stdout + r.stderr
     assert "OK" in r.stdout, r.stdout
     # CLI 顺手落了 manifest;内容应与 collect_assets 一致(夹具无图 → 空清单)

@@ -24,43 +24,49 @@ figma REST ──► figma_capture ──►  IR: <screen>.ui.json (pixels) + fl
 | figma2dsl | ✅ | ✅ (same render pipeline) |
 | figma2godot | ✅ 16 | ✅ **Godot 4.3**: .tscn rendered, pixel-compared vs HTML; GDScript compiles clean |
 | figma2unity | ✅ 11 | ✅ **Unity 6000.4.8f1**: C# compiles zero-warning, UXML/USS pass Unity's importer, CloneTree structure asserted (visual pass pending) |
-| figma2unreal | ✅ 10 | ⏳ source + integration guide; not yet compiled in UE (risk self-assessment in `references/mapping.md`) |
+| figma2unreal | ✅ 40 | ⏳ not yet compiled in UE. Two **engine-free gates** hold the line meanwhile: `uespec_contract.py` (python-emitted ↔ C++-read field parity, known-loss must be declared) and `uht_lint.py` (UE reflection conventions R1–R6: `.generated.h` last, `GENERATED_BODY`, `UINTERFACE` pairing, `Execute_` dispatch, GC visibility of UObject members, include→module registry). They check *conventions and contracts, not API truth* — whether `FSlateFontInfo` really has that field still needs a real compile. Risk self-assessment in `references/mapping.md` |
 | figma2cocos | ✅ 7 | 🟡 TS strict-typechecks against official `@cocos/creator-types` (engine d.ts, decorators incl.); not yet run in Creator |
 
-Same IR geometry rendered by two independent backends:
+## Try it (no Figma account, no install, ~10 seconds)
+
+**Clone and double-click [`figma2html/examples/login/app.html`](figma2html/examples/login/app.html).** No server, no build step — the demo's fixtures are inlined into `fixtures.js`, so it runs straight off `file://`. Click through: notice modal, server list (row cloning), agreement guard, enter.
+
+![the login demo: notice modal, server list with row cloning, agreement guard, enter](docs/shots/demo.gif)
+
+Prefer a server? `cd figma2html && python3 -m http.server 8321` → `http://localhost:8321/examples/login/app.html`.
+
+All three screens are *synthesized* by [`make_fixture.py`](figma2html/examples/login/make_fixture.py) through the real capture pipeline — no Figma file, no token, no network. Then compile the same screens for an engine:
+
+```bash
+python3 figma2godot/scripts/ui_to_tscn.py  figma2html/examples/login/screen-login.ui.json  out/
+python3 figma2unity/scripts/ui_to_unity.py figma2html/examples/login/screen-login.ui.json out/
+```
+
+Same IR geometry, two independent backends — rendered from the **zh** variant of the same fixture, which the test suites keep as the CJK coverage case:
 
 | HTML (Edge) | Godot 4.3 |
 |---|---|
 | ![login rendered in HTML](docs/shots/login-html.png) | ![login rendered in Godot](docs/shots/login-godot.png) |
 
-## Try it (no Figma account needed, ~1 minute)
-
-The login example is fully self-contained — its three screens are *synthesized* through the real capture pipeline:
-
-```bash
-cd figma2html
-python -m http.server 8321
-# open http://localhost:8321/examples/login/app.html
-# click through: notice modal, server list (row cloning), agreement guard, enter
-```
-
-Then compile the same screens for an engine:
-
-```bash
-python figma2godot/scripts/ui_to_tscn.py  figma2html/examples/login/screen-login.ui.json  out/
-python figma2unity/scripts/ui_to_unity.py figma2html/examples/login/screen-login.ui.json out/
-```
-
 ## Real Figma input
 
 1. Get a personal access token (scope `file_content:read` only). It is read by a single subprocess and never written to disk.
 2. `GET /v1/files/<key>/nodes?ids=<frame>` → `nodes.json`
-3. `python figma2html/scripts/figma_capture.py nodes.json <frameId> s01 <assetDir> assets out/screen-01`
+3. `python3 figma2html/scripts/figma_capture.py nodes.json <frameId> s01 <assetDir> assets out/screen-01`
 4. Write `flow.json` (contract: [`spec/flow-events.md`](spec/flow-events.md)) and pick a backend.
 
-Per-skill usage lives in each `figma2*/SKILL.md`; the folders double as [Claude Code skills](https://docs.claude.com/en/docs/claude-code) — drop any of them into `.claude/skills/` and the workflow becomes conversational.
+## Install as Claude Code plugins
 
-> **Language note**: this README is English; the skill docs (`SKILL.md`, `references/mapping.md`) are currently **zh-CN**. The code, tests, specs and known-loss tables are language-independent; translation PRs are welcome.
+Each `figma2*/` folder doubles as a [Claude Code](https://code.claude.com/docs) skill, and the repo is a plugin marketplace:
+
+```shell
+/plugin marketplace add ProdaZhang/figkit
+/plugin install figma2godot@figkit      # or figma2html / figma2dsl / figma2unity / figma2unreal / figma2cocos
+```
+
+Prefer no plugin machinery? Just copy a folder into `.claude/skills/` — each one is self-contained. Per-skill usage lives in its `SKILL.md`.
+
+> **Language note (honest version)**: English is currently limited to **this README and `CONTRIBUTING.md`**. Everything else — the six `SKILL.md`, every `references/mapping.md` (including the known-loss tables), and **the `spec/` IR contract itself** — is written in **zh-CN** prose. What *is* language-independent: all code, all tests, all JSON/field names, and the mapping tables' structure. Translating `spec/` (98 lines, the contract every backend depends on) is the highest-value translation PR; see [Translation in CONTRIBUTING](CONTRIBUTING.md#translation).
 
 ## Design principles
 

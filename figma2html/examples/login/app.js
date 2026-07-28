@@ -40,7 +40,14 @@
     const L = app.layers.notice;
     const T = $(L, NOTICE_T), B = $(L, NOTICE_B);
     if (T) T.textContent = n.title || '';
-    if (B) B.textContent = n.body || '';
+    if (B) {
+      B.textContent = n.body || '';
+      // 换行策略由 render.js 按**构建期**内容定(含 \n → pre-wrap,否则 nowrap);
+      // 公告正文是运行时才灌进来的,占位文案没有换行,元素会被定死 nowrap → 长正文溢出面板。
+      // 谁灌内容谁知道内容形状,所以这里由 app 侧声明"这是多行正文"。
+      B.style.whiteSpace = 'pre-wrap';
+      B.style.overflow = 'hidden';
+    }
   }
   function fillSel(app) {
     const base = app.layers.base;
@@ -55,25 +62,25 @@
         send: async (type) => {
           if (type !== 'Enter') return;
           const r = await app.net.send({ type: 'enter', serverId: app.state.selected, agreed: true });
-          msg(r.err === 0 ? ('进入成功 token=' + (r.sessionToken || '')) : ('进入失败 err=' + r.err), r.err !== 0);
+          msg(r.err === 0 ? ('Entered, token=' + (r.sessionToken || '')) : ('Enter failed, err=' + r.err), r.err !== 0);
         },
         // 选服:维护中拦截、否则发 selectServer、回填底屏已选服条、关弹窗
         selectServer: async (row) => {
           const status = Number(row.dataset.status);
-          if (status === 5) { msg('该服务器维护中，暂不可进入', true); return; }
+          if (status === 5) { msg('That server is under maintenance', true); return; }
           const id = Number(row.dataset.serverId);
           const r = await app.net.send({ type: 'selectServer', serverId: id });
           if (r.err === 0) {
             app.state.selected = id;
             const t = row.querySelector('[data-name="row-name"]');
-            SEL = { name: t ? t.textContent : ('服务器' + id), status: status };
+            SEL = { name: t ? t.textContent : ('Server ' + id), status: status };
             fillSel(app); renderList(app, app._servers); app.closeModal();
-            msg('已选择：' + SEL.name, false);
-          } else msg('选服失败 err=' + r.err, true);
+            msg('Selected: ' + SEL.name, false);
+          } else msg('Select failed, err=' + r.err, true);
         },
         syncBindings: () => fillSel(app),
         onPush: (m) => { if (m.servers) { app._servers = m.servers; renderList(app, m.servers); } if (m.notice) fillNotice(app, m.notice); },
-        onGuardFail: () => { if (!app.state.agreed) msg('请先勾选同意协议', true); else if (!app.state.selected) msg('请先选择服务器', true); },
+        onGuardFail: () => { if (!app.state.agreed) msg('Please accept the terms first', true); else if (!app.state.selected) msg('Please pick a server first', true); },
       });
     },
     init(app) {

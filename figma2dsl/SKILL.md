@@ -33,7 +33,7 @@ description: figma 节点树 → 高保真界面还原 + 可交互 harness。两
 ## 第2步 全保真捕获(主路径)
 
 ```
-python scripts/figma_capture.py <nodes.json> <frameId> <sNN> <assetDir> <assetRelPrefix> <out_basepath>
+python3 scripts/figma_capture.py <nodes.json> <frameId> <sNN> <assetDir> <assetRelPrefix> <out_basepath>
 # 产物: <out_basepath>.ui.json  +  <out_basepath>.tree.html
 ```
 
@@ -51,7 +51,7 @@ python scripts/figma_capture.py <nodes.json> <frameId> <sNN> <assetDir> <assetRe
 ## 第3.5步 DSL 转写(可选,喂 KB/aigd)
 
 ```
-python scripts/figma_to_dsl.py <nodes.json> <frameId> <NN> <屏名> <outdir> \
+python3 scripts/figma_to_dsl.py <nodes.json> <frameId> <NN> <屏名> <outdir> \
        [--prefix screen] [--brand figma] [--file-key KEY] [--meta meta.json]
 # 产物: <outdir>/<prefix>-<NN>.md + .nodes.json
 ```
@@ -61,7 +61,7 @@ python scripts/figma_to_dsl.py <nodes.json> <frameId> <NN> <屏名> <outdir> \
 ## 第4步 渲染/校验
 
 - 全保真:`.ui.json` 由 harness `render.js` 渲染(嵌套、绝对→父相对、逐节点真样式),Edge 无头截图眼比。
-- DSL:`python scripts/ui_render.py <屏>.md <屏>.html` 渲染语义预览。
+- DSL:`python3 scripts/ui_render.py <屏>.md <屏>.html` 渲染语义预览。
 
 ## harness(可点可跑客户端)参考实现
 
@@ -77,4 +77,4 @@ python scripts/figma_to_dsl.py <nodes.json> <frameId> <NN> <屏名> <outdir> \
 - 跳隐藏节点(`visible:false` / opacity≈0 / 0尺寸)。
 - 不改 aigd 原件;本 skill 自带 bundle 副本。文法以规范页为准。
 - **figma_capture.py 主拷贝在同级 `figma2html/scripts/`**,本处为镜像;`tests/test_capture_parity.py` 守两份逐字节一致(兄弟目录不存在时跳过)。
-- 测试:`python scripts/tests/run_all.py`(改 figma_to_dsl / ui_render 后必跑,勿回归)。
+- 测试:`python3 scripts/tests/run_all.py`(改 figma_to_dsl / ui_render 后必跑,勿回归)。

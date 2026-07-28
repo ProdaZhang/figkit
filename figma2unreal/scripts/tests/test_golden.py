@@ -25,7 +25,8 @@ def test_golden_byte_identical():
         r = subprocess.run([sys.executable, SCRIPT,
                             os.path.join(FIX, "screen-login.ui.json"),
                             os.path.join(FIX, "flow.json"), out],
-                           capture_output=True, text=True)
+                           capture_output=True, text=True,
+                           encoding="utf-8", errors="replace")
         assert r.returncode == 0, r.stderr
         for fn in ("screen-login.uespec.json", "flow.uespec.json"):
             got = _read(os.path.join(out, fn))

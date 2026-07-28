@@ -100,7 +100,8 @@ def test_flow_bad_ref_exits_nonzero():
         out = os.path.join(tmp, "out")
         r = subprocess.run([sys.executable, SCRIPT,
                             os.path.join(tmp, "screen-login.ui.json"), bad_flow, out],
-                           capture_output=True, text=True)
+                           capture_output=True, text=True,
+                           encoding="utf-8", errors="replace")
         assert r.returncode != 0, "坏引用必须退非 0"
         assert "9:99" in r.stderr, r.stderr
         assert not os.path.exists(os.path.join(out, "flow.uespec.json")), "坏 flow 不该产出"
@@ -115,7 +116,8 @@ def test_flow_good_produces_normalized_events():
         r = subprocess.run([sys.executable, SCRIPT,
                             os.path.join(FIX, "screen-login.ui.json"),
                             os.path.join(FIX, "flow.json"), out],
-                           capture_output=True, text=True)
+                           capture_output=True, text=True,
+                           encoding="utf-8", errors="replace")
         assert r.returncode == 0, r.stderr
         with open(os.path.join(out, "flow.uespec.json"), encoding="utf-8") as f:
             fs = json.load(f)

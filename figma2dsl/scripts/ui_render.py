@@ -7,7 +7,7 @@
 `--skin theme.skin.json`(同键覆盖皮肤段);都没有则回退类型默认 L1。
 分层 z 可选——无 z 时按 (缩进, 文档顺序) 兜底。
 
-用法: python ui_render.py <dsl.md> [out.html] [--svg out.svg] [--skin theme.skin.json]
+用法: python3 ui_render.py <dsl.md> [out.html] [--svg out.svg] [--skin theme.skin.json]
 """
 import re, sys, json, os
 
@@ -610,7 +610,7 @@ def main(argv=None):
         modules_dir = argv[i + 1]
         del argv[i:i + 2]
     if not argv:
-        print("用法: python ui_render.py <dsl.md> [out.html] [--svg out.svg] [--skin theme.skin.json] [--modules dir]")
+        print("用法: python3 ui_render.py <dsl.md> [out.html] [--svg out.svg] [--skin theme.skin.json] [--modules dir]")
         return 2
     src = argv[0]
     out = argv[1] if len(argv) > 1 else (src.rsplit(".", 1)[0] + ".html")

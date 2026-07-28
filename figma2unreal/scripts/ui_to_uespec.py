@@ -2,8 +2,8 @@
 """ui_to_uespec.py — figma2html IR(.ui.json / flow.json)→ Unreal 强类型 uespec.json 预处理器。
 
 用法:
-    python ui_to_uespec.py <cap.ui.json> <outdir>
-    python ui_to_uespec.py <cap.ui.json> <flow.json> <outdir>
+    python3 ui_to_uespec.py <cap.ui.json> <outdir>
+    python3 ui_to_uespec.py <cap.ui.json> <flow.json> <outdir>
 
 产物:
     <stem>.uespec.json          — 单屏强类型规格(stem = ui.json 文件名去掉 .ui.json)
@@ -406,7 +406,7 @@ def main(argv):
     elif len(args) == 3:
         cap_path, flow_path, outdir = args
     else:
-        print('用法: python ui_to_uespec.py <cap.ui.json> [flow.json] <outdir>', file=sys.stderr)
+        print('用法: python3 ui_to_uespec.py <cap.ui.json> [flow.json] <outdir>', file=sys.stderr)
         return 2
     if not os.path.isdir(outdir):
         os.makedirs(outdir)

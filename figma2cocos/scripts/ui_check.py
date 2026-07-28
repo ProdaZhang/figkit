@@ -2,7 +2,7 @@
 """ui_check.py — figma2cocos 离线校验器(纯标准库)。
 
 用法:
-    python ui_check.py <flow.json> <capDir>
+    python3 ui_check.py <flow.json> <capDir>
 
 做什么(本机可测的部分,不需要 Cocos):
   1. flow.caps 里每个 .ui.json 文件存在且能 json 载入;

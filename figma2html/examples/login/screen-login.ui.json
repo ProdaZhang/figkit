@@ -24,7 +24,7 @@
    "img": "",
    "imgSize": "",
    "text": {
-    "content": "示例登录",
+    "content": "Sample Login",
     "color": "rgba(255,255,255,1)",
     "size": 88,
     "family": "Source Han Sans SC",
@@ -58,7 +58,7 @@
    "img": "",
    "imgSize": "",
    "text": {
-    "content": "公告",
+    "content": "Notice",
     "color": "rgba(255,215,106,1)",
     "size": 36,
     "family": "Source Han Sans SC",
@@ -136,7 +136,7 @@
    "img": "",
    "imgSize": "",
    "text": {
-    "content": "未选择",
+    "content": "Not selected",
     "color": "rgba(57,57,57,1)",
     "size": 40,
     "family": "Source Han Sans SC",
@@ -170,7 +170,7 @@
    "img": "",
    "imgSize": "",
    "text": {
-    "content": "切换",
+    "content": "Switch",
     "color": "rgba(255,215,106,1)",
     "size": 34,
     "family": "Source Han Sans SC",
@@ -226,7 +226,7 @@
    "img": "",
    "imgSize": "",
    "text": {
-    "content": "开始游戏",
+    "content": "START",
     "color": "rgba(58,42,0,1)",
     "size": 48,
     "family": "Source Han Sans SC",
@@ -282,7 +282,7 @@
    "img": "",
    "imgSize": "",
    "text": {
-    "content": "已阅读并同意《示例用户协议》",
+    "content": "I have read and agree to the Terms",
     "color": "rgba(255,255,255,0.85)",
     "size": 28,
     "family": "Source Han Sans SC",
