@@ -29,10 +29,47 @@ BACKENDS = ["figma2dsl", "figma2html", "figma2unity",
             "figma2godot", "figma2unreal", "figma2cocos"]
 
 
-def _run(title, argv, cwd):
+_COUNTS = {}        # 套件名 -> 通过的检查条数(顺带数出来,不额外跑第二遍)
+
+
+def _run(title, argv, cwd, key=None):
     print("\n== %s ==" % title, flush=True)
-    r = subprocess.run([sys.executable] + argv, cwd=cwd)
+    # 捕获后原样转印:既保留实时可读的输出,又能顺手数 PASS 条数供 README 核对。
+    r = subprocess.run([sys.executable] + argv, cwd=cwd,
+                       capture_output=True, text=True, encoding="utf-8", errors="replace")
+    out = (r.stdout or "") + (r.stderr or "")
+    sys.stdout.write(out)
+    sys.stdout.flush()
+    if key:
+        _COUNTS[key] = sum(1 for ln in out.split("\n") if "PASS" in ln)
     return r.returncode == 0
+
+
+def check_readme_counts():
+    """README 状态矩阵里的用例数必须与真实跑出来的一致 → 不一致的说明列表。
+
+    手写的数字一定会过期(实测过:godot 16→20、cocos 7→11 都悄悄错了,而那是
+    访客最先看的一张表)。这里不额外跑测试,直接用上面顺手数到的条数比对。"""
+    import re
+    path = os.path.join(ROOT, "README.md")
+    with open(path, encoding="utf-8") as f:
+        readme = f.read()
+    bad = []
+    for name, got in sorted(_COUNTS.items()):
+        if name == "conformance":
+            # 一致性套件不在矩阵里,写在矩阵下面那句散文里("**N more live in ...**")
+            m = re.search(r"\*\*(\d+) more live in \[`tools/conformance/`\]", readme)
+            if not m:
+                bad.append("README 里找不到 conformance 的条数(实际 %d 例)" % got)
+            elif int(m.group(1)) != got:
+                bad.append("README 说 conformance 有 %s 例,实际 %d 例" % (m.group(1), got))
+            continue
+        m = re.search(r"^\| %s \| ✅ (\d+) \|" % re.escape(name), readme, re.M)
+        if not m:
+            bad.append("README 矩阵里没有 %s 的用例数(应写成 `| %s | ✅ %d |`)" % (name, name, got))
+        elif int(m.group(1)) != got:
+            bad.append("README 说 %s 有 %s 例,实际 %d 例" % (name, m.group(1), got))
+    return bad
 
 
 def main(argv):
@@ -55,7 +92,7 @@ def main(argv):
         if not _run("spec parity", [os.path.join("tools", "spec_parity.py")], ROOT):
             failed.append("spec-parity")
         if not _run("conformance (cross-backend)", ["run_all.py"],
-                    os.path.join(ROOT, "tools", "conformance")):
+                    os.path.join(ROOT, "tools", "conformance"), key="conformance"):
             failed.append("conformance")
 
     for b in picked:
@@ -63,8 +100,16 @@ def main(argv):
         if not os.path.isdir(d):
             print("跳过 %s(没有 scripts/tests)" % b)
             continue
-        if not _run(b, ["run_all.py"], d):
+        if not _run(b, ["run_all.py"], d, key=b):
             failed.append(b)
+
+    if picked == BACKENDS and not failed:   # 全量且全绿时才核 README(局部跑数字必然对不上)
+        stale = check_readme_counts()
+        if stale:
+            print("\n== README 矩阵 ==")
+            for line in stale:
+                print("  " + line, file=sys.stderr)
+            failed.append("readme-counts")
 
     print("\n" + "-" * 56)
     if failed:

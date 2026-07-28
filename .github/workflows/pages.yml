@@ -37,6 +37,11 @@ jobs:
         working-directory: figma2html/scripts/tests
         run: python3 test_fixtures_fresh.py
 
+      - name: Don't ship a demo whose flow is broken
+        # flow.json 里写错一个 node id,页面照常渲染、只是点了没反应 ——
+        # 正是"看起来好好的、其实是坏的"那类。发布前离线拦一道。
+        run: python3 figma2html/scripts/flow_check.py figma2html/examples/login/flow.json
+
       - name: Landing page → figma2html/index.html
         # Pages 根目录需要一个落地页,把访客直接送进 demo。
         run: |

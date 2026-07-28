@@ -292,6 +292,88 @@ def test_capture_stamps_the_spec_version():
     assert cap.get("spec") == "1.0", "kitchen-sink 没带 spec 字段: %r" % cap.get("spec")
 
 
+# ── flow 引用:三个消费 flow 的后端必须给出同样的判定 ─────────────────────────
+
+FLOW_CONSUMERS = {
+    # backend -> (脚本, 组装 argv 的函数)。三家 CLI 形状不同,判定语义必须相同。
+    "html":   ("figma2html/scripts/flow_check.py",
+               lambda d: [os.path.join(d, "flow.json")]),
+    "cocos":  ("figma2cocos/scripts/ui_check.py",
+               lambda d: [os.path.join(d, "flow.json"), d]),
+    "unreal": ("figma2unreal/scripts/ui_to_uespec.py",
+               lambda d: [os.path.join(d, "screen-login.ui.json"),
+                          os.path.join(d, "flow.json"), os.path.join(d, "out")]),
+}
+LOGIN_FIX = os.path.join(ROOT, "figma2cocos", "scripts", "tests", "fixtures")
+FLOW_FILES = ("flow.json", "screen-login.ui.json",
+              "screen-notice.ui.json", "screen-serverlist.ui.json")
+
+
+def _feed_flow(mutate, tag):
+    """把 login 夹具拷进临时目录、按 mutate 改坏 flow,再喂给三个后端 → {backend: rc}。"""
+    tmp = tempfile.mkdtemp(prefix="figkit_flow_%s_" % tag)
+    for fn in FLOW_FILES:
+        with io.open(os.path.join(LOGIN_FIX, fn), encoding="utf-8") as f:
+            data = json.load(f)
+        if fn == "flow.json" and mutate:
+            mutate(data)
+        with io.open(os.path.join(tmp, fn), "w", encoding="utf-8", newline="") as f:
+            json.dump(data, f, ensure_ascii=False)
+    out = {}
+    for name, (script, argv_of) in FLOW_CONSUMERS.items():
+        r = subprocess.run([sys.executable, os.path.join(ROOT, script)] + argv_of(tmp),
+                           capture_output=True, text=True, encoding="utf-8", errors="replace")
+        out[name] = (r.returncode, (r.stdout or "") + (r.stderr or ""))
+    return out
+
+
+def _bad_event(f):
+    f["events"][0]["el"] = "99:9999"
+
+
+def _bad_modal_root(f):
+    f["modals"][sorted(f["modals"])[0]]["roots"] = ["99:1"]
+
+
+def _bad_checkbox(f):
+    f["bindings"]["checkbox"]["el"] = "99:4"
+
+
+def _bad_list_container(f):
+    f["list"]["container"] = "99:3"
+
+
+BAD_FLOWS = {
+    "事件 el 不存在": _bad_event,
+    "modal root 不存在": _bad_modal_root,
+    "checkbox el 不存在": _bad_checkbox,
+    "list container 不存在": _bad_list_container,
+}
+
+
+def test_good_flow_accepted_by_every_consumer():
+    """反向锚:没改坏的 flow,三家都得放行。"""
+    bad = [("%s rc=%d\n%s" % (b, rc, t[:300]))
+           for b, (rc, t) in sorted(_feed_flow(None, "good").items()) if rc != 0]
+    assert not bad, "合法 flow 被拒:\n  " + "\n  ".join(bad)
+
+
+def test_bad_flow_rejected_by_every_consumer():
+    """坏引用必须被**每个**消费 flow 的后端挡下。
+
+    此前 html 这条路只在浏览器 console.warn 一句 —— 而 README 恰恰让人手写 flow.json,
+    这条路又是首选入口和 live demo 走的路,反馈却最差。判定逻辑三家各带一份
+    (skill 必须自足),所以"一致"只能靠这条测试保证。"""
+    bad = []
+    for tag, mut in sorted(BAD_FLOWS.items()):
+        for backend, (rc, text) in sorted(_feed_flow(mut, "bad").items()):
+            if rc == 0:
+                bad.append("%s 放过了「%s」" % (backend, tag))
+            elif "Traceback" in text:
+                bad.append("%s 对「%s」抛了 traceback" % (backend, tag))
+    assert not bad, "flow 判定不一致:\n  " + "\n  ".join(bad)
+
+
 def _run():
     ok = True
     for name, fn in sorted(globals().items()):

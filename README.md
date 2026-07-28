@@ -20,12 +20,14 @@ figma REST ──► figma_capture ──►  IR: <screen>.ui.json (pixels) + fl
 
 | backend | offline tests | in-engine verification |
 |---|---|---|
-| figma2html | ✅ | ✅ rendered + interactions (Edge headless screenshot) |
-| figma2dsl | ✅ | ✅ (same render pipeline) |
-| figma2godot | ✅ 16 | ✅ **Godot 4.3**: .tscn rendered, pixel-compared vs HTML; GDScript compiles clean |
+| figma2html | ✅ 18 | ✅ rendered + interactions (Edge headless screenshot) |
+| figma2dsl | ✅ 19 | ✅ (same render pipeline) |
+| figma2godot | ✅ 20 | ✅ **Godot 4.3**: .tscn rendered, pixel-compared vs HTML; GDScript compiles clean |
 | figma2unity | ✅ 11 | ✅ **Unity 6000.4.8f1**: C# compiles zero-warning, UXML/USS pass Unity's importer, CloneTree structure asserted (visual pass pending) |
 | figma2unreal | ✅ 40 | ⏳ not yet compiled in UE. Two **engine-free gates** hold the line meanwhile: `uespec_contract.py` (python-emitted ↔ C++-read field parity, known-loss must be declared) and `uht_lint.py` (UE reflection conventions R1–R6: `.generated.h` last, `GENERATED_BODY`, `UINTERFACE` pairing, `Execute_` dispatch, GC visibility of UObject members, include→module registry). They check *conventions and contracts, not API truth* — whether `FSlateFontInfo` really has that field still needs a real compile. Risk self-assessment in `references/mapping.md` |
-| figma2cocos | ✅ 7 | 🟡 TS strict-typechecks against official `@cocos/creator-types` (engine d.ts, decorators incl.); not yet run in Creator |
+| figma2cocos | ✅ 11 | 🟡 TS strict-typechecks against official `@cocos/creator-types` (engine d.ts, decorators incl.); not yet run in Creator |
+
+Per-backend tests only compare a backend against its own expectations, so **12 more live in [`tools/conformance/`](tools/conformance/)**: one fixture exercising every IR feature, a table where each backend declares what it renders / approximates / drops, and checks that the declaration matches the real artifact, that every degradation is logged, and that it is written down in that backend's known-loss table. Same suite pins the backends to identical handling of malformed IR and of broken `flow.json` references. (Counts above are verified by `tools/run_all_tests.py`, so they can't quietly go stale.)
 
 ## Try it (no Figma account, no install, ~10 seconds)
 
@@ -55,7 +57,7 @@ Same IR geometry, two independent backends — rendered from the **zh** variant 
 1. Get a personal access token (scope `file_content:read` only). It is read by a single subprocess and never written to disk.
 2. `GET /v1/files/<key>/nodes?ids=<frame>` → `nodes.json`
 3. `python3 figma2html/scripts/figma_capture.py nodes.json <frameId> s01 <assetDir> assets out/screen-01`
-4. Write `flow.json` (contract: [`spec/flow-events.md`](spec/flow-events.md)) and pick a backend.
+4. Write `flow.json` (contract: [`spec/flow-events.md`](spec/flow-events.md)), check it with `python3 figma2html/scripts/flow_check.py flow.json` — a mistyped node id is otherwise only a console warning you'd hit by clicking — and pick a backend.
 
 ## Install as Claude Code plugins
 
