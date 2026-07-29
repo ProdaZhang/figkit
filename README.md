@@ -25,8 +25,8 @@ figma REST ──► figma_capture ──►  IR: <screen>.ui.json (pixels) + fl
 |---|---|---|
 | figma2html | ✅ 70 | ✅ rendered + interactions (Edge headless screenshot) |
 | figma2dsl | ✅ 19 | ✅ (same render pipeline) |
-| figma2godot | ✅ 21 | ✅ **Godot 4.3**: .tscn rendered, pixel-compared vs HTML; GDScript compiles clean; motion runs in-engine and was **screenshotted mid-transition** — curves agree with Python and Unity to 6 decimals at a non-key point, and the frames caught a backdrop bug no numeric check could see |
-| figma2unity | ✅ 13 | ✅ **Unity 6000.4.8f1**: C# compiles zero-warning, UXML/USS pass Unity's importer, CloneTree structure asserted; `motion.json` loads as 6 `AnimationCurve`s agreeing with Python **and Godot** to 6 decimals (visual pass in Play Mode still pending) |
+| figma2godot | ✅ 21 | ✅ **Godot 4.3**: both examples render; GDScript compiles clean. The login and main-screen shots below are a **real pixel comparison** against HTML — mean 2.2–3.9/255, under 2.5% of pixels off by more than 24, all of it on glyph edges (the two shots used to be at different scales, which looked fine and compared to nothing; `shoot_stage.py` fixes that). Motion runs in-engine and was **screenshotted mid-transition** — curves agree with Python and Unity to 6 decimals at a non-key point, and the frames caught a backdrop bug no numeric check could see |
+| figma2unity | ✅ 13 | ✅ **Unity 6000.4.8f1**: C# compiles zero-warning; both examples' UXML/USS pass Unity's importer with CloneTree structure asserted (main screen: 37/29/13 elements, nesting and copy intact, 12-cell grid present); `motion.json` loads as `AnimationCurve`s agreeing with Python **and Godot** to 6 decimals (visual pass in Play Mode still pending) |
 | figma2unreal | ✅ 40 | ⏳ not yet compiled in UE. Two **engine-free gates** hold the line meanwhile: `uespec_contract.py` (python-emitted ↔ C++-read field parity, known-loss must be declared) and `uht_lint.py` (UE reflection conventions R1–R6: `.generated.h` last, `GENERATED_BODY`, `UINTERFACE` pairing, `Execute_` dispatch, GC visibility of UObject members, include→module registry). They check *conventions and contracts, not API truth* — whether `FSlateFontInfo` really has that field still needs a real compile. Risk self-assessment in `references/mapping.md` |
 | figma2cocos | ✅ 14 | 🟡 TS strict-typechecks against official `@cocos/creator-types` 3.8 (engine d.ts, decorators incl.) — the gate has teeth: deliberate API misuse is caught; not yet run in Creator. Its motion is baked by its own `bake_motion.py`, and those sampled points are compared point-by-point against the other three backends |
 | figkit-motion | ✅ 6 | 📖 **not a backend** — the motion catalog the other six share: 59 effects (when to use one, **and when not to**), 63 parameter tokens with a `calibration` status, 6 shared algorithms. No runtime, no artifact. Its `tokens.json` and `motion.py`'s `PRESET` are compared token-by-token by the conformance suite, so the prose and the values figkit actually writes can't drift apart |
@@ -56,15 +56,20 @@ The tail of that GIF is the point. Coins flying into the wallet, the number roll
 All three screens are *synthesized* by [`make_fixture.py`](figma2html/examples/login/make_fixture.py) through the real capture pipeline — no Figma file, no token, no network. Then compile the same screens for an engine:
 
 ```bash
-python3 figma2godot/scripts/ui_to_tscn.py  figma2html/examples/login/screen-login.ui.json  out/
-python3 figma2unity/scripts/ui_to_unity.py figma2html/examples/login/screen-login.ui.json out/
+python3 figma2godot/scripts/ui_to_tscn.py  figma2html/examples/main/screen-main.ui.json out/ figma2html/examples/main/flow.json
+python3 figma2unity/scripts/ui_to_unity.py figma2html/examples/main/screen-main.ui.json out/ figma2html/examples/main/flow.json
 ```
 
-Same IR geometry, two independent backends — rendered from the **zh** variant of the same fixture, which the test suites keep as the CJK coverage case:
+(The third argument is optional; give it `flow.json` and the converter also bakes `motion.json` — the sampled transition curves, six of them for this screen.)
 
-| HTML (Edge) | Godot 4.3 |
-|---|---|
-| ![login rendered in HTML](docs/shots/login-html.png) | ![login rendered in Godot](docs/shots/login-godot.png) |
+Same IR geometry, two independent backends. Both pairs below are shot at the **same scale** (`tools/docs-assets/shoot_stage.py`), so they are a real pixel comparison rather than two pictures that merely look alike: the login screen differs by a mean of 3.9/255 and the main screen by 2.2/255, essentially all of it on glyph edges — the geometry lands on the same pixels the IR's arithmetic predicts.
+
+| | HTML (Edge) | Godot 4.3 |
+|---|---|---|
+| **login** (zh variant — the test suites' CJK coverage case) | ![login rendered in HTML](docs/shots/login-html.png) | ![login rendered in Godot](docs/shots/login-godot.png) |
+| **main** | ![main screen rendered in HTML](docs/shots/main-html.png) | ![main screen rendered in Godot](docs/shots/main-godot.png) |
+
+The two Godot columns are the *same* `flow_binder.gd` reading the *same* `flow.json`; what the engine cannot fill in — the codex rows, the grid tints — stays empty there, because that data comes from the app hook, which is per-project by design.
 
 ## Real Figma input
 

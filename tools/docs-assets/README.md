@@ -7,6 +7,19 @@ python3 tools/docs-assets/shoot_gif.py figma2html/examples/main  docs/shots/demo
 
 第三个参数是分镜名(默认取示例目录名),对应 `gif_driver_<名>.js` 与 `shoot_gif.py` 里的 `FRAMES[<名>]`。
 
+还有一支拍**静态对照图**的:
+
+```bash
+python3 tools/docs-assets/shoot_stage.py figma2html/examples/main docs/shots/main-html.png
+```
+
+它解决的是一个一直没人发现的问题:README 那对「HTML vs Godot」**从来不是同一个尺度**。
+`--screenshot` 拍窗口、页面画在视口里,窗口 540×960 时视口只有 516 宽,舞台按视口缩放,
+于是同一份 IR 在浏览器落到 0.409、在 Godot 落到 0.5。两张图都是 540×960、内容也都居中,
+**肉眼看不出来**,逐像素一比却差 15.9/255。`shoot_stage.py` 用 `--hide-scrollbars` +
+540×996 的窗口把舞台钉在 0.5,拍完的图与引擎侧真能逐像素比:实测平均差 **2.18/255**,
+只有 **1.70%** 的像素差超过 24,且全在字形边缘。
+
 需要 **Edge/Chromium**(找不到就设 `EDGE_PATH`)与 **Pillow**。
 
 > ⚠️ 这里是**唯一**不守"纯标准库"那条规矩的地方,所以它放在 `tools/` 而不是任何 skill 里 ——
