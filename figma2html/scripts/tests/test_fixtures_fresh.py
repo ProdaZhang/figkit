@@ -18,6 +18,9 @@ import tempfile
 _HERE = os.path.dirname(os.path.abspath(__file__))
 EX = os.path.abspath(os.path.join(_HERE, "..", "..", "examples", "login"))
 GEN = ["screen-login.ui.json", "screen-notice.ui.json", "screen-serverlist.ui.json"]
+# 只在 demo 目录(或 --bundle)产的那些:fixtures.js 让 file:// 能跑,
+# nodes.json 是 figma REST 响应形状,给 figma_capture / flow_from_figma 当共同输入。
+GEN_BUNDLE = ["fixtures.js", "nodes.json"]
 
 
 def _read(p):
@@ -46,22 +49,24 @@ def test_committed_fixtures_are_fresh():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
-def test_fixtures_js_matches_the_ui_json():
-    """fixtures.js 是 file:// 下唯一数据源,必须与同目录 .ui.json/flow.json 同批生成。"""
+def test_bundle_artifacts_match_the_ui_json():
+    """fixtures.js 是 file:// 下唯一数据源、nodes.json 是文档里那条导入命令的输入,
+    两者都必须与同目录 .ui.json/flow.json 同批生成。"""
     tmp = tempfile.mkdtemp(prefix="figkit_fresh_js_")
     try:
         for fn in GEN + ["flow.json"]:
             shutil.copy(os.path.join(EX, fn), os.path.join(tmp, fn))
         _regen("en", tmp, bundle=True)
-        got, want = _read(os.path.join(tmp, "fixtures.js")), _read(os.path.join(EX, "fixtures.js"))
-        assert got == want, ("fixtures.js 已过期 —— 在 examples/login/ 里跑 "
-                             "`python3 make_fixture.py` 并提交结果")
+        for fn in GEN_BUNDLE:
+            got, want = _read(os.path.join(tmp, fn)), _read(os.path.join(EX, fn))
+            assert got == want, ("%s 已过期 —— 在 examples/login/ 里跑 "
+                                 "`python3 make_fixture.py` 并提交结果" % fn)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
 def test_generated_files_are_lf_and_bom_free():
-    for fn in GEN + ["fixtures.js"]:
+    for fn in GEN + GEN_BUNDLE:
         b = _read(os.path.join(EX, fn))
         assert b"\r\n" not in b, "%s 含 CRLF —— 生成时要写 newline=\"\"" % fn
         assert not b.startswith(b"\xef\xbb\xbf"), "%s 有 BOM" % fn

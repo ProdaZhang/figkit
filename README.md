@@ -14,13 +14,13 @@ figma REST ──► figma_capture ──►  IR: <screen>.ui.json (pixels) + fl
    HTML client UI-DSL(md) FlowBinder  GDScript    C++ widget   interpreter
 ```
 
-**What makes it different from figma-to-code exporters:** the **flow layer**. Figma has no interaction logic, so FigKit declares it in `flow.json` — keyed by Figma node ids (survives re-capture), with modals, guards, list data-binding and a clean engine-vs-app-hook split. Every backend implements the *same* flow semantics, so one declaration runs everywhere.
+**What makes it different from figma-to-code exporters:** the **flow layer**. Figma's prototype interactions are real — FigKit imports them — but they run *inside the Figma player, against static frames*: prototype semantics. `flow.json` adds what a shipping client needs and Figma cannot express — guards over app state, list rows cloned from real data, and a clean engine-vs-app-hook boundary — keyed by Figma node ids so it survives re-capture. Every backend implements the *same* flow semantics, so one declaration runs everywhere.
 
 ## Status matrix (honest, per verification level)
 
 | backend | offline tests | in-engine verification |
 |---|---|---|
-| figma2html | ✅ 18 | ✅ rendered + interactions (Edge headless screenshot) |
+| figma2html | ✅ 37 | ✅ rendered + interactions (Edge headless screenshot) |
 | figma2dsl | ✅ 19 | ✅ (same render pipeline) |
 | figma2godot | ✅ 20 | ✅ **Godot 4.3**: .tscn rendered, pixel-compared vs HTML; GDScript compiles clean |
 | figma2unity | ✅ 11 | ✅ **Unity 6000.4.8f1**: C# compiles zero-warning, UXML/USS pass Unity's importer, CloneTree structure asserted (visual pass pending) |
@@ -57,7 +57,10 @@ Same IR geometry, two independent backends — rendered from the **zh** variant 
 1. Get a personal access token (scope `file_content:read` only). It is read by a single subprocess and never written to disk.
 2. `GET /v1/files/<key>/nodes?ids=<frame>` → `nodes.json`
 3. `python3 figma2html/scripts/figma_capture.py nodes.json <frameId> s01 <assetDir> assets out/screen-01`
-4. Write `flow.json` (contract: [`spec/flow-events.md`](spec/flow-events.md)), check it with `python3 figma2html/scripts/flow_check.py flow.json` — a mistyped node id is otherwise only a console warning you'd hit by clicking — and pick a backend.
+4. **Import the prototype links you already drew in Figma** — `python3 figma2html/scripts/flow_from_figma.py nodes.json flow.json base=screen-01.ui.json notice=screen-02.ui.json` turns `interactions[]` (overlays, back/close, transitions) into a `flow.json` draft. Anything it *can't* carry is listed on stderr with the reason — it never guesses, because a wrong event looks exactly like a right one.
+5. Fill in the half Figma has no way to express — guards, list data-binding, app hooks (contract: [`spec/flow-events.md`](spec/flow-events.md)) — then check it with `python3 figma2html/scripts/flow_check.py flow.json`; a mistyped node id is otherwise only a console warning you'd hit by clicking. Now pick a backend.
+
+Every step above is runnable with no Figma account: `examples/login/nodes.json` is a real-shaped REST response, and importing it reproduces the demo's `stage` / `caps` / `base` / `modals` exactly — the remaining `list`, `bindings` and guards are precisely the application semantics you write by hand.
 
 ## Install as Claude Code plugins
 

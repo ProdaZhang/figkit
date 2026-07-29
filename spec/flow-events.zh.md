@@ -12,7 +12,7 @@
 # flow.json — 流程/事件声明(组装器契约)
 
 `assemble.js` 读 `flow.json` 把"底屏 + 弹窗叠加 + 事件 + 绑定"组装成可跑客户端。
-**这是 figma 这条路的 Events 落点**:figma 没有交互逻辑,Events 在此**手写**、按 **figma node id** 引用、抗重抓(重导像素不动它)。语法对齐 aigd 界面 DSL 的 `## Events`(`<触发> <元素> [守卫] -> 结果`)。
+**这是 figma 这条路的 Events 落点。** figma **是有**交互的 —— REST API 给全量 `interactions[]`(触发器、`NAVIGATE`/`OVERLAY`/`BACK`、条件分支、变量),`flow_from_figma.py` 把它们导进下面这个骨架。但那是**原型语义**:跳到哪个 frame、在 figma 播放器里、对着静态帧播。真要交付的客户端还需要的那半 —— 对应用状态的守卫、按真实数据克隆的列表行、引擎机制与业务代码的边界 —— figma 里**根本没有对应表达**,只能在这里手写声明。两者都按 **figma node id** 引用,所以抗重抓(重导像素不动它)。语法对齐 aigd 界面 DSL 的 `## Events`(`<触发> <元素> [守卫] -> 结果`)。
 
 ## 结构
 
@@ -51,8 +51,11 @@
 - **caps / base / modals**:屏=完整 figma 帧的 .ui.json;`base` 常驻;`modals[*].roots` 是要抽出来叠加的顶层节点 id(弹窗常由"外框+页签+列表"多个顶层兄弟组成,故是数组);`panel` 用于"点面板外关闭"判定。
 - **events[]**:`on`(目前 click)+ `el`(figma node id;数组=多个触发同一动作;特殊 `@any:<modal>` / `@panelOutside:<modal>`)+ 可选 `guard`(state 里这些都为真才放行)+ `do`(动作)+ `arg`。
 - **内置 do**:`openModal(arg)` / `closeModal` / `toggleFlag(arg)` / `send(arg)`(转给 app 的 send action)。其余 `do` 名 → 查 app 注册的 action。
+- **events[].transition**(可选,additive):设计师在 figma 里给这条连线挂的转场,原样带过来 —— `{ "type", "duration", "direction"?, "matchLayers"?, "easing": { "type", "bezier"?, "spring"? } }`。`type` 取 figma 的 `DISSOLVE / SMART_ANIMATE / SCROLL_ANIMATE / MOVE_IN / MOVE_OUT / PUSH / SLIDE_IN / SLIDE_OUT`;`spring` 保留 figma 的 `{mass, stiffness, damping}` 三元组。**IR 只记"设计说了什么",不记"某个后端怎么解"** —— 换算成解耦的(阻尼比, response)两参、以及把曲线采样成引擎原生关键帧,都在后端侧做(`motion.py` / `motion.ts`)。做不了动画的后端必须在自己的 known-loss 表里登记。
 - **list**:声明哪个 modal 的哪个容器是数据列表;`onRowClick` 指向 app action。app 用 `app.renderRows(modal, container, items, rowFn)`(register(app) 的形参,即全局 `FigApp`)注入带 `data-row` 的行,引擎委托行点击。
 - **bindings.checkbox**:勾选框 2 态由引擎通用处理(白底+勾 / 半透+空)。其余域内字段(已选服回填、列表行配色、公告填充)由 app 的 `syncBindings(base)` / action 管。
+
+> **已知缺口(v1.0)**:`events[].el` 只能指 **base 屏**的节点 —— 各后端的 binder 都是拿 id 去 base 图层解析。于是真实 figma 文件里最常见的那条连线,**弹窗里的 ✗ 按钮**,在 v1.0 里没有表达;现有写法 `@any:<modal>` / `@panelOutside:<modal>` 是"点哪都关 / 点面板外关",不是"点这个按钮"。`flow_from_figma.py` 遇到就逐条报告,不猜。这正是 CONTRIBUTING 要求的"由后端撞出的真实缺口",先记在这里,**不**顺手补 —— 补它要升 v1.1。
 
 ## app hook(域内专属,不进引擎)
 

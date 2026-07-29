@@ -105,31 +105,76 @@ BODY   = ({"r": 0.341, "g": 0.314, "b": 0.247}, 1)      # #57503f
 BTNINK = ({"r": 0.227, "g": 0.165, "b": 0.0},   1)      # #3a2a00
 
 
+# ── 原型交互(figma REST 的 `interactions[]` 形状,逐字段照 rest-api-spec)──────────
+# 这几条是"设计师在 figma 里连的线",不是 flow.json。它们喂给 scripts/flow_from_figma.py,
+# 用来演示**哪些搬得动、哪些搬不动**:两条 OVERLAY 搬得动;弹窗里的 BACK、改变量、
+# 非 click 触发器、换底屏的 NAVIGATE 都搬不动 —— 后者正是那份报告要说清的东西。
+# capture() 不读这个键,所以三份 .ui.json 与各后端 golden 逐字节不受影响。
+def _ease(kind, bezier=None, spring=None):
+    e = {"type": kind}
+    if bezier:
+        e["easingFunctionCubicBezier"] = dict(zip(("x1", "y1", "x2", "y2"), bezier))
+    if spring:
+        e["easingFunctionSpring"] = spring
+    return e
+
+
+def click(*actions):
+    return {"trigger": {"type": "ON_CLICK"}, "actions": list(actions)}
+
+
+def to_node(dest, navigation, transition):
+    return {"type": "NODE", "destinationId": dest, "navigation": navigation,
+            "transition": transition}
+
+
+def wire(node, *interactions):
+    node["interactions"] = list(interactions)
+    return node
+
+
 def build_trees(C):
     """C = COPY[lang];返回 {stem: figma 节点树}。几何与两种语言无关。"""
     # ── 底屏(登录) ──
+    open_notice = click(to_node("2:1", "OVERLAY", {
+        "type": "DISSOLVE", "duration": 260, "easing": _ease("EASE_OUT")}))
+    open_list = click(to_node("3:1", "OVERLAY", {
+        "type": "MOVE_IN", "direction": "BOTTOM", "duration": 300,
+        "easing": _ease("CUSTOM_CUBIC_BEZIER", bezier=(.32, .72, 0, 1))}))
+
     base = F("1:1", "login-base", 0, 0, 1080, 1920, fill=DEEP, children=[
         T("1:3", "title", 0, 260, 1080, 110, C["title"], WHITE, 88, 700),
-        T("1:40", "notice-link", 900, 80, 140, 48, C["notice_link"], GOLDTX, 36, 500),
-        F("1:10", "server-pill", 260, 1280, 560, 90, fill=PAPER, radius=45, children=[
+        wire(T("1:40", "notice-link", 900, 80, 140, 48, C["notice_link"], GOLDTX, 36, 500),
+             open_notice),
+        wire(F("1:10", "server-pill", 260, 1280, 560, 90, fill=PAPER, radius=45, children=[
             R("1:12", "gem", 286, 1302, 46, 46, GREEN, radius=23),
             T("1:11", "server-name", 350, 1300, 340, 50, C["unselected"], INK, 40, 500, alignH="LEFT"),
-        ]),
-        T("1:13", "switch-link", 850, 1300, 120, 50, C["switch"], GOLDTX, 34, 500),
-        F("1:20", "enter-btn", 300, 1450, 480, 110, fill=GOLD, radius=55, children=[
+        ]), open_list),
+        wire(T("1:13", "switch-link", 850, 1300, 120, 50, C["switch"], GOLDTX, 34, 500),
+             open_list),
+        # 两条都搬不动,而且原因不同 —— 报告要能把它们分开说清:
+        #   click → NAVIGATE:v1.0 是「base 常驻 + 弹窗叠加」,没有换底屏
+        #   hover:v1.0 的 events[].on 只有 click
+        wire(F("1:20", "enter-btn", 300, 1450, 480, 110, fill=GOLD, radius=55, children=[
             T("1:21", "enter-txt", 300, 1478, 480, 54, C["enter"], BTNINK, 48, 800),
-        ]),
-        R("1:30", "agree-box", 300, 1640, 36, 36, WHITE20, radius=8, stroke=(WHITE[0], 2)),
+        ]), click(to_node("3:1", "NAVIGATE", None)),
+            {"trigger": {"type": "ON_HOVER"}, "actions": [to_node(None, "CHANGE_TO", None)]}),
+        # 勾选协议在 figma 里是"改一个变量";flow 里它是 toggleFlag + guard —— 那是应用语义,手写。
+        wire(R("1:30", "agree-box", 300, 1640, 36, 36, WHITE20, radius=8, stroke=(WHITE[0], 2)),
+             click({"type": "SET_VARIABLE", "variableId": "VariableID:1:2",
+                    "variableValue": {"resolvedType": "BOOLEAN", "value": True}})),
         T("1:31", "agree-txt", 352, 1638, 620, 40, C["agree"], WHITE85, 28, 400, alignH="LEFT"),
     ])
 
     # ── 公告弹窗屏 ──
     notice = F("2:1", "notice-screen", 0, 0, 1080, 1920, fill=DEEP, children=[
-        F("2:10", "notice-panel", 160, 460, 760, 900, fill=PAPER, radius=24, children=[
+        # 关闭按钮住在**弹窗那一屏**。figma 里最常见的一条连线,而 v1.0 的 events 只绑 base 屏
+        # (assemble.js 的 wireEvents 用 baseEl 找元素)—— 所以它必然搬不动,报告要点名。
+        wire(F("2:10", "notice-panel", 160, 460, 760, 900, fill=PAPER, radius=24, children=[
             T("2:11", "notice-title", 160, 505, 760, 60, C["notice_title"], INK, 44, 700),
             T("2:12", "notice-body", 220, 610, 640, 680,
               C["notice_body"], BODY, 30, 400, alignH="LEFT", alignV="TOP", lh=48),
-        ]),
+        ]), click({"type": "BACK"})),
     ])
 
     # ── 选服列表屏 ──
@@ -169,7 +214,18 @@ def main(argv=None):
         os.makedirs(outdir)
 
     caps = {}
-    for stem, tree in build_trees(COPY[args.lang]).items():
+    trees = build_trees(COPY[args.lang])
+    # nodes.json = figma REST 的响应形状(GET /v1/files/<key>/nodes?ids=…)。
+    # 它是 figma_capture.py 与 flow_from_figma.py **共同的**输入,所以照着它就能把
+    # README「Real Figma input」那几步在没有 figma 账号的情况下原样跑一遍。
+    # 只在写回 demo 自己那个目录时产 —— 各后端 tests/fixtures 只吃 .ui.json,不需要它。
+    if args.bundle or outdir == here:
+        nodes = dict((t["id"], {"document": t}) for t in trees.values())
+        with open(os.path.join(outdir, "nodes.json"), "w", encoding="utf-8", newline="") as f:
+            json.dump({"nodes": nodes}, f, ensure_ascii=False, indent=1)
+        print("wrote nodes.json (%d frames)" % len(nodes))
+
+    for stem, tree in trees.items():
         cap, missing = figma_capture.capture(tree, os.path.join(here, "_no_assets"), "assets")
         assert not missing, ("合成树不该有缺失素材", stem, missing)
         caps[stem + ".ui.json"] = cap

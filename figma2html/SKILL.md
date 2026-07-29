@@ -17,7 +17,8 @@ figma 帧 → **全保真 `.ui.json`(像素)** + **`flow.json`(声明的交互/E
 ## 内容
 
 ```
-scripts/   figma_capture.py(节点树→ui.json+tree.html)· subset_font.py(字体子集woff2)· shoot.py(Edge无头截图)
+scripts/   figma_capture.py(节点树→ui.json+tree.html)· flow_from_figma.py(figma 原型交互→flow.json 初稿)
+           subset_font.py(字体子集woff2)· shoot.py(Edge无头截图)
            tests/(capture 冒烟:夹具→断言 records;`python3 scripts/flow_check.py <flow.json>   # 手写完 flow.json 先跑这个:坏引用离线就报,
                                             # 别等浏览器里"点了没反应"才发现
 python3 scripts/tests/run_all.py`)
@@ -32,7 +33,12 @@ examples/login/ 自足可跑示例:make_fixture.py(合成三屏,走真 capture �
 2. **捕获**:`python3 scripts/figma_capture.py nodes.json <frameId> <sNN> <assetDir> <assetRel> <out>` → `.ui.json` + `.tree.html`
 3. **导素材**:位图填充走 `/v1/files/<key>/images`(按 imageRef,**不卡配额**);矢量图标走 `/v1/images`(**有配额**)。缺图:`vec` 回退透明、`img` 回退无背景。
 4. **字体**:`python3 scripts/subset_font.py <font.ttf> fonts/cjk.woff2 <ui.json...>` → 几十 KB,@font-face 离线可移植
-5. **写 flow.json**:声明 base / modals(抽哪些根叠加)/ events / list / bindings(见 `references/flow-events.md`)
+5. **flow.json —— 先导后补,别从零手写**
+   - 导:`python3 scripts/flow_from_figma.py nodes.json flow.json base=<a>.ui.json <name>=<b>.ui.json …`
+     把 figma 里已经连好的原型交互(`interactions[]`:overlay / back / 转场)变成初稿。
+     **搬不动的逐条报在 stderr 并说明原因,绝不猜** —— 猜错的事件长得跟对的一模一样。
+   - 补:守卫 guard / 列表 list / 绑定 bindings / app hook —— 这些是**应用语义**,figma 里根本没有,
+     照 `references/flow-events.md` 手写。(v1.0 已知缺口:events 只能绑 base 屏,弹窗里的关闭按钮要手写 `@panelOutside:<modal>`。)
 6. **组装**:`app.tmpl.html` 套 `render.js + assemble.js + flow.json + app.js(hook)` → 可跑;`python3 scripts/shoot.py <url> out.png` 截图核验
 
 ## 关键规则(都在 figma_capture / assemble 里)
