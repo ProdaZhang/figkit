@@ -1,7 +1,9 @@
 // FlowBinder.cs — figma2unity 运行时 flow 绑定器(通用引擎,不含任何域内语义)
 // 目标 Unity 2022.3+ / UI Toolkit。2026-07-03 于 Unity 6000.4.8f1 batchmode 编译冒烟通过(零错零警告);
 // 2026-07-29 复跑仍零错零警告,并**实机核验了 motion**:motion.json 被读成 6 条 AnimationCurve
-// (各 17 关键帧),Evaluate(0.25) 与 python 求解器逐条一致到小数点后 6 位。
+// (各 17 关键帧),在**非关键帧点** x=0.3 上与 python 求解器、以及 Godot 4.3 侧三方一致
+// 到小数点后 6 位。⚠️ 关键帧上对账没有证明力(任何插值模式在关键帧都返回原值);
+// 帧间必须显式给**线性**切线,默认平滑切线会在段内拱起来 —— 见 references/mapping.md。
 // **视觉/交互链仍未在 Play Mode 点验** —— 曲线的值对了,不等于画面对了。
 //
 // 语义 1:1 对齐 figma2html/runtime/assemble.js:
@@ -273,6 +275,15 @@ namespace Figma2Unity
                 {
                     var p = po as List<object>;
                     if (p != null && p.Count >= 2) ac.AddKey(Num(p[0]), Num(p[1]));
+                }
+                // 关键帧之间必须是**线性**插值。采样点一致只保证关键帧上一致,帧间插值模式
+                // 不对齐,各引擎照样各算各的(AnimationCurve 默认是平滑切线,会在段内拱起来)。
+                for (int i = 0; i < ac.length; i++)
+                {
+                    var k = ac[i];
+                    if (i > 0) k.inTangent = (k.value - ac[i - 1].value) / (k.time - ac[i - 1].time);
+                    if (i < ac.length - 1) k.outTangent = (ac[i + 1].value - k.value) / (ac[i + 1].time - k.time);
+                    ac.MoveKey(i, k);
                 }
                 _curves[kv.Key] = new Curve
                 {

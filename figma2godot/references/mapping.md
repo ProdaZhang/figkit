@@ -100,9 +100,20 @@ tscn 节点名不允许 `. : @ / " %` —— **统一换 `_`**:figma id `1:40` �
 
 用法:`Curve` 资源逐点 `add_point(Vector2(x, y))`,再 `tween_method` 按 `curve.sample(t)` 插值。
 
+**接线**:`flow_binder.gd` 的 `motion_path`(缺省 `res://motion.json`)。文件不存在 = 全部瞬时显隐,
+是**声明在案的降级**,不是静默丢失。存在则自动生效:弹窗入场/**出场** · 按压 · 列表逐项 · guard 抖动。
+
+**2026-07-29 于 Godot 4.3-stable 实机核验**:6 条曲线读成 `Curve`(各 17 点),
+`sample(0.3)` 与 python 求解器、以及 Unity 侧**三方一致到小数点后 6 位**;
+转场真播(MOVE_IN 中途 `alpha=0.509 / offsetY=942.5` → 终态 `1.000 / 0.0`,出场后 `visible=false`)。
+
+⚠️ **必须用 `sample()` 且把切线设成 `TANGENT_LINEAR`。** `sample_baked()` 量化到
+`bake_resolution`(默认 100),会与别家差 ~1.4e-3;默认切线(0)会让每段两头压平。
+采样点一致**只保证关键帧上一致**,帧间插值模式不对齐照样各算各的 ——
+`tools/conformance` 有源码层守卫。
+
 | 处置 | 说明 |
 |---|---|
-| **known-loss:不播** | `flow_binder.gd` **尚未接线**,曲线表烘出来没人读。转场目前完全不生效 —— 已在生成时打 `[known-loss]`,不是静默丢失 |
 | **known-loss:具名弹簧预设** | figma 的 `GENTLE/QUICK/BOUNCY/SLOW` 与 `*_BACK` 没公开控制点 → 标 `unresolved` 不采样,**不编数**(编"差不多"的数 = 产物看着正常而手感是错的) |
 | **approx:弹簧被 duration 截断** | figma 的弹簧带 duration,而弹簧没有固定时长;窗口短于收敛时间就切一截,生成时打 `truncated:` |
 | **known-loss:`SMART_ANIMATE`** | 自动匹配同名图层插值,跨引擎无对应物;曲线照采,**配对逻辑不实现** |

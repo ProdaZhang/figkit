@@ -3,7 +3,9 @@
 #   底屏常驻 + 弹窗叠加(非换屏)、事件(click/守卫/toggleFlag/send)、
 #   列表行克隆(duplicate 模板行 + 回调填充)、checkbox 双态、域内 action 注册。
 # 目标 Godot 4.2+;2026-07-03 于 Godot 4.3-stable 编译冒烟通过(场景渲染已眼比对齐 figma2html;
-# 交互链未实机点验)。注意:新工程先 `godot --headless --import` 一次,否则 class_name 未注册。
+# 交互链未实机点验)。2026-07-29 实机核验 motion:6 条曲线读成 Curve,sample(0.3) 与 python
+# 求解器 + Unity 侧三方一致到小数点后 6 位;转场真播(中途 alpha=0.509/offsetY=942.5 → 终态 1.0/0.0)。
+注意:新工程先 `godot --headless --import` 一次,否则 class_name 未注册。
 #
 # 用法(见 app_hook.example.gd):
 #   var binder := FlowBinder.new()
@@ -27,6 +29,9 @@ class_name FlowBinder
 @export var flow_path: String = "res://flow.json"
 @export var scene_dir: String = "res://"
 @export var backdrop_color: Color = Color(0, 0, 0, 0.5)   # 对齐 assemble.js 半透明遮罩
+## ui_to_tscn.py 给了 flow.json 时烘出的 motion.json(转场缓动的采样曲线)。
+## 文件不存在 = 全部瞬时显隐,是**声明在案的降级**(见 references/mapping.md),不是静默丢失。
+@export var motion_path: String = "res://motion.json"
 
 var flow: Dictionary = {}
 var state: Dictionary = {}
@@ -34,6 +39,7 @@ var actions: Dictionary = {}     # do 名 -> Callable(对齐 registerActions)
 var layers: Dictionary = {}      # "base" / modal 名 -> Control
 var modals: Dictionary = {}      # modal 名 -> { "el": Control, "panel": String }
 var current: Variant = null      # 当前弹窗名(无 → null)
+var _last_pressed: Control = null # 最后被按下的元素(guard 拒绝时抖它)
 
 const _FORBIDDEN := [".", ":", "@", "/", "\"", "%"]
 
@@ -83,6 +89,8 @@ func _ready() -> void:
 
 	var stage: Dictionary = flow.get("stage", {})
 	size = Vector2(float(stage.get("w", 1080)), float(stage.get("h", 1920)))
+
+	_load_motion()          # 必须在接线之前:按压要在 _wire_events 里挂上
 
 	# 底屏(常驻,含自身 StageBg)
 	var base_inst := _instantiate_cap(String(flow.get("base", "base")))
@@ -154,20 +162,136 @@ func _pass_through(node: Node) -> void:
 		_pass_through(child)
 
 
+# ── 动效(motion.json)────────────────────────────────────────────────
+#
+# **GDScript 这边一条曲线都不算。** figma 给的是具体曲线(cubic-bezier / 弹簧三参),
+# 而 Godot 的 Tween.EASE_* 是**另一套同名不同形**的曲线 —— 各后端各挑"最像的枚举",
+# 同一份 IR 在六个引擎里就是六种手感,而每家测试照样绿。所以曲线在 python 侧解成
+# 17 个采样点,这里塞进 Curve 资源只做插值。与 figma2unreal / figma2unity 同一分工。
+
+var curves: Dictionary = {}       # "ev3"/"press"/"stagger" -> { curve, dur, type, direction, from_scale }
+var motion_cfg: Dictionary = {}   # flow.motion(press / stagger / guardFail)
+
+
+func _load_motion() -> void:
+	if not FileAccess.file_exists(motion_path):
+		return
+	var parsed = JSON.parse_string(FileAccess.get_file_as_string(motion_path))
+	if not (parsed is Dictionary):
+		push_warning("[flow_binder] motion.json 解析失败: " + motion_path)
+		return
+	for key in (parsed.get("curves", {}) as Dictionary).keys():
+		var c: Dictionary = parsed["curves"][key]
+		var pts: Array = c.get("points", [])
+		if pts.size() < 2:
+			continue                                   # unresolved 的曲线没有点
+		var cu := Curve.new()
+		for p in pts:
+			var i := cu.add_point(Vector2(float(p[0]), float(p[1])))
+			# 关键帧之间必须是**线性**插值。采样点一致只保证关键帧上一致,
+			# 帧间插值模式不对齐,各引擎照样各算各的(Godot 默认切线是 0 = 每段两头压平)。
+			cu.set_point_left_mode(i, Curve.TANGENT_LINEAR)
+			cu.set_point_right_mode(i, Curve.TANGENT_LINEAR)
+		var from_scale := 0.95
+		if c.has("fromScale"):
+			from_scale = float(c["fromScale"])
+		elif c.has("toScale"):
+			from_scale = float(c["toScale"])
+		curves[key] = {
+			"curve": cu,
+			"dur": float(c.get("duration", 0)) / 1000.0,
+			"type": String(c.get("type", "")),
+			"direction": String(c.get("direction", "")),
+			"from_scale": from_scale,
+		}
+	motion_cfg = flow.get("motion", {})
+
+
+func _curve_for_event(ev: Dictionary) -> Variant:
+	# motion.json 的 key 是 flow.events 的下标(ev<i>) —— 与 bake_flow 同一约定。
+	var events: Array = flow.get("events", [])
+	for i in events.size():
+		if events[i] == ev:
+			return curves.get("ev%d" % i)
+	return null
+
+
+## 按采样曲线驱动一段动画。进度 v:0=起点 1=终点;apply 决定往哪儿贴。
+func _play(el: Control, c: Dictionary, reverse: bool, apply: Callable, done: Callable) -> void:
+	if el == null or c.is_empty() or c["dur"] <= 0.0:
+		apply.call(el, 0.0 if reverse else 1.0)
+		if done.is_valid():
+			done.call()
+		return
+	var cu: Curve = c["curve"]
+	var tw := create_tween()
+	apply.call(el, 1.0 if reverse else 0.0)
+	tw.tween_method(
+		func(x: float) -> void:
+			var v := cu.sample(clampf(x, 0.0, 1.0))
+			apply.call(el, 1.0 - v if reverse else v),
+		0.0, 1.0, c["dur"])
+	if done.is_valid():
+		tw.finished.connect(func() -> void: done.call())
+
+
+## 转场类型 → 怎么把进度贴到元素上(与 assemble.js transitionCss 同一张表)。
+func _applier(c: Dictionary) -> Callable:
+	var t := String(c.get("type", "DISSOLVE"))
+	var from_scale := float(c.get("from_scale", 0.95))
+	if t == "SCALE_IN" or t == "SCALE_OUT":
+		return func(el: Control, v: float) -> void:
+			el.modulate.a = v
+			var s := lerpf(from_scale, 1.0, v)
+			el.pivot_offset = el.size / 2.0
+			el.scale = Vector2(s, s)
+	if t in ["MOVE_IN", "SLIDE_IN", "MOVE_OUT", "SLIDE_OUT"]:
+		var dir := String(c.get("direction", "BOTTOM"))
+		var ux := 0.0
+		var uy := 1.0
+		match dir:
+			"LEFT": ux = -1.0; uy = 0.0
+			"RIGHT": ux = 1.0; uy = 0.0
+			"TOP": ux = 0.0; uy = -1.0
+			_: ux = 0.0; uy = 1.0
+		return func(el: Control, v: float) -> void:
+			el.modulate.a = v
+			el.position = Vector2(ux * el.size.x * (1.0 - v), uy * el.size.y * (1.0 - v))
+	return func(el: Control, v: float) -> void:      # DISSOLVE 及未实现的类型 → 淡入
+		el.modulate.a = v
+
+
 # ── 弹窗显隐(底屏常驻)────────────────────────────────────────────────
 
-func open_modal(mname: String) -> void:
+func open_modal(mname: String, c: Variant = null) -> void:
 	for k in modals.keys():
 		(modals[k]["el"] as Control).visible = false
-	if modals.has(mname):
-		(modals[mname]["el"] as Control).visible = true
 	current = mname
+	if not modals.has(mname):
+		return
+	var el := modals[mname]["el"] as Control
+	el.visible = true
+	if c is Dictionary:
+		_play(el, c, false, _applier(c), Callable())
+	else:
+		el.modulate.a = 1.0
 
 
-func close_modal() -> void:
-	for k in modals.keys():
-		(modals[k]["el"] as Control).visible = false
+## **有入场必有出场** —— 只做入场 = 消失时硬闪。没有转场声明就保持瞬时,不自作主张。
+func close_modal(c: Variant = null) -> void:
+	var cur = current
 	current = null
+	if not (c is Dictionary) or cur == null or not modals.has(cur):
+		for k in modals.keys():
+			(modals[k]["el"] as Control).visible = false
+		return
+	var el := modals[cur]["el"] as Control
+	_play(el, c, true, _applier(c), func() -> void:
+		if current == null:                          # 期间又开了别的弹窗就别抢着藏
+			el.visible = false
+			el.modulate.a = 1.0
+			el.position = Vector2.ZERO
+			el.scale = Vector2.ONE)
 
 
 # ── 状态/守卫(truthy 判定对齐 assemble.js guardOk)──────────────────
@@ -227,7 +351,42 @@ func _wire_events() -> void:
 				continue
 			el.mouse_filter = Control.MOUSE_FILTER_STOP # Label 默认 IGNORE,要收点击须 STOP
 			el.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+			_wire_press(el)
 			el.gui_input.connect(_on_el_input.bind(el, ev))
+
+
+## 可点元素没有按下态是**缺陷不是风格**:点下去毫无反应,玩家读到的是"卡了"。
+func _wire_press(el: Control) -> void:
+	if not motion_cfg.has("press"):
+		return
+	var target := float((motion_cfg["press"] as Dictionary).get("scale", 0.96))
+	var c = curves.get("press")
+	el.gui_input.connect(func(e) -> void:
+		if not (e is InputEventMouseButton and e.button_index == MOUSE_BUTTON_LEFT):
+			return
+		_last_pressed = el
+		el.pivot_offset = el.size / 2.0
+		if e.pressed and c is Dictionary:
+			_play(el, c, false, func(x: Control, v: float) -> void:
+				var sc := lerpf(1.0, target, v)
+				x.scale = Vector2(sc, sc), Callable())
+		elif not e.pressed:
+			el.scale = Vector2.ONE)
+
+
+## 一个元素说「错了」。guard 拒绝时抖一下 —— 参数来自 flow.motion.guardFail。
+func wiggle(el: Control) -> void:
+	if el == null or not motion_cfg.has("guardFail"):
+		return
+	var g: Dictionary = motion_cfg["guardFail"]
+	var amp := float(g.get("amp", 6))
+	var dur := float(g.get("duration", 120)) / 1000.0
+	var x0 := el.position.x
+	var tw := create_tween()
+	# 一去一回一归零。抖动是一次性、播完即弃的,直接按相位算,不复用转场曲线。
+	tw.tween_method(func(t: float) -> void:
+		el.position.x = x0 + sin(t * TAU) * amp * (1.0 - t), 0.0, 1.0, dur)
+	tw.finished.connect(func() -> void: el.position.x = x0)
 
 
 func _on_el_input(e, el: Control, ev: Dictionary) -> void:
@@ -250,15 +409,17 @@ func _on_layer_input(e, kind: String, mname: String, ev: Dictionary) -> void:
 
 func dispatch(ev: Dictionary, e = null) -> void:
 	if ev.has("guard") and not guard_ok(ev["guard"]):
+		# 以前这里对玩家是**彻底的沉默**:协议没勾就点"开始",界面毫无反应。
+		wiggle(_last_pressed)
 		if actions.has("onGuardFail"):
 			actions["onGuardFail"].call(ev)
 		return
 	var d := String(ev.get("do", ""))
 	match d:
 		"openModal":
-			open_modal(String(ev.get("arg", "")))
+			open_modal(String(ev.get("arg", "")), _curve_for_event(ev))
 		"closeModal":
-			close_modal()
+			close_modal(_curve_for_event(ev))
 		"toggleFlag":
 			var f := String(ev.get("arg", ""))
 			set_flag(f, not _truthy(state.get(f)))
@@ -341,6 +502,7 @@ func render_rows(modal_name: String, container_id: String, items: Array, row_fn:
 		_ignore_children(row)                           # 行内子节点不抢事件
 		if on_click != "":
 			row.gui_input.connect(_on_row_input.bind(row, on_click))
+		_stagger_in(row, idx)
 
 
 func _on_row_input(e, row: Control, action_name: String) -> void:
@@ -370,3 +532,22 @@ static func _css_color(s: String, fallback: Color) -> Color:
 	return Color(m.get_string(1).to_float() / 255.0,
 			m.get_string(2).to_float() / 255.0,
 			m.get_string(3).to_float() / 255.0, a)
+
+
+## 逐项入场:全部同时出现 = 一整块东西闪进来,量感全无;错开一点才读得出"有几条"。
+func _stagger_in(row: Control, index: int) -> void:
+	if not motion_cfg.has("stagger") or not curves.has("stagger"):
+		return
+	var cfg: Dictionary = motion_cfg["stagger"]
+	var step := float(cfg.get("step", 45)) / 1000.0
+	var from := float(cfg.get("from", 24))
+	var y0 := row.position.y
+	row.modulate.a = 0.0
+	var tw := create_tween()
+	tw.tween_interval(index * step)
+	var c: Dictionary = curves["stagger"]
+	var cu: Curve = c["curve"]
+	tw.tween_method(func(x: float) -> void:
+		var v := cu.sample(clampf(x, 0.0, 1.0))
+		row.modulate.a = v
+		row.position.y = y0 + from * (1.0 - v), 0.0, 1.0, c["dur"])

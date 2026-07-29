@@ -494,6 +494,30 @@ def test_unknown_easing_is_declared_unresolved_not_guessed():
         assert "known-loss" in err, "%s 没留痕:\n%s" % (name, err)
 
 
+def test_engine_binders_interpolate_the_sampled_curve_linearly():
+    """★ 采样点一致**只保证关键帧上一致**,帧与帧之间用什么插值同样必须对齐。
+
+    实测踩到过:Godot 的 `Curve.sample_baked()` 量化到 100 段,Unity 的 `AnimationCurve`
+    默认平滑切线会在段内拱起来 —— 两边各差 ~1.4e-3。更阴的是,当初拿 x=0.25 去对账
+    "完全一致",而 0.25 恰好**是**一个关键帧:任何插值模式在关键帧上都返回原值,
+    那次对账其实什么都没证明。改成线性切线 + 非关键帧点(x=0.3)重测才真对上。
+
+    引擎跑不进 CI,所以这里守源码层:线性切线必须在,量化采样必须不在。
+    """
+    bad = []
+    gd = io.open(os.path.join(ROOT, "figma2godot", "runtime", "flow_binder.gd"),
+                 encoding="utf-8").read()
+    if "TANGENT_LINEAR" not in gd:
+        bad.append("flow_binder.gd 没把 Curve 切线设成 TANGENT_LINEAR")
+    if "sample_baked(" in gd:
+        bad.append("flow_binder.gd 还在用 sample_baked()(量化到 bake_resolution,会与别家差 ~1e-3)")
+    cs = io.open(os.path.join(ROOT, "figma2unity", "runtime", "FlowBinder.cs"),
+                 encoding="utf-8").read()
+    if "inTangent" not in cs or "outTangent" not in cs:
+        bad.append("FlowBinder.cs 没显式给 AnimationCurve 线性切线(默认平滑切线会在段内拱起来)")
+    assert not bad, "\n  ".join(bad)
+
+
 def test_motion_not_played_is_written_down_in_every_mapping():
     """曲线烘出来了但**没有后端在播** —— 这是登记在案的降级,不是静默丢失。
     每家 mapping.md 都得能查到,否则就成了"代码里有、文档里没有"的那类账。"""
