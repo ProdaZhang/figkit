@@ -48,6 +48,52 @@ def test_call_site_passes_size():
         assert c.count(",") >= 2, "调用点没把尺寸传进去: parseRadius(%s)" % c
 
 
+def test_motion_is_interpolated_not_re_solved():
+    """引擎侧只做**线性**插值,一条曲线都不许自己算。
+
+    Creator 的 `easing.quadOut` 之流与 figma 给的曲线**同名不同形**;各后端各挑"最像的",
+    同一份 IR 就是六种手感,而每家测试照样绿(实测 easeOutCubic 与 cubic-bezier(.23,1,.32,1)
+    最大差 19.8 个百分点)。曲线在 scripts/bake_motion.py 里解算,这里只插值。
+    另:采样点一致只保证**关键帧上**一致,帧间插值模式必须也是线性 —— godot/unity 都在这儿栽过。
+    """
+    body = _src("flow-binder.ts")
+    assert "function sampleCurve" in body, "flow-binder.ts 没有采样点插值函数"
+    m = re.search(r"function sampleCurve\(.*?\n\}", body, re.S)
+    assert m and "/" in m.group(0) and "-" in m.group(0), "sampleCurve 看着不像在做线性插值"
+    imported = re.search(r"import\s*\{(.*?)\}\s*from\s*'cc'", body, re.S)
+    names = [n.strip() for n in (imported.group(1) if imported else "").split(",")]
+    for banned in ("easing", "tween", "Tween"):
+        assert banned not in names, "从 cc 导入了 %s —— 内置缓动会与别家分叉" % banned
+
+
+def test_transform_goes_on_the_panel_not_the_layer():
+    """★ 位移/缩放只贴面板本体,遮罩只跟着淡。
+
+    早先 html/godot/unity 三端同构同病:transform 贴在弹窗**层**上,而 backdrop 是层的子节点,
+    于是遮罩跟着面板一起滑/缩 —— 顶部不变暗、四边缩进露出底屏。曲线取值一个不差,
+    是实机截图才抓到的。这条守着 cocos 别再犯一遍。
+    """
+    body = _src("flow-binder.ts")
+    m = re.search(r"private applyProgress\(.*?\n  \}", body, re.S)
+    assert m, "抓不到 applyProgress 函数体"
+    fn = m.group(0)
+    assert "setOpacity(layer" in fn, "层上没有做整体淡入淡出"
+    for bad in ("setScale(layer", "layer.setPosition"):
+        assert bad not in fn, "%s:位移/缩放贴到层上了,遮罩会跟着动" % bad
+    assert "scaleAboutCenter(panel" in fn and "panel.setPosition" in fn, \
+        "面板本体没有承接位移/缩放"
+
+
+def test_scaling_compensates_for_the_top_left_anchor():
+    """锚点是 (0,1),node.scale 以左上角为基准 —— 不补位置,面板会往右下角坍缩。"""
+    body = _src("flow-binder.ts")
+    m = re.search(r"private scaleAboutCenter\(.*?\n  \}", body, re.S)
+    assert m, "抓不到 scaleAboutCenter 函数体"
+    fn = m.group(0)
+    assert "setScale" in fn and "setPosition" in fn, "只设了 scale 没补位置"
+    assert "(1 - s) / 2" in fn, "位置补偿不是 (1−s)/2 的形状"
+
+
 def test_known_loss_paths_still_log():
     """known-loss 必须留痕,不许静默丢失(仓库通用原则)。"""
     body = _src("figma-ui.ts")

@@ -437,8 +437,8 @@ def bake_motion(flow_path, outdir, sys_mod):
     在六个引擎里就是六种手感,而所有测试照样绿。采样点没有这个自由度,
     tools/conformance 还会拿它跟别家逐点对账。UI Toolkit 侧可直接喂 AnimationCurve。
 
-    ⚠️ **本表目前没有任何后端在播**(FlowBinder.cs 尚未接线)。这是**登记在案的降级**,
-    不是静默丢失:references/mapping.md 的 known-loss 表里有它。
+    2026-07-29 起 `FlowBinder.cs` **真在读**(Unity 6 里读成 AnimationCurve,取值与 python /
+    Godot 三方一致到 6 位小数);曲线怎么贴到画面上见 references/mapping.md。
     """
     try:
         with open(flow_path, "r", encoding="utf-8") as f:

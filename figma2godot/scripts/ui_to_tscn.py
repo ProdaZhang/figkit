@@ -610,8 +610,8 @@ def bake_motion(flow_path, outdir, sys_mod):
     给的是另一套同名不同形的曲线 —— 各家各挑"最像的枚举",同一份 IR 在六个引擎里就是
     六种手感,而所有测试照样绿。采样点没有这个自由度,tools/conformance 还会逐点对账。
 
-    ⚠️ **本表目前没有任何后端在播**(flow_binder.gd 尚未接线)。这是**登记在案的降级**,
-    不是静默丢失:mapping.md 的 known-loss 表里有它,产物头注释里也写着。
+    2026-07-29 起 `flow_binder.gd` **真在播**(Godot 4.3 实机截图核过中途帧),
+    本文件只负责烘,曲线怎么贴到画面上见 references/mapping.md。
     """
     try:
         with open(flow_path, 'r', encoding='utf-8') as f:
@@ -627,8 +627,9 @@ def bake_motion(flow_path, outdir, sys_mod):
     for n in notes:
         sys_mod.stderr.write('[known-loss] motion: ' + n + '\n')
     if data['curves']:
-        sys_mod.stderr.write('[known-loss] motion: 烘出 %d 条曲线,但 flow_binder.gd 还没接线 '
-                             '—— 转场目前**不播**\n' % len(data['curves']))
+        sys_mod.stderr.write('[motion] 烘出 %d 条曲线 —— 与 .tscn 放在一起,'
+                             'flow_binder.gd 的 motion_path 默认就读它\n'
+                             % len(data['curves']))
     return out
 
 

@@ -15,7 +15,9 @@ text-stroke / 百分比圆角全是零覆盖。于是 `radius:"50%"`(capture 对
      把 known-loss 表从散文变成机读契约,防"代码丢了、文档没写"。
 
 覆盖边界(诚实):figma2html 与 figma2cocos 是**解释器**,运行时直接吃 .ui.json,
-没有可静态检查的产物,不在本套内(见 expectations.json 的 _scope)。
+没有可静态检查的**像素**产物,不在像素那几节内(见 expectations.json 的 _scope)。
+**但转场缓动那一节四家都在**:cocos 虽无转换器,曲线仍在 python 侧解算(它自带
+`scripts/bake_motion.py`),烘出来的采样点照样逐点对账。
 """
 import io
 import json
@@ -395,6 +397,10 @@ MOTION_BACKENDS = {                                   # 后端 → 跑法(都产
     "unreal": lambda tmp: ["figma2unreal/scripts/ui_to_uespec.py",
                            os.path.join(tmp, "screen-login.ui.json"),
                            os.path.join(tmp, "flow.json"), tmp],
+    # cocos 是运行时解释器,没有转换器可挂烘焙 —— 但曲线该在哪解算不因此改变,
+    # 它自带一个独立的烘焙 CLI,产出同样进这张对账表。
+    "cocos":  lambda tmp: ["figma2cocos/scripts/bake_motion.py",
+                           os.path.join(tmp, "flow.json"), tmp],
 }
 
 BEZIER_TR = {"type": "MOVE_IN", "direction": "BOTTOM", "duration": 300,
@@ -412,7 +418,7 @@ UNKNOWN_TR = {"type": "DISSOLVE", "duration": 260, "easing": {"type": "BOUNCY"}}
 
 
 def _bake_everywhere(transition):
-    """给 login flow 的首个 openModal 事件换上 transition,三家各烘一次 → {backend: (motion, stderr)}。"""
+    """给 login flow 的首个 openModal 事件换上 transition,四家各烘一次 → {backend: (motion, stderr)}。"""
     tmp = tempfile.mkdtemp(prefix="figkit_motion_")
     for fn in FLOW_FILES:
         with io.open(os.path.join(LOGIN_FIX, fn), encoding="utf-8") as f:
@@ -443,7 +449,7 @@ def test_motion_solver_copies_are_byte_identical():
     行为一致是结论,字节一致才是能守住的前提。capture 的镜像就是这么守的。"""
     master = io.open(os.path.join(ROOT, "figma2html", "scripts", "motion.py"), "rb").read()
     drift = []
-    for pkg in ("figma2godot", "figma2unity", "figma2unreal"):
+    for pkg in ("figma2godot", "figma2unity", "figma2unreal", "figma2cocos"):
         p = os.path.join(ROOT, pkg, "scripts", "motion.py")
         if not os.path.exists(p):
             drift.append("%s 缺 motion.py" % pkg)
@@ -515,6 +521,17 @@ def test_engine_binders_interpolate_the_sampled_curve_linearly():
                  encoding="utf-8").read()
     if "inTangent" not in cs or "outTangent" not in cs:
         bad.append("FlowBinder.cs 没显式给 AnimationCurve 线性切线(默认平滑切线会在段内拱起来)")
+    ts = io.open(os.path.join(ROOT, "figma2cocos", "runtime", "flow-binder.ts"),
+                 encoding="utf-8").read()
+    if "function sampleCurve" not in ts:
+        bad.append("flow-binder.ts 没有自己的采样点插值函数")
+    # 信号取**导入清单**而不是 "easing." 这种字样:文件里正好有一句解释为什么不用
+    # `easing.quadOut`,拿字样当信号会被自己的注释误伤(与 godot 那条 blur 假阳性同类)。
+    imp = re.search(r"import\s*\{(.*?)\}\s*from\s*'cc'", ts, re.S)
+    names = [n.strip() for n in (imp.group(1) if imp else "").split(",")]
+    for banned in ("easing", "tween", "Tween"):
+        if banned in names:
+            bad.append("flow-binder.ts 从 cc 导入了 %s(内置缓动同名不同形,会与别家分叉)" % banned)
     assert not bad, "\n  ".join(bad)
 
 

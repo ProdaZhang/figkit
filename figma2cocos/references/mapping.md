@@ -114,24 +114,63 @@ Canvas (cc.Canvas, designResolution = cap.w × cap.h)
 | `imgSize` cover/contain | 一律拉伸铺满 | capture 图多为 1:1 导出,通常无感 |
 | 文本 CLAMP 截字 | 系统字体偏宽时可能截 | 调小 fontSize 或 hook 放宽 contentSize |
 | 实例内部 `rot=0` | 上游 API 限制 | hook 手动 `node.angle` |
-| `flow.events[].transition`(转场) | **完全不实现** | 见下 |
+| `motion.json` 里 `unresolved` 的曲线 | 该转场瞬时显隐 | figma 没公开 `BOUNCY` / `*_BACK` 的控制点;别编数,见下 |
 
-### 转场缓动 —— 本后端整块 known-loss
+## 5.5 转场缓动(`flow.events[].transition` + `flow.motion`)
 
-figma 的原型转场(`DISSOLVE` / `MOVE_IN` / `SMART_ANIMATE` …,带曲线或弹簧)会由
-`flow_from_figma.py` 导进 `flow.events[].transition`,但 **figma2cocos 的运行时对它一律无视**:
-弹窗是瞬时显隐,没有任何缓动。
+> 历史:本节曾是"整块 known-loss —— 运行时一律无视转场"。2026-07-29 已实现。
 
-这是**声明在案的取舍**,不是遗漏。产物型后端(godot/unity/unreal)用各自的 `motion.py`
-把曲线烘成 `motion.json` 采样点、并由 `tools/conformance` 逐点对账;cocos 是**运行时解释器**,
-要支持就得在 TS 侧再实现一遍贝塞尔反解与弹簧解析解 —— 那份代码目前**无法在本仓验证**
-(跑不了 Creator、也没有 tsc 环境),按本仓「引擎侧代码必须声明验证等级、绝不超额宣称」的规矩,
-宁可先不写。
+### 曲线在 python 侧解算,TS 侧只插值
 
-要自己接:读 `flow.events[].transition`,`bezier` 四个控制点直接喂
-`tween().to(dur, {...}, { easing: t => /* 你自己的反解 */ })`;**别**换成 Creator 内置的
-`easing.quadOut` 之流 —— 同名不同形,与其它后端的手感会分叉(实测量级:easeOutCubic 与
-`cubic-bezier(.23,1,.32,1)` 最大差 19.8 个百分点,且差在起步段)。
+```
+flow.json ──► scripts/bake_motion.py ──► motion.json(每条曲线 17 个采样点)
+                    │ (= scripts/motion.py,figma2html 主拷贝的逐字节镜像)
+                    ▼
+              FlowBinder.motionAsset(JsonAsset)──► 线性插值 ──► 贴到节点上
+```
+
+**为什么不让 TS 自己算。** figma 给的是一条具体曲线(`cubic-bezier(.32,.72,0,1)`)或一组弹簧
+参数;Creator 的 `easing.quadOut` 之流是**另一套同名不同形**的曲线。让每个引擎各挑"最像的
+内置缓动",同一份 IR 在六个引擎里就是六种手感,而每家测试照样绿(实测:easeOutCubic 与
+`cubic-bezier(.23,1,.32,1)` 最大差 **19.8 个百分点**,且差在起步段)。所以 cocos 虽然没有
+转换器可挂烘焙,也**单独带一个烘焙 CLI**,产出与 godot/unity/unreal 一起进
+`tools/conformance` 逐点对账。
+
+⚠️ **帧间必须线性插值**:采样点一致只保证**关键帧上**一致。Godot 的默认切线把每段两头压平、
+Unity 的默认平滑切线在段内拱起来 —— 两家都栽过。`sampleCurve()` 因此是显式的线性插值。
+
+### 映射
+
+| 声明 | Creator 落点 |
+|---|---|
+| `events[].transition.type` = `DISSOLVE` / 未知 | 只淡入淡出(层 `UIOpacity`) |
+| = `SCALE_IN` / `SCALE_OUT` | 面板 `setScale`,`fromScale`→1(出场反向);**绕中心**,见下 |
+| = `MOVE_IN` / `SLIDE_IN` / `MOVE_OUT` / `SLIDE_OUT` | 面板 `setPosition`,按 `direction` 从层的一整边滑入(cocos y 向上 → `BOTTOM` 取负) |
+| `duration` | 秒 = ms/1000;`schedule(step, 0)` 逐帧推进,`elapsed/dur` 归一化 |
+| `motion.press` | 可点元素 `TOUCH_START` 缩到 `scale`,`TOUCH_END`/`TOUCH_CANCEL` 复位 |
+| `motion.stagger` | `renderRows` 每行 `scheduleOnce(index × step)` 后淡入 + 上滑 `from` px |
+| `motion.guardFail` | guard 拒绝时抖最后按下的元素(`sin` 相位 × 衰减,一次性不复用转场曲线) |
+| 曲线 `unresolved`(无采样点) | 跳过 = 该转场瞬时;不猜控制点 |
+| 未配 `motionAsset` | 全部瞬时显隐 —— 声明在案的降级,不是静默丢失 |
+
+**两个 cocos 专属的坑**:
+
+1. **缩放要绕中心补位置**。节点锚是 (0,1)(§2),`node.setScale` 因此以**左上角**为基准,
+   直接设 scale 会让面板往右下角坍缩。补偿:`position += (w(1−s)/2, −h(1−s)/2)`
+   (`scaleAboutCenter()`)。
+2. **位移/缩放只贴面板本体,遮罩只跟着淡**。backdrop 是弹窗层的子节点 —— 把 transform 贴在
+   **层**上,遮罩会跟着面板一起滑/缩:顶部不变暗、四边缩进露出底屏。html/godot/unity 三端
+   同构同病,**曲线取值一个不差**,是 Godot 实机截图才抓到的。`flow.modals[*].panel` 没声明时
+   就只淡,不猜该动谁。
+
+### 验证等级(诚实)
+
+- ✅ 采样点与 godot / unity / unreal **逐点一致**(`tools/conformance`,含贝塞尔与弹簧)。
+- ✅ TS 严格类型编译门(tsc `--noEmit` 对官方 `@cocos/creator-types`,零错)。
+- ✅ 源码级守卫(`scripts/tests/test_runtime_source.py`):线性插值在、内置缓动没被导入、
+  transform 没贴到层上、缩放补了锚点偏移。
+- ❌ **未在 Creator 内实机运行** —— 与本后端其余部分同一等级。曲线的值对了不等于画面对了
+  (上面那个遮罩 bug 就是活证据)。
 
 ## 6. 集成冒烟清单(首次接入必做)
 
