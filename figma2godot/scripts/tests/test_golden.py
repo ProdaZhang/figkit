@@ -33,6 +33,9 @@ def _run():
             check(got == want, 'screen-login.tscn 与 golden 逐字节一致(%d bytes)' % len(want))
             check(not got.startswith(b'\xef\xbb\xbf') and b'\r\n' not in got,
                   'UTF-8 无 BOM + LF 换行')
+        # 向后兼容:第三个参数(flow.json)是可选的,不给就**一个文件都不该多产**。
+        check(not os.path.exists(os.path.join(tmp, 'motion.json')),
+              '没给 flow.json 时不产 motion.json(CLI 向后兼容)')
 
     ok = all(results)
     print('  %d/%d 通过' % (sum(results), len(results)))

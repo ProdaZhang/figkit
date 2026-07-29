@@ -67,6 +67,28 @@ IR 样式值是 **CSS 风格字符串**(`radius="45px"`、`border="2.0px solid r
 | 数值字重(500/800 等) | 近似 normal/bold | USS 只有两档 |
 | `border` 非 solid | 降级实线 | USS 边框恒实线 |
 | `z` | 文档序替代 | 同父按 z 排序,跨父极端交叉遮挡无法表达 |
+| `flow.events[].transition` | 烘成 `motion.json` 采样曲线,**但没人播** | 见下面「转场缓动」 |
+
+## 转场缓动(motion.json)
+
+`python3 ui_to_unity.py <cap.ui.json> <outdir> <flow.json>` 会多产一个 `motion.json`:
+每条带转场的事件一份 **17 点等距采样曲线**(x/y 都是 0..1 进度)。
+
+**为什么是采样点,不是 USS 的 easing 关键字。** figma 给的是一条具体曲线
+(`cubic-bezier(.32,.72,0,1)` 或弹簧三参);USS 的 `ease-out` 之流是**另一条同名不同形**的曲线。
+各后端各挑"最像的" = 同一份 IR 在六个引擎里六种手感,而每家测试都绿。
+量级参考:easeOutCubic 与 `cubic-bezier(.23,1,.32,1)` 最大差 **19.8 个百分点**,且差在起步段。
+`tools/conformance` 会拿这些点跟 godot/unreal **逐点对账**。
+
+用法:`new AnimationCurve(points.Select(p => new Keyframe(p[0], p[1])).ToArray())`,
+再自己 tween;**别**图省事换成 `transition-timing-function` 的关键字。
+
+| 处置 | 说明 |
+|---|---|
+| **known-loss:不播** | `FlowBinder.cs` **尚未接线**,曲线表烘出来没人读;生成时打 `[known-loss]`,不是静默丢失 |
+| **known-loss:具名弹簧预设** | `GENTLE/QUICK/BOUNCY/SLOW`、`*_BACK` figma 没公开控制点 → 标 `unresolved` 不采样,**不编数** |
+| **approx:弹簧被 duration 截断** | 弹簧没有固定时长,窗口短于收敛时间就切一截,生成时打 `truncated:` |
+| **known-loss:`SMART_ANIMATE`** | 同名图层自动配对插值,跨引擎无对应物;曲线照采,配对逻辑不实现 |
 
 ## 坐标与缩放(Unity 侧摆放)
 

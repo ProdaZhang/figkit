@@ -57,10 +57,57 @@
       document.body.dataset.rendered = '1';
     },
 
+    // ── 转场(flow.events[].transition,来自 figma 原型)──
+    // 浏览器原生就有 cubic-bezier,所以这里**把 figma 的四个控制点原样喂给 CSS**,
+    // 不映射到 ease/ease-in-out 之流的关键字 —— 同名不同形,一映射手感就变了。
+    // 表达不了的(弹簧、SMART_ANIMATE、figma 没公开控制点的具名曲线)一律 warn 后瞬时显示:
+    // **说出来的降级**,不是静默丢失。
+    transitionCss(tr) {
+      if (!tr) return null;
+      const dur = Math.max(0, Number(tr.duration) || 0);
+      if (!dur) return null;
+      const ez = tr.easing || {};
+      let ease = null;
+      if (Array.isArray(ez.bezier) && ez.bezier.length === 4) {
+        ease = 'cubic-bezier(' + ez.bezier.join(',') + ')';
+      } else if (ez.spring) {
+        console.warn('[assemble][known-loss] 弹簧缓动 CSS 表达不了,瞬时显示:', ez.spring); return null;
+      } else {
+        const css = { LINEAR: 'linear', EASE_IN: 'ease-in', EASE_OUT: 'ease-out',
+                      EASE_IN_AND_OUT: 'ease-in-out' }[ez.type];
+        if (!css) { console.warn('[assemble][known-loss] 未知缓动,瞬时显示:', ez.type); return null; }
+        ease = css;
+      }
+      const off = { LEFT: ['-100%', '0'], RIGHT: ['100%', '0'],
+                    TOP: ['0', '-100%'], BOTTOM: ['0', '100%'] }[tr.direction] || null;
+      if (tr.type === 'DISSOLVE') return { dur, ease, from: null };
+      if ((tr.type === 'MOVE_IN' || tr.type === 'SLIDE_IN') && off) return { dur, ease, from: off };
+      console.warn('[assemble][known-loss] 转场类型', tr.type, '未实现,退化成淡入');
+      return { dur, ease, from: null };
+    },
+
     // ── 弹窗显隐(底屏常驻)──
-    openModal(name) {
+    openModal(name, transition) {
       Object.keys(this.modals).forEach(k => this.modals[k].el.style.display = 'none');
-      if (this.modals[name]) this.modals[name].el.style.display = '';
+      const m = this.modals[name];
+      if (m) {
+        const el = m.el, t = this.transitionCss(transition);
+        el.style.display = '';
+        if (t) {
+          // 先关 transition 复位到起点,强制生效后再放开 —— 少了中间那次读 offsetWidth,
+          // 复位与终态会被合并成一帧,动画整个看不见(而且不报错)。
+          el.style.transition = 'none';
+          el.style.opacity = '0';
+          el.style.transform = t.from ? 'translate(' + t.from[0] + ',' + t.from[1] + ')' : '';
+          void el.offsetWidth;
+          el.style.transition = 'opacity ' + t.dur + 'ms ' + t.ease +
+                                (t.from ? ', transform ' + t.dur + 'ms ' + t.ease : '');
+          el.style.opacity = '1';
+          el.style.transform = '';
+        } else {
+          el.style.transition = ''; el.style.opacity = ''; el.style.transform = '';
+        }
+      }
       this.current = name;
     },
     closeModal() {
@@ -121,7 +168,7 @@
         return;
       }
       switch (ev.do) {
-        case 'openModal':  this.openModal(ev.arg); break;
+        case 'openModal':  this.openModal(ev.arg, ev.transition); break;
         case 'closeModal': this.closeModal(); break;
         case 'toggleFlag': this.setFlag(ev.arg, !this.state[ev.arg]); break;
         case 'send':       if (this.actions.send) await this.actions.send(ev.arg, ev); break;

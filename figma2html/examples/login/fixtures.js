@@ -24,7 +24,14 @@ window.__FIGKIT_FIXTURES = {
     "arg": "notice",
     "do": "openModal",
     "el": "1:40",
-    "on": "click"
+    "on": "click",
+    "transition": {
+     "duration": 260,
+     "easing": {
+      "type": "EASE_OUT"
+     },
+     "type": "DISSOLVE"
+    }
    },
    {
     "arg": "serverlist",
@@ -33,7 +40,21 @@ window.__FIGKIT_FIXTURES = {
      "1:10",
      "1:13"
     ],
-    "on": "click"
+    "on": "click",
+    "transition": {
+     "direction": "BOTTOM",
+     "duration": 300,
+     "easing": {
+      "bezier": [
+       0.32,
+       0.72,
+       0,
+       1
+      ],
+      "type": "CUSTOM_CUBIC_BEZIER"
+     },
+     "type": "MOVE_IN"
+    }
    },
    {
     "arg": "agreed",

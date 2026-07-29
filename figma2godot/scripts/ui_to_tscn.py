@@ -21,6 +21,13 @@ import os
 import re
 import sys
 
+# motion.py 是 figma2html/scripts/motion.py 的**逐字节镜像**(skill 必须自足、可单独安装,
+# 跨目录 import 装成插件就断)。两份漂了由 tools/conformance 的 byte-parity 用例当场红。
+# 显式把本文件所在目录入 path:当本模块**被测试 import**(而不是当脚本跑)时,
+# sys.path[0] 是测试目录,裸 `import motion` 会 ModuleNotFoundError。
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import motion
+
 # tscn 节点名不允许的字符(. : @ / " %)→ 统一换下划线;figma id "1:40" → 节点名 "1_40"
 _FORBID = re.compile(r'[.:@/"%]')
 
@@ -596,9 +603,39 @@ def guard_or_die(cap, sys_mod, src=''):
         raise SystemExit(2)
 
 
+def bake_motion(flow_path, outdir, sys_mod):
+    """flow.json → outdir/motion.json(转场缓动的采样曲线表)。
+
+    **为什么是采样点而不是引擎的缓动枚举**:figma 给的是一条具体曲线,`Tween.EASE_*`
+    给的是另一套同名不同形的曲线 —— 各家各挑"最像的枚举",同一份 IR 在六个引擎里就是
+    六种手感,而所有测试照样绿。采样点没有这个自由度,tools/conformance 还会逐点对账。
+
+    ⚠️ **本表目前没有任何后端在播**(flow_binder.gd 尚未接线)。这是**登记在案的降级**,
+    不是静默丢失:mapping.md 的 known-loss 表里有它,产物头注释里也写着。
+    """
+    try:
+        with open(flow_path, 'r', encoding='utf-8') as f:
+            flow = json.load(f)
+    except Exception as e:                                       # noqa: BLE001
+        sys_mod.stderr.write('[motion] 读不了 %s: %s\n' % (flow_path, e))
+        return None
+    data, notes = motion.bake_flow(flow, 'figma2godot/scripts/ui_to_tscn.py')
+    out = os.path.join(outdir, 'motion.json')
+    with open(out, 'w', encoding='utf-8', newline='\n') as f:
+        json.dump(data, f, ensure_ascii=False, indent=1, sort_keys=True)
+        f.write('\n')
+    for n in notes:
+        sys_mod.stderr.write('[known-loss] motion: ' + n + '\n')
+    if data['curves']:
+        sys_mod.stderr.write('[known-loss] motion: 烘出 %d 条曲线,但 flow_binder.gd 还没接线 '
+                             '—— 转场目前**不播**\n' % len(data['curves']))
+    return out
+
+
 def main(argv):
-    if len(argv) != 3:
-        sys.stderr.write('用法: python3 ui_to_tscn.py <cap.ui.json> <outdir>\n')
+    if len(argv) not in (3, 4):
+        sys.stderr.write('用法: python3 ui_to_tscn.py <cap.ui.json> <outdir> [flow.json]\n'
+                         '  给了 flow.json 就顺带烘 motion.json(转场缓动的采样曲线)\n')
         return 2
     src, outdir = argv[1], argv[2]
     with open(src, 'r', encoding='utf-8') as f:
@@ -615,6 +652,8 @@ def main(argv):
         f.write(convert(cap, stem))
     for line in collect_losses(cap):          # 诚实降级:丢什么必须说,不许静默
         sys.stderr.write('[known-loss] ' + line + '\n')
+    if len(argv) == 4:
+        bake_motion(argv[3], outdir, sys)
     print(out)
     return 0
 

@@ -24,6 +24,13 @@ import os
 import re
 import sys
 
+# motion.py 是 figma2html/scripts/motion.py 的**逐字节镜像**(skill 必须自足、可单独安装,
+# 跨目录 import 装成插件就断)。两份漂了由 tools/conformance 的 byte-parity 用例当场红。
+# 显式把本文件所在目录入 path:当本模块**被测试 import**(而不是当脚本跑)时,
+# sys.path[0] 是测试目录,裸 `import motion` 会 ModuleNotFoundError。
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import motion
+
 
 # ── 数值/颜色 ────────────────────────────────────────────────────────────────
 
@@ -502,6 +509,18 @@ def main(argv):
             print('[ui_to_uespec] 校验错误: ' + e, file=sys.stderr)
         return 2
     _dump(flow_spec, os.path.join(outdir, 'flow.uespec.json'))
+
+    # 转场缓动 → 采样曲线表。**采样点而不是引擎缓动枚举**:figma 给的是一条具体曲线,
+    # UE 的 EEasingFunc 给的是另一套同名不同形的曲线 —— 各家各挑"最像的",同一份 IR
+    # 在六个引擎里就是六种手感,而所有测试照样绿。UMG 侧喂 FRichCurve 即可。
+    # ⚠️ FigmaFlowComponent 尚未接线,转场目前**不播** —— 已登记在 references/mapping.md。
+    data, notes = motion.bake_flow(flow, 'figma2unreal/scripts/ui_to_uespec.py')
+    _dump(data, os.path.join(outdir, 'motion.json'))
+    for n in notes:
+        print('[known-loss] motion: ' + n, file=sys.stderr)
+    if data['curves']:
+        print('[known-loss] motion: 烘出 %d 条曲线,但 FigmaFlowComponent 还没接线 '
+              '—— 转场目前**不播**' % len(data['curves']), file=sys.stderr)
     return 0
 
 

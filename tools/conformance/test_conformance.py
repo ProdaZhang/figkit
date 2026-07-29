@@ -374,6 +374,138 @@ def test_bad_flow_rejected_by_every_consumer():
     assert not bad, "flow 判定不一致:\n  " + "\n  ".join(bad)
 
 
+# ── 转场缓动:曲线必须逐点一致 ────────────────────────────────────────────────
+#
+# 这一节要挡的东西和 radius:"50%" 是同一类,但更隐蔽:figma 给的是一条具体曲线
+# (cubic-bezier / 弹簧三参),而每个引擎都有一套**同名不同形**的内置缓动枚举
+# (DOTween 的 Ease.OutQuad、Godot 的 Tween.EASE_OUT、USS 的 ease-out、UE 的 EEasingFunc)。
+# 各后端各挑"最像的那个",同一份 IR 在六个引擎里就是六种手感 —— 而每家的测试都绿着,
+# 因为每家都只跟自己的期望比。所以这里不比"用了哪个枚举",直接比**采出来的点**。
+#
+# 参照量级:easeOutCubic 与 cubic-bezier(.23,1,.32,1) 最大差 19.8 个百分点,且差在起步段。
+# 那正是"随手挑一个差不多的枚举"的代价 —— 肉眼看得出来,测试却看不出来。
+
+MOTION_BACKENDS = {                                   # 后端 → 跑法(都产 outdir/motion.json)
+    "godot":  lambda tmp: ["figma2godot/scripts/ui_to_tscn.py",
+                           os.path.join(tmp, "screen-login.ui.json"), tmp,
+                           os.path.join(tmp, "flow.json")],
+    "unity":  lambda tmp: ["figma2unity/scripts/ui_to_unity.py",
+                           os.path.join(tmp, "screen-login.ui.json"), tmp,
+                           os.path.join(tmp, "flow.json")],
+    "unreal": lambda tmp: ["figma2unreal/scripts/ui_to_uespec.py",
+                           os.path.join(tmp, "screen-login.ui.json"),
+                           os.path.join(tmp, "flow.json"), tmp],
+}
+
+BEZIER_TR = {"type": "MOVE_IN", "direction": "BOTTOM", "duration": 300,
+             "easing": {"type": "CUSTOM_CUBIC_BEZIER", "bezier": [.32, .72, 0, 1]}}
+# zeta=0.2、w0=10 → 阻尼振荡周期≈641ms,**首个过冲峰在≈320ms**。采样窗口必须覆盖到峰,
+# 否则"这条弹簧会不会过冲"根本没进画面(踩过:给 120ms 时窗口内一路单调上升,像解错了)。
+SPRING_TR = {"type": "SMART_ANIMATE", "duration": 600,
+             "easing": {"type": "CUSTOM_SPRING",
+                        "spring": {"mass": 1, "stiffness": 100, "damping": 4}}}
+# 同一条弹簧、窗口短得多 —— 专用来验"被 duration 截断"这条降级有没有被说出来。
+SHORT_SPRING_TR = {"type": "SMART_ANIMATE", "duration": 120,
+                   "easing": {"type": "CUSTOM_SPRING",
+                              "spring": {"mass": 1, "stiffness": 100, "damping": 4}}}
+UNKNOWN_TR = {"type": "DISSOLVE", "duration": 260, "easing": {"type": "BOUNCY"}}
+
+
+def _bake_everywhere(transition):
+    """给 login flow 的首个 openModal 事件换上 transition,三家各烘一次 → {backend: (motion, stderr)}。"""
+    tmp = tempfile.mkdtemp(prefix="figkit_motion_")
+    for fn in FLOW_FILES:
+        with io.open(os.path.join(LOGIN_FIX, fn), encoding="utf-8") as f:
+            data = json.load(f)
+        if fn == "flow.json":
+            for ev in data["events"]:
+                ev.pop("transition", None)
+            ev0 = [e for e in data["events"] if e.get("do") == "openModal"][0]
+            ev0["transition"] = transition
+        with io.open(os.path.join(tmp, fn), "w", encoding="utf-8", newline="") as f:
+            json.dump(data, f, ensure_ascii=False)
+    out = {}
+    for name, argv_of in sorted(MOTION_BACKENDS.items()):
+        argv = argv_of(tmp)
+        r = subprocess.run([sys.executable, os.path.join(ROOT, argv[0])] + argv[1:],
+                           capture_output=True, text=True, encoding="utf-8", errors="replace")
+        assert r.returncode == 0, "%s 烘 motion 失败 rc=%d\n%s" % (name, r.returncode, r.stderr)
+        p = os.path.join(tmp, "motion.json")
+        assert os.path.exists(p), "%s 没产出 motion.json" % name
+        with io.open(p, encoding="utf-8") as f:
+            out[name] = (json.load(f), r.stderr or "")
+        os.remove(p)                                  # 免得下一家读到上一家的
+    return out
+
+
+def test_motion_solver_copies_are_byte_identical():
+    """求解器在每个后端各带一份(skill 必须自足、可单独安装)。**逐字节**比,不比行为 ——
+    行为一致是结论,字节一致才是能守住的前提。capture 的镜像就是这么守的。"""
+    master = io.open(os.path.join(ROOT, "figma2html", "scripts", "motion.py"), "rb").read()
+    drift = []
+    for pkg in ("figma2godot", "figma2unity", "figma2unreal"):
+        p = os.path.join(ROOT, pkg, "scripts", "motion.py")
+        if not os.path.exists(p):
+            drift.append("%s 缺 motion.py" % pkg)
+        elif io.open(p, "rb").read() != master:
+            drift.append("%s/scripts/motion.py 与 figma2html 的主拷贝不一致" % pkg)
+    assert not drift, "\n  ".join(drift)
+
+
+def test_every_backend_bakes_the_same_bezier_points():
+    baked = _bake_everywhere(BEZIER_TR)
+    ref_name, (ref, _) = sorted(baked.items())[0]
+    ref_pts = {k: v["points"] for k, v in ref["curves"].items()}
+    assert ref_pts and all(len(p) == ref["samples"] for p in ref_pts.values()), ref_pts
+    for name, (data, _) in sorted(baked.items()):
+        got = {k: v["points"] for k, v in data["curves"].items()}
+        assert got == ref_pts, "%s 与 %s 的采样点不一致" % (name, ref_name)
+
+
+def test_every_backend_bakes_the_same_spring_points():
+    """弹簧尤其容易漂:figma 给的是纠缠的 {mass,stiffness,damping} 三元组,
+    换算成解耦两参再解析求解,任一家算错都只会表现为"手感不太一样"。"""
+    baked = _bake_everywhere(SPRING_TR)
+    ref_name, (ref, _) = sorted(baked.items())[0]
+    ref_pts = {k: v["points"] for k, v in ref["curves"].items()}
+    peak = max(y for pts in ref_pts.values() for _, y in pts)
+    assert peak > 1.0, "damping=4 → 阻尼比 0.2,这条弹簧必须过冲(不过冲=解错了)"
+    for name, (data, _) in sorted(baked.items()):
+        assert {k: v["points"] for k, v in data["curves"].items()} == ref_pts, \
+            "%s 与 %s 的弹簧采样不一致" % (name, ref_name)
+
+
+def test_spring_truncation_reported_by_every_backend():
+    """duration 120ms 远短于这条弹簧的收敛时间 = 曲线被切掉一截。那是降级,必须每家都说。"""
+    for name, (_, err) in sorted(_bake_everywhere(SHORT_SPRING_TR).items()):
+        # 断言 ASCII 标记而不是中文:子进程在非 CJK 代码页下会把中文降级成 '?',
+        # 拿中文做断言等于在测运行环境的编码。降级行因此都带一个跨代码页可 grep 的前缀。
+        assert "known-loss" in err and "truncated:" in err, \
+            "%s 没报告弹簧被 duration 截断:\n%s" % (name, err)
+
+
+def test_unknown_easing_is_declared_unresolved_not_guessed():
+    """figma 没公开 BOUNCY 的控制点。**必须解不出来**并留痕 ——
+    编一组"差不多"的数进来,产物看起来完全正常而手感是错的,比解不出来贵得多。"""
+    for name, (data, err) in sorted(_bake_everywhere(UNKNOWN_TR).items()):
+        curves = list(data["curves"].values())
+        assert curves and all(c.get("unresolved") for c in curves), "%s 猜了 BOUNCY: %s" % (name, curves)
+        assert all(c["points"] == [] for c in curves), "%s 给了不该有的采样点" % name
+        assert "known-loss" in err, "%s 没留痕:\n%s" % (name, err)
+
+
+def test_motion_not_played_is_written_down_in_every_mapping():
+    """曲线烘出来了但**没有后端在播** —— 这是登记在案的降级,不是静默丢失。
+    每家 mapping.md 都得能查到,否则就成了"代码里有、文档里没有"的那类账。"""
+    missing = []
+    for pkg in ("figma2godot", "figma2unity", "figma2unreal", "figma2cocos"):
+        p = os.path.join(ROOT, pkg, "references", "mapping.md")
+        text = io.open(p, encoding="utf-8").read() if os.path.exists(p) else ""
+        if "transition" not in text.lower():
+            missing.append("%s/references/mapping.md 没登记转场的处置" % pkg)
+    assert not missing, "\n  ".join(missing)
+
+
 def _run():
     ok = True
     for name, fn in sorted(globals().items()):

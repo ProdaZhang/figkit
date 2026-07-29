@@ -12,8 +12,11 @@
   },
   "state": { "agreed": false, "selected": null },
   "events": [
-    { "on": "click", "el": "1:40", "do": "openModal", "arg": "notice" },
-    { "on": "click", "el": ["1:10", "1:13"], "do": "openModal", "arg": "serverlist" },
+    { "on": "click", "el": "1:40", "do": "openModal", "arg": "notice",
+      "transition": { "type": "DISSOLVE", "duration": 260, "easing": { "type": "EASE_OUT" } } },
+    { "on": "click", "el": ["1:10", "1:13"], "do": "openModal", "arg": "serverlist",
+      "transition": { "type": "MOVE_IN", "duration": 300, "direction": "BOTTOM",
+                      "easing": { "type": "CUSTOM_CUBIC_BEZIER", "bezier": [0.32, 0.72, 0, 1] } } },
     { "on": "click", "el": "1:30", "do": "toggleFlag", "arg": "agreed" },
     { "on": "click", "el": "1:20", "guard": ["agreed", "selected"], "do": "send", "arg": "Enter" },
     { "on": "click", "el": "@panelOutside:serverlist", "do": "closeModal" },

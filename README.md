@@ -2,7 +2,7 @@
 
 [![tests](https://github.com/ProdaZhang/figkit/actions/workflows/tests.yml/badge.svg)](https://github.com/ProdaZhang/figkit/actions/workflows/tests.yml)
 
-*Turn a Figma frame into a runnable client — **HTML, Unity, Godot, Unreal, Cocos Creator** — plus a semantic UI-DSL, all compiled from one pixel-faithful intermediate representation with **declared interactions** (modals, guards, data binding) that Figma itself doesn't carry.*
+*Turn a Figma frame into a runnable client — **HTML, Unity, Godot, Unreal, Cocos Creator** — plus a semantic UI-DSL, all compiled from one pixel-faithful intermediate representation. Figma's own prototype links and transitions are imported; the **application semantics** on top (guards, data binding, app hooks) are declared once and run on every backend.*
 
 ```
 figma REST ──► figma_capture ──►  IR: <screen>.ui.json (pixels) + flow.json (behavior)
@@ -20,14 +20,14 @@ figma REST ──► figma_capture ──►  IR: <screen>.ui.json (pixels) + fl
 
 | backend | offline tests | in-engine verification |
 |---|---|---|
-| figma2html | ✅ 37 | ✅ rendered + interactions (Edge headless screenshot) |
+| figma2html | ✅ 54 | ✅ rendered + interactions (Edge headless screenshot) |
 | figma2dsl | ✅ 19 | ✅ (same render pipeline) |
-| figma2godot | ✅ 20 | ✅ **Godot 4.3**: .tscn rendered, pixel-compared vs HTML; GDScript compiles clean |
-| figma2unity | ✅ 11 | ✅ **Unity 6000.4.8f1**: C# compiles zero-warning, UXML/USS pass Unity's importer, CloneTree structure asserted (visual pass pending) |
+| figma2godot | ✅ 21 | ✅ **Godot 4.3**: .tscn rendered, pixel-compared vs HTML; GDScript compiles clean |
+| figma2unity | ✅ 13 | ✅ **Unity 6000.4.8f1**: C# compiles zero-warning, UXML/USS pass Unity's importer, CloneTree structure asserted (visual pass pending) |
 | figma2unreal | ✅ 40 | ⏳ not yet compiled in UE. Two **engine-free gates** hold the line meanwhile: `uespec_contract.py` (python-emitted ↔ C++-read field parity, known-loss must be declared) and `uht_lint.py` (UE reflection conventions R1–R6: `.generated.h` last, `GENERATED_BODY`, `UINTERFACE` pairing, `Execute_` dispatch, GC visibility of UObject members, include→module registry). They check *conventions and contracts, not API truth* — whether `FSlateFontInfo` really has that field still needs a real compile. Risk self-assessment in `references/mapping.md` |
 | figma2cocos | ✅ 11 | 🟡 TS strict-typechecks against official `@cocos/creator-types` (engine d.ts, decorators incl.); not yet run in Creator |
 
-Per-backend tests only compare a backend against its own expectations, so **12 more live in [`tools/conformance/`](tools/conformance/)**: one fixture exercising every IR feature, a table where each backend declares what it renders / approximates / drops, and checks that the declaration matches the real artifact, that every degradation is logged, and that it is written down in that backend's known-loss table. Same suite pins the backends to identical handling of malformed IR and of broken `flow.json` references. (Counts above are verified by `tools/run_all_tests.py`, so they can't quietly go stale.)
+Per-backend tests only compare a backend against its own expectations, so **18 more live in [`tools/conformance/`](tools/conformance/)**: one fixture exercising every IR feature, a table where each backend declares what it renders / approximates / drops, and checks that the declaration matches the real artifact, that every degradation is logged, and that it is written down in that backend's known-loss table. Same suite pins the backends to identical handling of malformed IR and of broken `flow.json` references. (Counts above are verified by `tools/run_all_tests.py`, so they can't quietly go stale.)
 
 ## Try it (no Figma account, no install, ~10 seconds)
 
@@ -79,6 +79,7 @@ Prefer no plugin machinery? Just copy a folder into `.claude/skills/` — each o
 
 - **IR spec is frozen** ([`spec/`](spec/), v1.0): additive evolution only; backends never extend it privately.
 - **Honest degradation**: what an engine can't render (blur, gradients, text-stroke…) is listed in that backend's `references/mapping.md` known-loss table and logged at generation/runtime — never dropped silently.
+- **Curves are solved, never approximated by name.** Figma hands over a specific curve — `cubic-bezier(.32,.72,0,1)`, or a spring's `{mass, stiffness, damping}`. Every engine also ships easing *enums* that share those names and have different shapes (`Tween.EASE_OUT`, `Ease.OutQuad`, USS `ease-out`, `EEasingFunc`). Picking "the closest enum" per backend is how one IR becomes six different feels while every test stays green — the measured gap between `easeOutCubic` and `cubic-bezier(.23,1,.32,1)` is **19.8 percentage points**, right in the opening moments. So `motion.py` samples the real curve (Newton inversion for béziers, the analytic solution for springs) and the conformance suite compares the sampled points **backend against backend**. What Figma doesn't publish control points for (`BOUNCY`, `*_BACK`) stays `unresolved` rather than being guessed.
 - **Deterministic converters** (stdlib-only, no timestamps) guarded by golden tests; capture has a byte-parity guard across its two copies.
 - **Engine vs app-hook split**: engines own structure & mechanics (modals, guards, cloning); your code owns domain semantics via a small hook interface — identical shape in JS, C#, GDScript, C++ and TS.
 

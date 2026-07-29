@@ -114,6 +114,24 @@ Canvas (cc.Canvas, designResolution = cap.w × cap.h)
 | `imgSize` cover/contain | 一律拉伸铺满 | capture 图多为 1:1 导出,通常无感 |
 | 文本 CLAMP 截字 | 系统字体偏宽时可能截 | 调小 fontSize 或 hook 放宽 contentSize |
 | 实例内部 `rot=0` | 上游 API 限制 | hook 手动 `node.angle` |
+| `flow.events[].transition`(转场) | **完全不实现** | 见下 |
+
+### 转场缓动 —— 本后端整块 known-loss
+
+figma 的原型转场(`DISSOLVE` / `MOVE_IN` / `SMART_ANIMATE` …,带曲线或弹簧)会由
+`flow_from_figma.py` 导进 `flow.events[].transition`,但 **figma2cocos 的运行时对它一律无视**:
+弹窗是瞬时显隐,没有任何缓动。
+
+这是**声明在案的取舍**,不是遗漏。产物型后端(godot/unity/unreal)用各自的 `motion.py`
+把曲线烘成 `motion.json` 采样点、并由 `tools/conformance` 逐点对账;cocos 是**运行时解释器**,
+要支持就得在 TS 侧再实现一遍贝塞尔反解与弹簧解析解 —— 那份代码目前**无法在本仓验证**
+(跑不了 Creator、也没有 tsc 环境),按本仓「引擎侧代码必须声明验证等级、绝不超额宣称」的规矩,
+宁可先不写。
+
+要自己接:读 `flow.events[].transition`,`bezier` 四个控制点直接喂
+`tween().to(dur, {...}, { easing: t => /* 你自己的反解 */ })`;**别**换成 Creator 内置的
+`easing.quadOut` 之流 —— 同名不同形,与其它后端的手感会分叉(实测量级:easeOutCubic 与
+`cubic-bezier(.23,1,.32,1)` 最大差 19.8 个百分点,且差在起步段)。
 
 ## 6. 集成冒烟清单(首次接入必做)
 

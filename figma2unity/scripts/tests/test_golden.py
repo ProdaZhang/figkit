@@ -43,6 +43,31 @@ def _run():
             if got[:3] == b"\xef\xbb\xbf":
                 print("  FAIL  产物带 BOM: " + fn)
                 ok = False
+
+        # CLI 契约:第三个参数(flow.json)可选。不给 → 一个文件都不该多产;
+        # 给了 → 多一个 motion.json(转场缓动采样曲线,跨后端一致性由 tools/conformance 守)。
+        import subprocess
+        import sys as _sys
+        cli = os.path.join(SCRIPTS, "ui_to_unity.py")
+        bare = tempfile.mkdtemp(prefix="f2u_bare_")
+        withflow = tempfile.mkdtemp(prefix="f2u_flow_")
+        try:
+            subprocess.run([_sys.executable, cli, fix, bare],
+                           capture_output=True, text=True, encoding="utf-8", errors="replace")
+            no_extra = not os.path.exists(os.path.join(bare, "motion.json"))
+            print(("  PASS  " if no_extra else "  FAIL  ") +
+                  "没给 flow.json 时不产 motion.json(CLI 向后兼容)")
+            ok = ok and no_extra
+
+            r = subprocess.run([_sys.executable, cli, fix, withflow,
+                                os.path.join(D, "fixtures", "flow.json")],
+                               capture_output=True, text=True, encoding="utf-8", errors="replace")
+            baked = r.returncode == 0 and os.path.exists(os.path.join(withflow, "motion.json"))
+            print(("  PASS  " if baked else "  FAIL  ") + "给了 flow.json 就烘出 motion.json")
+            ok = ok and baked
+        finally:
+            shutil.rmtree(bare, ignore_errors=True)
+            shutil.rmtree(withflow, ignore_errors=True)
     finally:
         shutil.rmtree(out, ignore_errors=True)
     return ok

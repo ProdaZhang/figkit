@@ -85,6 +85,27 @@ tscn 节点名不允许 `. : @ / " %` —— **统一换 `_`**:figma id `1:40` �
 | 全局 `z` 跨父交叉 | 同级排序近似 | 兄弟内正确;跨父穿插(罕见)会平化 |
 | 列表滚动(overflow-y auto) | `clip_contents = true` 只裁不滚 | 要滚 → 手工把容器包进 ScrollContainer |
 | `rot` 在组件实例内部子节点 | 上游已丢(capture 回退 0) | figma REST 限制,见 figma2html「已知限制:旋转」;补救走 hook 覆盖 |
+| `flow.events[].transition`(转场) | 烘成 `motion.json` 采样曲线,**但没人播** | 见下面「转场缓动」一节 |
+
+### 转场缓动(motion.json)
+
+给 `ui_to_tscn.py` 传第三个参数 `flow.json`,就会在 outdir 里多产一个 `motion.json`:
+每条带转场的事件一份 **17 点等距采样曲线**(x/y 都是 0..1 进度)。
+
+**为什么是采样点,不是 `Tween.EASE_*` 枚举。** figma 给的是一条具体曲线
+(`cubic-bezier(.32,.72,0,1)` 或弹簧三参),`Tween.EASE_OUT` 是**另一条同名不同形**的曲线。
+挑"最像的枚举"是各后端各挑各的 —— 同一份 IR 在六个引擎里六种手感,而每家测试都绿。
+量级参考:easeOutCubic 与 `cubic-bezier(.23,1,.32,1)` 最大差 **19.8 个百分点**,且差在起步段。
+采样点没有这个自由度,`tools/conformance` 还会拿它跟 unity/unreal **逐点对账**。
+
+用法:`Curve` 资源逐点 `add_point(Vector2(x, y))`,再 `tween_method` 按 `curve.sample(t)` 插值。
+
+| 处置 | 说明 |
+|---|---|
+| **known-loss:不播** | `flow_binder.gd` **尚未接线**,曲线表烘出来没人读。转场目前完全不生效 —— 已在生成时打 `[known-loss]`,不是静默丢失 |
+| **known-loss:具名弹簧预设** | figma 的 `GENTLE/QUICK/BOUNCY/SLOW` 与 `*_BACK` 没公开控制点 → 标 `unresolved` 不采样,**不编数**(编"差不多"的数 = 产物看着正常而手感是错的) |
+| **approx:弹簧被 duration 截断** | figma 的弹簧带 duration,而弹簧没有固定时长;窗口短于收敛时间就切一截,生成时打 `truncated:` |
+| **known-loss:`SMART_ANIMATE`** | 自动匹配同名图层插值,跨引擎无对应物;曲线照采,**配对逻辑不实现** |
 
 ## 8. 坐标系 / 缩放建议
 

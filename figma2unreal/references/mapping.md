@@ -80,6 +80,31 @@
 | 文字描边 | FontOutline 近似(非 paint-order 语义) | — |
 | imgSize contain/tile | 拉伸回退 + `UE_LOG(Verbose)`(cover≈stretch,figma 导出图与元素同比) | Brush Tiling / 自定义 UV |
 | 椭圆角 `50%` | `min(w,h)/2` 标量近似(正圆精确,非正方形椭圆略差) | — |
+| `flow.events[].transition` | 烘成 `motion.json` 采样曲线,**FigmaFlowComponent 未接线 = 不播** | 见下面「转场缓动」 |
+
+### 转场缓动(motion.json)
+
+给了 `flow.json` 时,`ui_to_uespec.py` 会在 outdir 里多产一个 `motion.json`:
+每条带转场的事件一份 **17 点等距采样曲线**(x/y 都是 0..1 进度)。
+
+**为什么是采样点,不是 `EEasingFunc`。** figma 给的是一条具体曲线
+(`cubic-bezier(.32,.72,0,1)` 或弹簧三参),`EEasingFunc::EaseOut` 是**另一条同名不同形**的曲线。
+各后端各挑"最像的" = 同一份 IR 在六个引擎里六种手感,而每家测试都绿。
+量级参考:easeOutCubic 与 `cubic-bezier(.23,1,.32,1)` 最大差 **19.8 个百分点**,且差在起步段。
+`tools/conformance` 会拿这些点跟 godot/unity **逐点对账**。
+
+这也与本后端的**职责边界**一致:python 段做完全部数值解算,C++ 侧零解析 ——
+`FRichCurve::AddKey(x, y)` 逐点填进去即可,不需要在 C++ 里实现贝塞尔反解或弹簧微分方程。
+
+| 处置 | 说明 |
+|---|---|
+| **known-loss:不播** | `FigmaFlowComponent` **尚未接线**;生成时打 `[known-loss]`,不是静默丢失 |
+| **known-loss:具名弹簧预设** | `GENTLE/QUICK/BOUNCY/SLOW`、`*_BACK` figma 没公开控制点 → 标 `unresolved` 不采样,**不编数** |
+| **approx:弹簧被 duration 截断** | 弹簧没有固定时长,窗口短于收敛时间就切一截,生成时打 `truncated:` |
+| **known-loss:`SMART_ANIMATE`** | 同名图层自动配对插值,跨引擎无对应物;曲线照采,配对逻辑不实现 |
+
+⚠️ `motion.json` **不进 `flow.uespec.json`**,是并列的独立产物 —— 免得动到
+`uespec_contract.py` 守着的 python↔C++ 字段契约(那张表的每一项都要有 C++ 侧读取方)。
 
 ## 5. 集成步骤
 
