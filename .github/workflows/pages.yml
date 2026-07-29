@@ -1,15 +1,23 @@
 name: pages
 
-# 把 login demo 发到 GitHub Pages,让访客不 clone 也能点开看。
-# 站点内容 = figma2html/ 整个目录(examples/login/app.html 用相对路径引 ../../runtime/*.js,
-# 所以必须连 runtime/ 一起发,不能只发 examples/)。
-# 首次启用:仓库 Settings → Pages → Source 选 "GitHub Actions"(或用 API 设 build_type=workflow)。
+# 把两个 demo 发到 GitHub Pages,让访客不 clone 也能点开看。
+#
+# 站点内容 = **只有站点需要的那部分**:runtime/ + examples/。
+# 早先是把整个 figma2html/ 传上去(scripts/、tests/、references/、SKILL.md 全在里面) ——
+# 那些一行都不参与页面渲染,只是恰好在同一个目录下。挑出来发有两个好处:
+# 传的东西就是服务的东西(改了 scripts/ 不会莫名其妙重新部署一次),
+# 以及出事时排查面小一圈。
+# 相对路径不受影响:app.html 引的是 `../../runtime/*.js`,
+# 从 _site/examples/<名>/app.html 出发正好落在 _site/runtime/。
+#
+# 首次启用:仓库 Settings → Pages → Source 选 "GitHub Actions"。
 
 on:
   push:
     branches: [main]
     paths:
-      - "figma2html/**"
+      - "figma2html/runtime/**"
+      - "figma2html/examples/**"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
@@ -33,24 +41,55 @@ jobs:
 
       - name: Don't ship a stale demo
         # fixtures.js 是 file:// 下唯一数据源,过期了页面照样渲染、只是渲染旧内容。
-        # 新鲜度由 figma2html/scripts/tests/test_fixtures_fresh.py 判定(tests.yml 每次也跑)。
         working-directory: figma2html/scripts/tests
-        run: python3 test_fixtures_fresh.py
+        run: |
+          python3 test_fixtures_fresh.py
+          python3 test_main_example.py
 
       - name: Don't ship a demo whose flow is broken
         # flow.json 里写错一个 node id,页面照常渲染、只是点了没反应 ——
-        # 正是"看起来好好的、其实是坏的"那类。发布前离线拦一道。
-        run: python3 figma2html/scripts/flow_check.py figma2html/examples/login/flow.json
-
-      - name: Landing page → figma2html/index.html
-        # Pages 根目录需要一个落地页,把访客直接送进 demo。
+        # 正是"看起来好好的、其实是坏的"那类。发布前离线拦一道,两个 demo 都拦。
         run: |
-          cat > figma2html/index.html <<'HTML'
+          python3 figma2html/scripts/flow_check.py figma2html/examples/login/flow.json
+          python3 figma2html/scripts/flow_check.py figma2html/examples/main/flow.json
+
+      - name: Stage the site
+        run: |
+          mkdir -p _site
+          cp -r figma2html/runtime _site/runtime
+          cp -r figma2html/examples _site/examples
+          cat > _site/index.html <<'HTML'
           <!DOCTYPE html>
           <meta charset="utf-8">
-          <title>FigKit — live demo</title>
-          <meta http-equiv="refresh" content="0; url=examples/login/app.html">
-          <p>Redirecting to the <a href="examples/login/app.html">FigKit login demo</a>…</p>
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <title>FigKit — live demos</title>
+          <style>
+            body { margin:0; padding:48px 24px; background:#14323b; color:#fffbf2;
+                   font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; }
+            main { max-width: 640px; margin: 0 auto; }
+            h1 { font-size: 28px; margin: 0 0 8px; }
+            p.sub { color: rgba(255,251,242,.65); margin: 0 0 32px; }
+            a.card { display:block; padding:20px 24px; margin-bottom:16px; border-radius:16px;
+                     background: rgba(255,255,255,.08); color:inherit; text-decoration:none; }
+            a.card:hover { background: rgba(255,255,255,.14); }
+            a.card b { display:block; font-size:19px; color:#ffd76a; margin-bottom:4px; }
+            a.card span { color: rgba(255,251,242,.7); font-size:14px; }
+            footer { margin-top:32px; font-size:14px; color: rgba(255,251,242,.5); }
+            footer a { color: rgba(255,215,106,.85); }
+          </style>
+          <main>
+            <h1>FigKit — live demos</h1>
+            <p class="sub">Both screens are synthesized through the real capture pipeline. No Figma file, no token, no network.</p>
+            <a class="card" href="examples/login/app.html">
+              <b>Login →</b>
+              <span>The pipeline at its smallest: a notice overlay, a server list cloned from data, an agreement guard that refuses.</span>
+            </a>
+            <a class="card" href="examples/main/app.html">
+              <b>Main screen →</b>
+              <span>73 elements: an inventory grid, a codex list, locked tabs — and CLAIM, where coins fly into the top bar. That last part is the app hook, not the engine.</span>
+            </a>
+            <footer><a href="https://github.com/ProdaZhang/figkit">Source on GitHub</a></footer>
+          </main>
           HTML
 
       - uses: actions/configure-pages@v5
@@ -61,6 +100,6 @@ jobs:
           enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: figma2html
+          path: _site
       - id: deploy
         uses: actions/deploy-pages@v4
