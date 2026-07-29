@@ -192,7 +192,27 @@ def test_demo_import_matches_the_handwritten_skeleton_and_passes_flow_check():
         hand = json.load(f)
     for k in ("stage", "caps", "base", "modals"):
         assert got[k] == hand[k], (k, got[k], hand[k])
-    assert set(hand) - set(got) == {"list", "bindings"}
+    # 不开 --motion-defaults 时,连默认动效都不该有 —— 补默认是**显式动作**,不是副作用。
+    assert set(hand) - set(got) == {"list", "bindings", "motion"}
+
+
+def test_import_with_motion_defaults_leaves_only_hand_authored_blocks():
+    """开了 --motion-defaults 之后,导入版与手写版的差就只剩 list / bindings ——
+    也就是**只有 figma 和预设都给不了的那部分**才真需要人写。这是整条管线的目标状态。"""
+    tmp = tempfile.mkdtemp(prefix="figkit_motion_")
+    r, out = _run_cli(tmp, extra=["--motion-defaults"])
+    assert r.returncode == 0, r.stderr
+    with open(out, encoding="utf-8") as f:
+        got = json.load(f)
+    with open(os.path.join(EX, "flow.json"), encoding="utf-8") as f:
+        hand = json.load(f)
+    assert set(hand) - set(got) == {"list", "bindings"}, set(hand) - set(got)
+    # figma 声明过的两条转场原样保留,没被预设顶替
+    figma_declared = [e["transition"] for e in got["events"] if e.get("do") == "openModal"]
+    assert all("source" not in t for t in figma_declared), figma_declared
+    assert {t["type"] for t in figma_declared} == {"DISSOLVE", "MOVE_IN"}
+    # 预设补的那条(按压)带来源,人看得出是谁加的
+    assert got["motion"]["press"]["source"] == "preset:base"
 
     caps, errs = FC.load_caps(got, tmp)
     assert not errs, errs

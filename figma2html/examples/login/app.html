@@ -7,7 +7,11 @@
   <style>
     /* 示例不带子集字体(合成屏无需);真项目用 scripts/subset_font.py 产 woff2 + @font-face 'FigCJK' */
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { background: #1a1a2e; overflow: hidden; width: 100vw; height: 100vh; font-family: 'FigCJK', 'Source Han Sans SC', 'Noto Sans SC', 'Microsoft YaHei', sans-serif; }
+    body { background: #1a1a2e; overflow: hidden; width: 100vw; height: 100vh; font-family: 'FigCJK', 'Source Han Sans SC', 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
+           /* 见 runtime/app.tmpl.html 的注释:整页禁选中,否则反复点按会触发双击选中、
+              蹦出划词工具栏盖住界面。加了按压反馈之后这条更要紧(点得更勤了)。 */
+           user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+    .selectable { user-select: text; -webkit-user-select: text; }
     #stage-wrap { position: fixed; inset: 0; overflow: hidden; }
     #stage { position: relative; background: #000; }
     .screen-layer { position: absolute; inset: 0; }

@@ -37,6 +37,10 @@ examples/login/ 自足可跑示例:make_fixture.py(合成三屏,走真 capture �
    - 导:`python3 scripts/flow_from_figma.py nodes.json flow.json base=<a>.ui.json <name>=<b>.ui.json …`
      把 figma 里已经连好的原型交互(`interactions[]`:overlay / back / 转场)变成初稿。
      **搬不动的逐条报在 stderr 并说明原因,绝不猜** —— 猜错的事件长得跟对的一模一样。
+     加 `--motion-defaults` 还会把**引擎自己拥有的机制**的默认动效一并写进草稿:
+     按下态 / 弹窗入场**与出场** / 列表逐项 / guard 拒绝时抖一下。
+     (真实 figma 文件多半没连原型线;而点下去毫无反应的按钮,玩家读到的是"卡了"。)
+     优先级恒为 **figma > 项目覆盖 > 预设**,补进来的每条带 `source`,看得见、能改能删、重跑不重复。
    - 补:守卫 guard / 列表 list / 绑定 bindings / app hook —— 这些是**应用语义**,figma 里根本没有,
      照 `references/flow-events.md` 手写。(v1.0 已知缺口:events 只能绑 base 屏,弹窗里的关闭按钮要手写 `@panelOutside:<modal>`。)
 6. **组装**:`app.tmpl.html` 套 `render.js + assemble.js + flow.json + app.js(hook)` → 可跑;`python3 scripts/shoot.py <url> out.png` 截图核验

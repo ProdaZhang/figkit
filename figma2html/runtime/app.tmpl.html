@@ -8,7 +8,13 @@
     /* 子集字体(scripts/subset_font.py 产出),离线可移植 */
     @font-face { font-family: 'FigCJK'; src: url('fonts/cjk.woff2') format('woff2'); font-weight: 100 900; font-display: block; }
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { background: #1a1a2e; overflow: hidden; width: 100vw; height: 100vh; font-family: 'FigCJK', sans-serif; }
+    body { background: #1a1a2e; overflow: hidden; width: 100vw; height: 100vh; font-family: 'FigCJK', sans-serif;
+           /* 整页禁选中,白名单放行。连点两下 = 双击 = 选中文字 —— 于是划词工具栏(翻译/AI 搜索)
+              盖住界面、手势被打断、文字刷蓝像界面坏了。凡是可点、可拖、上面有字的元素都会中招,
+              所以是整页禁而不是"给拖拽区禁"(只禁拖拽区的话,一个纯点击按钮照样中招)。
+              游戏界面里几乎没有需要选中的文字;真需要复制的(兑换码/玩家ID/日志)加 .selectable。 */
+           user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+    .selectable { user-select: text; -webkit-user-select: text; }
     #stage-wrap { position: fixed; inset: 0; overflow: hidden; }
     #stage { position: relative; background: #000; }
     .screen-layer { position: absolute; inset: 0; }

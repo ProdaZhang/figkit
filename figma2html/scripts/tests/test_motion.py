@@ -184,6 +184,96 @@ def test_describe_is_one_line_per_kind():
     assert "unresolved" in M.describe({"type": "BOUNCY"}, 300)
 
 
+# ── 默认预设与优先级链 ──────────────────────────────────────────────────────
+#
+# 优先级:figma 原稿 > 项目令牌覆盖 > 预设。方法(公式)没有优先级,只有一份。
+
+def _flow(**kw):
+    f = {"events": [{"on": "click", "el": "1:1", "do": "openModal", "arg": "m"},
+                    {"on": "click", "el": "@any:m", "do": "closeModal"}]}
+    f.update(kw)
+    return f
+
+
+def test_preset_ease_out_is_not_the_css_ease_out():
+    """★ 最容易混的一处。CSS/figma 的 `EASE_OUT` = (0,0,.58,1),语义是"figma 说了它要这条";
+    预设的 `ease-out` = (.23,1,.32,1),语义是"figma 什么都没说时我们的口味"。
+    两条形状差很远,互相顶替 = 悄悄改了设计师的意图或悄悄丢了我们的手感。"""
+    css = M.CSS_EQUIV["EASE_OUT"]
+    ours = tuple(M.PRESET["ease-out"]["value"])
+    assert css != ours, "两条曲线撞了 —— 有人把预设和 CSS 等价表混成一张了"
+    fa, fb = M.bezier_solver(*css), M.bezier_solver(*ours)
+    worst = max(abs(fa(i / 200.0) - fb(i / 200.0)) for i in range(201))
+    assert worst > 0.15, "形状差不足 15pp,那这条测试就锚不住什么了(实测约 %.2f)" % worst
+
+
+def test_figma_declared_transitions_are_never_overwritten():
+    f = _flow()
+    f["events"][0]["transition"] = {"type": "MOVE_IN", "duration": 999,
+                                    "easing": {"type": "LINEAR"}}
+    out, _ = M.apply_defaults(f)
+    assert out["events"][0]["transition"]["duration"] == 999
+    assert "source" not in out["events"][0]["transition"], "figma 原稿不该被打上 preset 来源"
+
+
+def test_project_overrides_win_over_the_preset():
+    out, _ = M.apply_defaults(_flow(), overrides={"dur-exit": 40, "press-scale": 0.8})
+    assert out["events"][1]["transition"]["duration"] == 40
+    assert out["motion"]["press"]["scale"] == 0.8
+
+
+def test_apply_defaults_is_idempotent():
+    once, a1 = M.apply_defaults(_flow())
+    twice, a2 = M.apply_defaults(once)
+    assert a2 == [] and once == twice, a2
+
+
+def test_exit_is_faster_than_entry():
+    """有入场必有出场,且**出场更快**:对称的开合读起来比实际慢。"""
+    out, _ = M.apply_defaults(_flow())
+    enter = out["events"][0]["transition"]["duration"]
+    exit_ = out["events"][1]["transition"]["duration"]
+    assert exit_ < enter, (enter, exit_)
+
+
+def test_everything_added_carries_its_source():
+    """补出来的每一条都必须说得清是谁加的 —— 否则默认值就成了"代做主"而不是"代笔"。"""
+    out, added = M.apply_defaults(_flow(list={"modal": "m"},
+                                         events=[{"do": "send", "guard": ["ok"], "el": "1:2"}]))
+    assert added
+    marked = [v for k, v in out["motion"].items() if isinstance(v, dict)]
+    assert marked and all(v.get("source") == "preset:base" for v in marked), out["motion"]
+
+
+def test_stagger_only_appears_when_there_is_a_list():
+    assert "stagger" not in M.apply_defaults(_flow())[0]["motion"]
+    assert "stagger" in M.apply_defaults(_flow(list={"modal": "m"}))[0]["motion"]
+
+
+def test_guard_fail_only_appears_when_some_event_has_a_guard():
+    assert "guardFail" not in M.apply_defaults(_flow())[0]["motion"]
+    withguard = _flow()
+    withguard["events"][0]["guard"] = ["agreed"]
+    assert "guardFail" in M.apply_defaults(withguard)[0]["motion"]
+
+
+def test_every_preset_token_declares_its_calibration_state():
+    """把「我们决定过这个值」和「我们还没管这个值」分开 ——
+    没有这一栏,两者在表里长得一模一样,而后者是坑。"""
+    bad = [k for k, v in M.PRESET.items()
+           if v.get("calibration") not in ("tuned", "inherited", "untested")]
+    assert not bad, bad
+
+
+def test_preset_curves_are_all_solvable():
+    """预设里的每条曲线都必须能被求解器吃下(别塞一个 figma 具名枚举进来)。"""
+    for name, v in M.PRESET.items():
+        if not name.startswith("ease"):
+            continue
+        kind, payload = M.resolve_easing(M.preset_easing(name))
+        assert kind == M.BEZIER and len(payload) == 4, (name, kind)
+
+
 def _run():
     ok = True
     for name, fn in sorted(globals().items()):

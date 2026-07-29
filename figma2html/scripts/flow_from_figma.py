@@ -12,7 +12,7 @@
 绝不猜 —— 猜出来的事件比没有事件更贵,因为它看起来是对的。
 
 用法:
-    python3 flow_from_figma.py <nodes.json> <out_flow.json> <name>=<screen.ui.json> [...] [--strict]
+    python3 flow_from_figma.py <nodes.json> <out_flow.json> <name>=<screen.ui.json> [...] [--strict] [--motion-defaults]
 
   nodes.json   figma REST 响应(GET /v1/files/<key>/nodes?ids=<frameIds>),与 figma_capture 同一份
   <name>=<path>  每屏一个:flow 里的 cap 名 = 已经捕获好的 .ui.json。**第一个 = base 屏**。
@@ -41,6 +41,9 @@
 import json
 import os
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import motion  # noqa: E402  —— 默认动效预设(--motion-defaults 时才用)
 
 if hasattr(sys.stdout, "reconfigure"):      # Windows 老代码页打中文不炸
     sys.stdout.reconfigure(errors="replace")
@@ -267,12 +270,22 @@ def main(argv):
         walk(entry.get("document") or {}, doc_roots)
 
     flow, notes = build_flow(doc_roots, pairs, caps)
+
+    added = []
+    if "--motion-defaults" in argv[1:]:
+        # figma 大多数时候什么都没连 —— 那时候界面不该是"没有动效",该是"合理的默认动效"。
+        # 补出来的东西**写进这份草稿**、每条带 source,人看得见、能改能删。
+        flow, added = motion.apply_defaults(flow)
+
     with open(out_path, "w", encoding="utf-8", newline="") as f:
         json.dump(flow, f, ensure_ascii=False, indent=2)
         f.write("\n")
 
     print("[flow-import] %s:%d 屏 / %d 事件 / %d 弹窗,%d 条交互没搬过来"
           % (out_path, len(flow["caps"]), len(flow["events"]), len(flow["modals"]), len(notes)))
+    for a in added:
+        print("  + 默认动效(figma 未定义,来自 %s 预设,可直接在 flow.json 里改/删):%s"
+              % (motion.PRESET_NAME, a))
     for n in notes:
         sys.stderr.write("  ! %s\n" % n)
     if notes:

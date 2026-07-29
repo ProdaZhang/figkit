@@ -33,6 +33,69 @@ CSS_EQUIV = {
 
 BEZIER, SPRING, UNRESOLVED = "bezier", "spring", "unresolved"
 
+# ── 默认预设 ────────────────────────────────────────────────────────────────
+#
+# **方法一律来自动效目录;参数的优先级是 figma 原稿 > 项目令牌覆盖 > 本预设。**
+# figma 只给参数(哪种转场、多久、哪条曲线),从不给方法;而 figma 大多数时候**什么都不给** ——
+# 真实项目里的设计稿多半根本没连原型线。那时候界面不该是"没有动效",该是"合理的默认动效":
+# 一个点下去毫无反应的按钮,玩家读到的是卡了,**那是缺陷不是风格**。
+#
+# ⚠️ **本表的 ease-out 不是 CSS 的 ease-out。** CSS/figma 的 `EASE_OUT` = (0,0,.58,1),
+# 语义是"figma 说了它要这条";本表的 `ease-out` = (.23,1,.32,1),语义是"figma 什么都没说时
+# 我们的口味"。两条曲线形状差很远(起步段差近 20 个百分点),**绝不能互相顶替**:
+# 前者查 CSS_EQUIV,后者查这里。
+#
+# `calibration` 沿用动效规范的分档,作用是把「我们决定过这个值」和「我们还没管这个值」分开 ——
+# 没有这一栏,两者在表里长得一模一样,而后者是坑:
+#   tuned     —— 在真实项目里调过手感的值
+#   inherited —— 抄自 web 工具型 UI 的推荐值,没针对游戏 UI 校准过
+#   untested  —— 编的,一次都没跑过
+# `range` 带**后果**而不是"建议范围" —— 出了范围会怎样,写清楚才有用。
+PRESET_NAME = "base"
+
+PRESET = {
+    # 曲线
+    "ease-out": {"value": [0.23, 1, 0.32, 1], "use": "入场/出场默认曲线",
+                 "range": "x1,x2 ∈ [0,1](超出 = CSS 非法,整条声明被丢弃,不是变难看是失效);"
+                          "y 可超出 [0,1],那正是过冲", "calibration": "inherited"},
+    "ease-in-out": {"value": [0.77, 0, 0.175, 1], "use": "屏内移动 / 形变",
+                    "calibration": "inherited"},
+    "ease-drawer": {"value": [0.32, 0.72, 0, 1], "use": "抽屉 / 底部弹出(减速尾巴更长,像贴着轨道停住)",
+                    "calibration": "inherited"},
+    # 时长
+    "dur-press": {"value": 120, "use": "按压反馈", "range": "100–160ms", "calibration": "inherited"},
+    "dur-popup": {"value": 260, "use": "弹窗 / 遮罩", "range": "200–500ms", "calibration": "inherited"},
+    "dur-exit": {"value": 180, "use": "出场 —— **比入场快,非对称**",
+                 "range": "别等于入场:对称的开合读起来比实际慢", "calibration": "inherited"},
+    "dur-cap": {"value": 300, "use": "功能 UI 的时长天花板(演出不受此约束)",
+                "calibration": "inherited"},
+    "stagger": {"value": 45, "use": "列表逐项入场间隔", "range": "30–80ms;为 0 = 整块一起出,量感全无",
+                "calibration": "inherited"},
+    # 统一态
+    "press-scale": {"value": 0.96, "use": "按下态缩放", "range": ".95–.98,再狠就滑稽",
+                    "calibration": "tuned"},
+    "enter-scale": {"value": 0.95, "use": "入场起始 scale。❌ 禁止 scale(0) —— 现实里没有东西从虚无长出来",
+                    "range": ".9–.97", "calibration": "tuned"},
+    "slide-from": {"value": 24, "use": "小位移滑入的起始偏移(px)",
+                   "range": "16–40;整块滑入用 100% 不用它", "calibration": "inherited"},
+    # 反馈
+    "wiggle-dur": {"value": 120, "use": "抖动总时长 —— 一个元素说「错了」", "calibration": "untested"},
+    "wiggle-amp": {"value": 6, "use": "抖动振幅(px)", "range": "4–10:太小读不出否定,太大像故障",
+                   "calibration": "untested"},
+}
+
+
+def token(name, overrides=None):
+    """取令牌值:项目覆盖 > 预设。**只解析值,不解析方法** —— 方法在动效目录里。"""
+    if overrides and name in overrides:
+        return overrides[name]
+    return PRESET[name]["value"]
+
+
+def preset_easing(name, overrides=None):
+    """令牌名 → IR 形状的 easing dict(带 source,好让人看得出这条是谁加的)。"""
+    return {"type": "CUSTOM_CUBIC_BEZIER", "bezier": list(token(name, overrides))}
+
 # 采样点数。曲线资源用等距采样重建,点太少还原不出过冲的峰。
 # 16 段(17 个点)对 easeOutBack 量级的过冲已经足够,且 golden 不会大到没法读。
 SAMPLES = 17
@@ -185,6 +248,66 @@ def sample_curve(easing, duration_ms, n=SAMPLES):
             notes.append("no-overshoot: 阻尼比 %.2f ≥ 1 = 临界/过阻尼,这条弹簧**不会过冲**"
                          "(是数学,不是口味)" % zeta)
     return [(round(x, 6), round(y, 6)) for x, y in pts], notes
+
+
+def apply_defaults(flow, overrides=None):
+    """figma 没写的地方补上默认动效 → (改过的 flow, 补了哪些的说明[])。
+
+    **写进产物,不在运行时注入。** 补出来的每一条都带 `source: "preset:<name>"`,
+    人在 flow.json 里看得见是谁加的、能改能删 —— 默认值是**代笔**,不是**代做主**。
+    已经有值的一律不碰(figma 原稿 / 项目覆盖优先),所以本函数**幂等**。
+
+    只补 figkit 自己的 binder 拥有机制的那几处:弹窗开合、按压、列表逐项、guard 失败。
+    其余效果(拖动的橡皮筋、飘字、演出…)不在这儿 —— 它们由用它的人在自己引擎里实现,
+    去动效目录查公式和默认参数,figkit 不替他们决定挂在哪个元素上。
+    """
+    src = "preset:" + PRESET_NAME
+    added = []
+    ease = preset_easing("ease-out", overrides)
+    ease_drawer = preset_easing("ease-drawer", overrides)
+
+    opened = set()
+    for ev in flow.get("events") or []:
+        if ev.get("do") == "openModal" and not ev.get("transition"):
+            opened.add(ev.get("arg"))
+            # 默认入场 = 缩放入场(scale .95 + 淡入),不是 figma 那 8 种里的任何一种,
+            # 所以用 figkit 自己的类型名,免得被误当成"figma 说了 DISSOLVE"。
+            ev["transition"] = {"type": "SCALE_IN", "duration": token("dur-popup", overrides),
+                                "fromScale": token("enter-scale", overrides),
+                                "easing": ease, "source": src}
+            added.append("events[openModal:%s].transition ← 缩放入场 %dms"
+                         % (ev.get("arg"), token("dur-popup", overrides)))
+        if ev.get("do") == "closeModal" and not ev.get("transition"):
+            # 有入场必有出场:只写入场 = 消失时硬闪。出场**比入场快**(非对称),
+            # 对称的开合读起来比实际慢。
+            ev["transition"] = {"type": "SCALE_OUT", "duration": token("dur-exit", overrides),
+                                "toScale": token("enter-scale", overrides),
+                                "easing": ease, "source": src}
+            added.append("events[closeModal].transition ← 出场 %dms(比入场快)"
+                         % token("dur-exit", overrides))
+
+    m = flow.setdefault("motion", {})
+    m.setdefault("preset", PRESET_NAME)
+    if "press" not in m:
+        # 可点元素没有按下态是**缺陷不是风格** —— 点下去毫无反应,玩家读到的是"卡了"。
+        m["press"] = {"scale": token("press-scale", overrides),
+                      "duration": token("dur-press", overrides), "easing": ease, "source": src}
+        added.append("motion.press ← scale(%s) %dms"
+                     % (token("press-scale", overrides), token("dur-press", overrides)))
+    if "stagger" not in m and flow.get("list"):
+        m["stagger"] = {"step": token("stagger", overrides),
+                        "duration": token("dur-popup", overrides),
+                        "from": token("slide-from", overrides),
+                        "easing": ease_drawer, "source": src}
+        added.append("motion.stagger ← 逐项 %dms(仅因为 flow.list 存在)" % token("stagger", overrides))
+    if "guardFail" not in m and any(ev.get("guard") for ev in (flow.get("events") or [])):
+        # figkit 早就有 onGuardFail 这个 hook,但它什么都不做:协议没勾就点"开始",
+        # 玩家得到的是彻底的沉默。抖动 = 一个元素说「错了」。
+        m["guardFail"] = {"effect": "wiggle", "amp": token("wiggle-amp", overrides),
+                          "duration": token("wiggle-dur", overrides), "source": src}
+        added.append("motion.guardFail ← 抖动 %dpx(仅因为有 guard 事件)"
+                     % token("wiggle-amp", overrides))
+    return flow, added
 
 
 def bake_flow(flow, generator):

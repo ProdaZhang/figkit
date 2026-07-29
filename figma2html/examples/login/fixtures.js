@@ -75,12 +75,42 @@ window.__FIGKIT_FIXTURES = {
    {
     "do": "closeModal",
     "el": "@panelOutside:serverlist",
-    "on": "click"
+    "on": "click",
+    "transition": {
+     "duration": 180,
+     "easing": {
+      "bezier": [
+       0.23,
+       1,
+       0.32,
+       1
+      ],
+      "type": "CUSTOM_CUBIC_BEZIER"
+     },
+     "source": "preset:base",
+     "toScale": 0.95,
+     "type": "SCALE_OUT"
+    }
    },
    {
     "do": "closeModal",
     "el": "@any:notice",
-    "on": "click"
+    "on": "click",
+    "transition": {
+     "duration": 180,
+     "easing": {
+      "bezier": [
+       0.23,
+       1,
+       0.32,
+       1
+      ],
+      "type": "CUSTOM_CUBIC_BEZIER"
+     },
+     "source": "preset:base",
+     "toScale": 0.95,
+     "type": "SCALE_OUT"
+    }
    }
   ],
   "list": {
@@ -102,6 +132,44 @@ window.__FIGKIT_FIXTURES = {
     "roots": [
      "3:10"
     ]
+   }
+  },
+  "motion": {
+   "guardFail": {
+    "amp": 6,
+    "duration": 120,
+    "effect": "wiggle",
+    "source": "preset:base"
+   },
+   "preset": "base",
+   "press": {
+    "duration": 120,
+    "easing": {
+     "bezier": [
+      0.23,
+      1,
+      0.32,
+      1
+     ],
+     "type": "CUSTOM_CUBIC_BEZIER"
+    },
+    "scale": 0.96,
+    "source": "preset:base"
+   },
+   "stagger": {
+    "duration": 260,
+    "easing": {
+     "bezier": [
+      0.32,
+      0.72,
+      0,
+      1
+     ],
+     "type": "CUSTOM_CUBIC_BEZIER"
+    },
+    "from": 24,
+    "source": "preset:base",
+    "step": 45
    }
   },
   "stage": {

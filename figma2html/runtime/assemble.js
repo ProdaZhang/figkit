@@ -62,57 +62,115 @@
     // 不映射到 ease/ease-in-out 之流的关键字 —— 同名不同形,一映射手感就变了。
     // 表达不了的(弹簧、SMART_ANIMATE、figma 没公开控制点的具名曲线)一律 warn 后瞬时显示:
     // **说出来的降级**,不是静默丢失。
+    easeCss(ez) {
+      ez = ez || {};
+      if (Array.isArray(ez.bezier) && ez.bezier.length === 4) return 'cubic-bezier(' + ez.bezier.join(',') + ')';
+      if (ez.spring) { console.warn('[assemble][known-loss] 弹簧缓动 CSS 表达不了,瞬时:', ez.spring); return null; }
+      // 注意:这里查的是 **figma/CSS 的具名缓动**(EASE_OUT = (0,0,.58,1))。
+      // 预设里那条 `ease-out` 是另一条曲线 (.23,1,.32,1),它走上面的 bezier 分支。
+      // 两者形状差近 20 个百分点,绝不能互相顶替。
+      const css = { LINEAR: 'linear', EASE_IN: 'ease-in', EASE_OUT: 'ease-out',
+                    EASE_IN_AND_OUT: 'ease-in-out' }[ez.type];
+      if (!css) console.warn('[assemble][known-loss] 未知缓动,瞬时:', ez.type);
+      return css || null;
+    },
+
+    // tr → { dur, ease, from:{transform, opacity} }(from = 动画的**起点**;出场则是终点)
     transitionCss(tr) {
       if (!tr) return null;
       const dur = Math.max(0, Number(tr.duration) || 0);
-      if (!dur) return null;
-      const ez = tr.easing || {};
-      let ease = null;
-      if (Array.isArray(ez.bezier) && ez.bezier.length === 4) {
-        ease = 'cubic-bezier(' + ez.bezier.join(',') + ')';
-      } else if (ez.spring) {
-        console.warn('[assemble][known-loss] 弹簧缓动 CSS 表达不了,瞬时显示:', ez.spring); return null;
-      } else {
-        const css = { LINEAR: 'linear', EASE_IN: 'ease-in', EASE_OUT: 'ease-out',
-                      EASE_IN_AND_OUT: 'ease-in-out' }[ez.type];
-        if (!css) { console.warn('[assemble][known-loss] 未知缓动,瞬时显示:', ez.type); return null; }
-        ease = css;
-      }
+      const ease = this.easeCss(tr.easing);
+      if (!dur || !ease) return null;
       const off = { LEFT: ['-100%', '0'], RIGHT: ['100%', '0'],
                     TOP: ['0', '-100%'], BOTTOM: ['0', '100%'] }[tr.direction] || null;
-      if (tr.type === 'DISSOLVE') return { dur, ease, from: null };
-      if ((tr.type === 'MOVE_IN' || tr.type === 'SLIDE_IN') && off) return { dur, ease, from: off };
+      const at = (t) => ({ transform: t, opacity: '0' });
+      switch (tr.type) {
+        case 'DISSOLVE':   return { dur, ease, from: at('') };
+        case 'SCALE_IN':   return { dur, ease, from: at('scale(' + (tr.fromScale || 0.95) + ')') };
+        case 'SCALE_OUT':  return { dur, ease, from: at('scale(' + (tr.toScale || 0.95) + ')') };
+        case 'MOVE_IN': case 'SLIDE_IN':
+        case 'MOVE_OUT': case 'SLIDE_OUT':
+          if (off) return { dur, ease, from: at('translate(' + off[0] + ',' + off[1] + ')') };
+          break;
+        default: break;
+      }
       console.warn('[assemble][known-loss] 转场类型', tr.type, '未实现,退化成淡入');
-      return { dur, ease, from: null };
+      return { dur, ease, from: at('') };
+    },
+
+    // 复位到起点 → 强制生效 → 放开。中间那次读 offsetWidth **不能省**:
+    // 元素身上挂着 transition 时,移除终态不会瞬间跳回起点,而是平滑退回去;
+    // 下一帧再加回来,它才退了约 6%,肉眼完全看不出动过。这不是 bug,是可打断性的代价。
+    _play(el, t, to, done) {
+      el.style.transition = 'none';
+      el.style.transform = t.from.transform;
+      el.style.opacity = t.from.opacity;
+      void el.offsetWidth;
+      el.style.transition = 'opacity ' + t.dur + 'ms ' + t.ease + ', transform ' + t.dur + 'ms ' + t.ease;
+      el.style.transform = to.transform;
+      el.style.opacity = to.opacity;
+      if (done) setTimeout(done, t.dur);
     },
 
     // ── 弹窗显隐(底屏常驻)──
+    _hideAll() { Object.keys(this.modals).forEach(k => this.modals[k].el.style.display = 'none'); },
+
     openModal(name, transition) {
-      Object.keys(this.modals).forEach(k => this.modals[k].el.style.display = 'none');
+      this._hideAll();
       const m = this.modals[name];
       if (m) {
         const el = m.el, t = this.transitionCss(transition);
         el.style.display = '';
-        if (t) {
-          // 先关 transition 复位到起点,强制生效后再放开 —— 少了中间那次读 offsetWidth,
-          // 复位与终态会被合并成一帧,动画整个看不见(而且不报错)。
-          el.style.transition = 'none';
-          el.style.opacity = '0';
-          el.style.transform = t.from ? 'translate(' + t.from[0] + ',' + t.from[1] + ')' : '';
-          void el.offsetWidth;
-          el.style.transition = 'opacity ' + t.dur + 'ms ' + t.ease +
-                                (t.from ? ', transform ' + t.dur + 'ms ' + t.ease : '');
-          el.style.opacity = '1';
-          el.style.transform = '';
-        } else {
-          el.style.transition = ''; el.style.opacity = ''; el.style.transform = '';
-        }
+        if (t) this._play(el, t, { transform: '', opacity: '1' });
+        else { el.style.transition = ''; el.style.opacity = ''; el.style.transform = ''; }
       }
       this.current = name;
     },
-    closeModal() {
-      Object.keys(this.modals).forEach(k => this.modals[k].el.style.display = 'none');
+
+    // **有入场必有出场。** 只做入场 = 消失时硬闪,而开合不对称到刺眼。
+    // 出场用的时长来自 flow(figma 声明的,或预设补的 dur-exit —— 后者比入场快,这是有意的:
+    // 对称的开合读起来比实际慢)。没有转场声明就保持瞬时,不自作主张。
+    closeModal(transition) {
+      const cur = this.current, m = cur && this.modals[cur];
+      const t = m ? this.transitionCss(transition) : null;
       this.current = null;
+      if (!t) { this._hideAll(); return; }
+      const el = m.el;
+      el.style.transition = 'none';
+      el.style.transform = ''; el.style.opacity = '1';
+      void el.offsetWidth;
+      el.style.transition = 'opacity ' + t.dur + 'ms ' + t.ease + ', transform ' + t.dur + 'ms ' + t.ease;
+      el.style.transform = t.from.transform;
+      el.style.opacity = t.from.opacity;
+      setTimeout(() => {
+        // 期间又开了别的弹窗就别抢着藏(快速连点会撞上)
+        if (this.current === null) { this._hideAll(); el.style.transition = ''; el.style.transform = ''; el.style.opacity = ''; }
+      }, t.dur);
+    },
+
+    // ── 默认动效:按压 / 逐项入场 / guard 失败(flow.motion,来源见其 source 字段)──
+    motionOf(k) { return (this.flow && this.flow.motion && this.flow.motion[k]) || null; },
+
+    // 可点元素没有按下态是**缺陷不是风格**:点下去毫无反应,玩家读到的是"卡了"。
+    wirePress(el) {
+      const p = this.motionOf('press');
+      if (!p) return;
+      const ease = this.easeCss(p.easing) || 'ease-out';
+      const set = s => { el.style.transition = 'transform ' + p.duration + 'ms ' + ease; el.style.transform = s; };
+      el.addEventListener('pointerdown', () => set('scale(' + (p.scale || 0.96) + ')'));
+      ['pointerup', 'pointercancel', 'pointerleave'].forEach(e => el.addEventListener(e, () => set('')));
+    },
+
+    // 一个元素说「错了」。用 WAAPI 而不是 transition:抖动是**一次性、播完即弃**的,
+    // 而 transition 被快速重复触发时要先关掉才能重放(见 _play 的注释);
+    // WAAPI 的 animate() 每次都是新动画,没有这个坑。
+    wiggle(el) {
+      const g = this.motionOf('guardFail');
+      if (!g || !el || !el.animate) return;
+      const a = g.amp || 6;
+      el.animate([{ transform: 'translateX(0)' }, { transform: 'translateX(' + -a + 'px)' },
+                  { transform: 'translateX(' + a + 'px)' }, { transform: 'translateX(0)' }],
+                 { duration: g.duration || 120, easing: 'ease-in-out' });
     },
 
     // ── 状态 ──
@@ -147,6 +205,7 @@
           const el = self.baseEl(sel);
           if (!el) { console.warn('[assemble] 事件元素未找到:', sel); return; }
           el.style.cursor = 'pointer';
+          self.wirePress(el);
           el.addEventListener('click', e => { e.stopPropagation(); self.dispatch(ev, e); });
         });
       });
@@ -164,12 +223,15 @@
 
     async dispatch(ev, e) {
       if (ev.guard && !this.guardOk(ev.guard)) {
+        // 以前这里是**彻底的沉默** —— 协议没勾就点"开始游戏",界面毫无反应。
+        // onGuardFail 这个 hook 一直在,只是没人给它默认行为。
+        this.wiggle(e && e.currentTarget);
         if (this.actions.onGuardFail) this.actions.onGuardFail(ev);
         return;
       }
       switch (ev.do) {
         case 'openModal':  this.openModal(ev.arg, ev.transition); break;
-        case 'closeModal': this.closeModal(); break;
+        case 'closeModal': this.closeModal(ev.transition); break;
         case 'toggleFlag': this.setFlag(ev.arg, !this.state[ev.arg]); break;
         case 'send':       if (this.actions.send) await this.actions.send(ev.arg, ev); break;
         default:           if (this.actions[ev.do]) await this.actions[ev.do](ev, e);
@@ -207,12 +269,26 @@
       const baseTop = parseFloat(rows[0].style.top) || 0;
       const step = rows.length > 1 ? (parseFloat(rows[1].style.top) - baseTop) : (parseFloat(rows[0].style.height) || 104);
       rows.forEach(r => r.remove());
+      // 逐项入场:全部同时出现 = 一整块东西闪进来,量感全无;错开一点才读得出"有几条"。
+      // 间隔来自 flow.motion.stagger(figma 里没有这个概念,所以它必然是预设补的)。
+      const st = this.motionOf('stagger');
+      const ease = st ? (this.easeCss(st.easing) || 'ease-out') : null;
       items.forEach((item, idx) => {
         const row = tpl.cloneNode(true);
         row.style.top = (baseTop + idx * step) + 'px';
         row.dataset.row = '1';
         rowFn(row, item, idx);
         list.appendChild(row);
+        if (!st) return;
+        row.style.transition = 'none';
+        row.style.opacity = '0';
+        row.style.transform = 'translateY(' + (st.from || 24) + 'px)';
+        void row.offsetWidth;
+        setTimeout(() => {
+          row.style.transition = 'opacity ' + st.duration + 'ms ' + ease +
+                                 ', transform ' + st.duration + 'ms ' + ease;
+          row.style.opacity = ''; row.style.transform = '';
+        }, idx * (st.step || 45));
       });
     },
   };

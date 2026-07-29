@@ -4,7 +4,10 @@
 > Freeze discipline: from v1.0 on, changes are **additive only** (new optional fields / enum values); existing field shapes do not change.
 > The next structural change must be triggered by a real gap hit by some backend, bump to v1.1, and be recorded in the changelog line below.
 > Changelog: v1.0 (2026-07-03) frozen — cross-validated by 6 backends (html render / dsl transcription / unity compile+import / godot in-engine render / unreal strong typing / cocos checker).
-> Additive since freeze (still v1.0, no shape change): optional `events[].transition`, carrying the
+> Additive since freeze (still v1.0, no shape change): optional `events[].transition` and `motion`,
+> plus the SCALE_IN / SCALE_OUT preset transition types. Motion defaults are authored into the file
+> by the importer with a `source` marker, never injected at runtime; Figma always wins over a preset.
+> The first of these carries the
 > Figma prototype transition imported by `flow_from_figma.py`. A backend-hit structural gap is recorded
 > under Fields ("events only bind to the base screen"); it has NOT been patched — that would need v1.1.
 > Translated to English 2026-07-28; the original zh-CN text is kept alongside as `<name>.zh.md` (mirror, not authority).
@@ -52,6 +55,8 @@
 - **events[]**: `on` (currently `click`) + `el` (a Figma node id; an array means several elements trigger the same action; the special forms are `@any:<modal>` and `@panelOutside:<modal>`) + optional `guard` (all of these state keys must be truthy to pass) + `do` (the action) + `arg`.
 - **Built-in `do`**: `openModal(arg)` / `closeModal` / `toggleFlag(arg)` / `send(arg)` (forwarded to the app's `send` action). Any other `do` name is looked up among the actions the app registered.
 - **events[].transition** (optional, additive): the animation the designer attached to this link in Figma, carried through verbatim — `{ "type", "duration", "direction"?, "matchLayers"?, "easing": { "type", "bezier"?, "spring"? } }`. `type` is one of Figma's `DISSOLVE / SMART_ANIMATE / SCROLL_ANIMATE / MOVE_IN / MOVE_OUT / PUSH / SLIDE_IN / SLIDE_OUT`; `spring` keeps Figma's `{mass, stiffness, damping}` triple. **The IR records what the design said, not how a backend solves it** — the conversion to a decoupled (damping ratio, response) pair and the sampling of a curve into engine-native keyframes both happen backend-side (`motion.py` / `motion.ts`). A backend that cannot animate must declare the drop in its known-loss table.
+- **motion** (optional, additive): default motion for the mechanics the engine itself owns — `press` (pressed state for every event-bound element), `stagger` (list rows entering one after another), `guardFail` (the element saying "no"). Figma has no concept for any of these, so anything here is authored by `flow_from_figma.py --motion-defaults` from a named preset and carries `"source": "preset:<name>"`. **Written into the file, never injected at runtime** — you can see what was added, change it, or delete it. Priority is always **Figma > project override > preset**; the importer never touches a transition Figma declared, and re-running it adds nothing new.
+- **Preset transition types**: alongside Figma's eight, `events[].transition.type` may be `SCALE_IN` / `SCALE_OUT` (`fromScale` / `toScale`, default `0.95`) — the default entrance and exit, which Figma's vocabulary has no name for. Never `scale(0)`: nothing in the real world grows out of nothing. Exits are deliberately **shorter** than entrances; a symmetrical open/close reads as slower than it is.
 - **list**: declares which container inside which modal is a data list; `onRowClick` names an app action. The app injects rows carrying `data-row` via `app.renderRows(modal, container, items, rowFn)` (the parameter passed to `register(app)`, i.e. the global `FigApp`), and the engine delegates row clicks.
 - **bindings.checkbox**: the two checkbox states are handled generically by the engine (filled + check mark / translucent + empty). Every other domain field — writing the chosen server back, row colouring, notice text — belongs to the app's `syncBindings(base)` and actions.
 

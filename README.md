@@ -20,7 +20,7 @@ figma REST ──► figma_capture ──►  IR: <screen>.ui.json (pixels) + fl
 
 | backend | offline tests | in-engine verification |
 |---|---|---|
-| figma2html | ✅ 54 | ✅ rendered + interactions (Edge headless screenshot) |
+| figma2html | ✅ 65 | ✅ rendered + interactions (Edge headless screenshot) |
 | figma2dsl | ✅ 19 | ✅ (same render pipeline) |
 | figma2godot | ✅ 21 | ✅ **Godot 4.3**: .tscn rendered, pixel-compared vs HTML; GDScript compiles clean |
 | figma2unity | ✅ 13 | ✅ **Unity 6000.4.8f1**: C# compiles zero-warning, UXML/USS pass Unity's importer, CloneTree structure asserted (visual pass pending) |
@@ -58,6 +58,7 @@ Same IR geometry, two independent backends — rendered from the **zh** variant 
 2. `GET /v1/files/<key>/nodes?ids=<frame>` → `nodes.json`
 3. `python3 figma2html/scripts/figma_capture.py nodes.json <frameId> s01 <assetDir> assets out/screen-01`
 4. **Import the prototype links you already drew in Figma** — `python3 figma2html/scripts/flow_from_figma.py nodes.json flow.json base=screen-01.ui.json notice=screen-02.ui.json` turns `interactions[]` (overlays, back/close, transitions) into a `flow.json` draft. Anything it *can't* carry is listed on stderr with the reason — it never guesses, because a wrong event looks exactly like a right one.
+   Add `--motion-defaults` and it also writes in motion for the mechanics the engine owns — pressed states, modal enter **and exit**, list rows entering one after another, an element shaking when a guard rejects it. Most real Figma files have no prototype wiring at all, and a button that does nothing when pressed doesn't read as "undecorated", it reads as broken. Priority is always **Figma > your overrides > preset**, every added line carries `"source": "preset:base"` so you can see it, change it or delete it, and re-running adds nothing new.
 5. Fill in the half Figma has no way to express — guards, list data-binding, app hooks (contract: [`spec/flow-events.md`](spec/flow-events.md)) — then check it with `python3 figma2html/scripts/flow_check.py flow.json`; a mistyped node id is otherwise only a console warning you'd hit by clicking. Now pick a backend.
 
 Every step above is runnable with no Figma account: `examples/login/nodes.json` is a real-shaped REST response, and importing it reproduces the demo's `stage` / `caps` / `base` / `modals` exactly — the remaining `list`, `bindings` and guards are precisely the application semantics you write by hand.

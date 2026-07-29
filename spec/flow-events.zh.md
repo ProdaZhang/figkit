@@ -52,6 +52,8 @@
 - **events[]**:`on`(目前 click)+ `el`(figma node id;数组=多个触发同一动作;特殊 `@any:<modal>` / `@panelOutside:<modal>`)+ 可选 `guard`(state 里这些都为真才放行)+ `do`(动作)+ `arg`。
 - **内置 do**:`openModal(arg)` / `closeModal` / `toggleFlag(arg)` / `send(arg)`(转给 app 的 send action)。其余 `do` 名 → 查 app 注册的 action。
 - **events[].transition**(可选,additive):设计师在 figma 里给这条连线挂的转场,原样带过来 —— `{ "type", "duration", "direction"?, "matchLayers"?, "easing": { "type", "bezier"?, "spring"? } }`。`type` 取 figma 的 `DISSOLVE / SMART_ANIMATE / SCROLL_ANIMATE / MOVE_IN / MOVE_OUT / PUSH / SLIDE_IN / SLIDE_OUT`;`spring` 保留 figma 的 `{mass, stiffness, damping}` 三元组。**IR 只记"设计说了什么",不记"某个后端怎么解"** —— 换算成解耦的(阻尼比, response)两参、以及把曲线采样成引擎原生关键帧,都在后端侧做(`motion.py` / `motion.ts`)。做不了动画的后端必须在自己的 known-loss 表里登记。
+- **motion**(可选,additive):**引擎自己拥有的机制**的默认动效 —— `press`(每个绑了事件的元素的按下态)、`stagger`(列表行逐项入场)、`guardFail`(元素说「错了」)。figma 里这三样都没有对应概念,所以这块的东西都是 `flow_from_figma.py --motion-defaults` 按具名预设**代笔写进来的**,每条带 `"source": "preset:<名>"`。**写进文件,不在运行时注入** —— 看得见是谁加的、能改能删。优先级恒为 **figma > 项目覆盖 > 预设**:导入器绝不碰 figma 声明过的转场,重跑也不会多加。
+- **预设转场类型**:除 figma 那八种外,`events[].transition.type` 还可以是 `SCALE_IN` / `SCALE_OUT`(`fromScale` / `toScale`,默认 `0.95`)—— 默认的入场与出场,figma 的词汇表里没有名字。❌ 永不 `scale(0)`:现实里没有东西从虚无里长出来。出场**故意比入场短**,对称的开合读起来比实际慢。
 - **list**:声明哪个 modal 的哪个容器是数据列表;`onRowClick` 指向 app action。app 用 `app.renderRows(modal, container, items, rowFn)`(register(app) 的形参,即全局 `FigApp`)注入带 `data-row` 的行,引擎委托行点击。
 - **bindings.checkbox**:勾选框 2 态由引擎通用处理(白底+勾 / 半透+空)。其余域内字段(已选服回填、列表行配色、公告填充)由 app 的 `syncBindings(base)` / action 管。
 
