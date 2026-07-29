@@ -454,8 +454,8 @@ def bake_motion(flow_path, outdir, sys_mod):
     for n in notes:
         sys_mod.stderr.write("[known-loss] motion: " + n + "\n")
     if data["curves"]:
-        sys_mod.stderr.write("[known-loss] motion: 烘出 %d 条曲线,但 FlowBinder.cs 还没接线 "
-                             "—— 转场目前**不播**\n" % len(data["curves"]))
+        sys_mod.stderr.write("[motion] 烘出 %d 条曲线 —— 把本文件拖成 FlowBinder 的 motionJson\n"
+                             % len(data["curves"]))
     return out
 
 

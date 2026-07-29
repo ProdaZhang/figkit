@@ -331,11 +331,32 @@ def bake_flow(flow, generator):
         }
         if tr.get("direction"):
             entry["direction"] = tr["direction"]
+        # 来源要一路活到产物里:光在 flow.json 里标没用,看 motion.json 的人(引擎侧)
+        # 同样需要分得清这条曲线是设计师定的还是预设补的。
+        entry["source"] = tr.get("source", "figma")
         out[key] = entry
         for n in ns:
             notes.append("%s (%s): %s" % (key, entry["figma"], n))
         if not pts:
             entry["unresolved"] = True
+
+    # flow.motion 里那几条(按压 / 逐项入场)也烘进来。**引擎侧一条曲线都不该自己算**:
+    # 各引擎自带的缓动枚举同名不同形,自己算就等于各算各的。这里烘成关键帧,
+    # 引擎只做插值 —— 与 unreal 那条"python 段做完全部数值解算、C++ 侧零解析"的分工一致。
+    for key in ("press", "stagger"):
+        blk = (flow.get("motion") or {}).get(key)
+        if not isinstance(blk, dict) or not blk.get("easing"):
+            continue
+        pts, ns = sample_curve(blk.get("easing"), blk.get("duration", 0))
+        entry = {"do": key, "duration": blk.get("duration", 0),
+                 "figma": describe(blk.get("easing"), blk.get("duration", 0)),
+                 "source": blk.get("source", ""), "points": [list(p) for p in pts]}
+        if not pts:
+            entry["unresolved"] = True
+        out[key] = entry
+        for n in ns:
+            notes.append("%s (%s): %s" % (key, entry["figma"], n))
+
     return {"_generated_by": generator,
             "_note": "sampled easing curves; x/y are 0..1 progress. Regenerate, never hand-edit.",
             "samples": SAMPLES, "curves": out}, notes

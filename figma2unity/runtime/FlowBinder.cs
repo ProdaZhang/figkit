@@ -1,6 +1,8 @@
 // FlowBinder.cs — figma2unity 运行时 flow 绑定器(通用引擎,不含任何域内语义)
 // 目标 Unity 2022.3+ / UI Toolkit。2026-07-03 于 Unity 6000.4.8f1 batchmode 编译冒烟通过(零错零警告);
-// 视觉/交互链未实机点验。
+// 2026-07-29 复跑仍零错零警告,并**实机核验了 motion**:motion.json 被读成 6 条 AnimationCurve
+// (各 17 关键帧),Evaluate(0.25) 与 python 求解器逐条一致到小数点后 6 位。
+// **视觉/交互链仍未在 Play Mode 点验** —— 曲线的值对了,不等于画面对了。
 //
 // 语义 1:1 对齐 figma2html/runtime/assemble.js:
 //   - 架构 = 底屏常驻 + 弹窗叠加(非 swap):底部 UI 只一份,状态唯一不串;
@@ -42,6 +44,9 @@ namespace Figma2Unity
 
         public UIDocument uiDocument;
         public TextAsset flowJson;
+        /// <summary>可选:ui_to_unity.py 给了 flow.json 时烘出的 motion.json(转场缓动的采样曲线)。
+        /// 不配 = 全部瞬时显隐,是**声明在案的降级**(见 references/mapping.md),不是静默丢失。</summary>
+        public TextAsset motionJson;
         public ScreenAsset[] screens;
         public MonoBehaviour appHookBehaviour;
 
@@ -197,6 +202,7 @@ namespace Figma2Unity
                 }
             }
 
+            LoadMotion();       // 必须在 WireEvents 之前:按压要在接线时挂上
             WireEvents();
             SyncBindings();
             if (_hook != null) _hook.Init(this);   // 对应 onReady / APPHOOK.init
@@ -233,19 +239,162 @@ namespace Figma2Unity
             foreach (var c in el.Children()) Collect(c, into);
         }
 
+        // ── 动效(motion.json,同 assemble.js 的 flow.motion / events[].transition)────────
+        //
+        // **C# 这边一条曲线都不算。** figma 给的是具体曲线(cubic-bezier / 弹簧三参),
+        // 而 Unity 自带的缓动枚举同名不同形 —— 各引擎各挑"最像的"就是同一份 IR 六种手感,
+        // 而每家测试照样绿。所以曲线在 python 侧解算成 17 个关键帧,这里只做插值。
+        // 这条分工与 figma2unreal 的"python 段做完全部数值解算、引擎侧零解析"一致。
+        class Curve
+        {
+            public AnimationCurve curve;
+            public float durationSec;
+            public string type;          // DISSOLVE / MOVE_IN / SCALE_IN / SCALE_OUT / …
+            public string direction;     // LEFT / RIGHT / TOP / BOTTOM(方向类才有)
+            public float fromScale = 0.95f;
+        }
+
+        readonly Dictionary<string, Curve> _curves = new Dictionary<string, Curve>();
+        Dictionary<string, object> _motionCfg;
+
+        void LoadMotion()
+        {
+            if (motionJson == null) return;
+            var root = MiniJson.Parse(motionJson.text) as Dictionary<string, object>;
+            var curves = root != null ? Get(root, "curves") as Dictionary<string, object> : null;
+            if (curves == null) return;
+            foreach (var kv in curves)
+            {
+                var c = kv.Value as Dictionary<string, object>;
+                var pts = c != null ? Get(c, "points") as List<object> : null;
+                if (pts == null || pts.Count < 2) continue;      // unresolved 的曲线没有点,跳过
+                var ac = new AnimationCurve();
+                foreach (var po in pts)
+                {
+                    var p = po as List<object>;
+                    if (p != null && p.Count >= 2) ac.AddKey(Num(p[0]), Num(p[1]));
+                }
+                _curves[kv.Key] = new Curve
+                {
+                    curve = ac,
+                    durationSec = Num(Get(c, "duration")) / 1000f,
+                    type = Get(c, "type") as string,
+                    direction = Get(c, "direction") as string,
+                    fromScale = c.ContainsKey("fromScale") ? Num(Get(c, "fromScale"))
+                              : (c.ContainsKey("toScale") ? Num(Get(c, "toScale")) : 0.95f),
+                };
+            }
+            _motionCfg = Get(_flow, "motion") as Dictionary<string, object>;
+        }
+
+        static float Num(object o)
+        {
+            if (o is double) return (float)(double)o;
+            if (o is float) return (float)o;
+            if (o is int) return (int)o;
+            return 0f;
+        }
+
+        /// <summary>按采样曲线驱动一段动画。t 归一化 0..1,回调自己决定往哪儿贴。</summary>
+        void Play(VisualElement el, Curve c, bool reverse, Action<VisualElement, float> apply, Action done)
+        {
+            if (el == null || c == null || c.durationSec <= 0f) { if (apply != null) apply(el, reverse ? 0f : 1f); if (done != null) done(); return; }
+            float elapsed = 0f;
+            apply(el, reverse ? 1f : 0f);
+            IVisualElementScheduledItem item = null;
+            item = el.schedule.Execute(() =>
+            {
+                elapsed += 0.016f;
+                float x = Mathf.Clamp01(elapsed / c.durationSec);
+                float v = c.curve.Evaluate(x);
+                apply(el, reverse ? 1f - v : v);
+                if (x >= 1f)
+                {
+                    item.Pause();
+                    if (done != null) done();
+                }
+            }).Every(16);
+        }
+
+        /// <summary>转场类型 → 怎么把进度 v(0=起点 1=终点)贴到元素上。</summary>
+        static Action<VisualElement, float> Applier(Curve c)
+        {
+            string type = c.type ?? "DISSOLVE";
+            float from = c.fromScale;
+            if (type == "SCALE_IN" || type == "SCALE_OUT")
+                return (e, v) =>
+                {
+                    e.style.opacity = v;
+                    float s = Mathf.Lerp(from, 1f, v);
+                    e.style.scale = new Scale(new Vector2(s, s));
+                };
+            if (type == "MOVE_IN" || type == "SLIDE_IN" || type == "MOVE_OUT" || type == "SLIDE_OUT")
+            {
+                float sx = 0f, sy = 0f;
+                switch (c.direction)
+                {
+                    case "LEFT": sx = -1f; break;
+                    case "RIGHT": sx = 1f; break;
+                    case "TOP": sy = -1f; break;
+                    default: sy = 1f; break;              // BOTTOM 及缺省
+                }
+                return (e, v) =>
+                {
+                    e.style.opacity = v;
+                    float w = e.resolvedStyle.width, h = e.resolvedStyle.height;
+                    e.style.translate = new Translate(sx * w * (1f - v), sy * h * (1f - v));
+                };
+            }
+            return (e, v) => { e.style.opacity = v; };     // DISSOLVE 及未实现的类型(退化成淡入)
+        }
+
+        Curve CurveForEvent(Dictionary<string, object> ev)
+        {
+            // motion.json 的 key 是 flow.events 的下标(ev<i>) —— 与 bake_flow 同一约定。
+            var events = Get(_flow, "events") as List<object>;
+            if (events == null) return null;
+            for (int i = 0; i < events.Count; i++)
+            {
+                if (!ReferenceEquals(events[i], ev)) continue;
+                Curve c;
+                return _curves.TryGetValue("ev" + i, out c) ? c : null;
+            }
+            return null;
+        }
+
         // ── 弹窗显隐(底屏常驻,同 assemble.openModal/closeModal)────────
-        public void OpenModal(string name)
+        public void OpenModal(string name) { OpenModal(name, null); }
+
+        // 带曲线的重载是**内部**的:Curve 是私有嵌套类型,放进 public 签名会 CS0051
+        // (可访问性不一致)。对外 API 仍是无参那两个,保持向后兼容。
+        void OpenModal(string name, Curve c)
         {
             foreach (var kv in _modals) kv.Value.layer.style.display = DisplayStyle.None;
             ModalInfo m;
-            if (_modals.TryGetValue(name, out m)) m.layer.style.display = DisplayStyle.Flex;
+            if (!_modals.TryGetValue(name, out m)) { _current = name; return; }
+            m.layer.style.display = DisplayStyle.Flex;
             _current = name;
+            if (c != null) Play(m.layer, c, false, Applier(c), null);
         }
 
-        public void CloseModal()
+        public void CloseModal() { CloseModal(null); }
+
+        /// <summary>**有入场必有出场** —— 只做入场 = 消失时硬闪。没有转场声明就保持瞬时,不自作主张。</summary>
+        void CloseModal(Curve c)
         {
-            foreach (var kv in _modals) kv.Value.layer.style.display = DisplayStyle.None;
+            string cur = _current;
+            ModalInfo m;
             _current = null;
+            if (c == null || cur == null || !_modals.TryGetValue(cur, out m))
+            {
+                foreach (var kv in _modals) kv.Value.layer.style.display = DisplayStyle.None;
+                return;
+            }
+            var layer = m.layer;
+            Play(layer, c, true, Applier(c), () =>
+            {
+                if (_current == null) layer.style.display = DisplayStyle.None;   // 期间又开了别的就别抢着藏
+            });
         }
 
         // ── 状态与守卫 ────────────────────────────────────────────────
@@ -340,7 +489,50 @@ namespace Figma2Unity
             var el = BaseQ(sel);
             if (el == null) { Debug.LogWarning("[FlowBinder] 事件元素未找到: " + sel); return; }
             el.pickingMode = PickingMode.Position;
+            WirePress(el);
             el.RegisterCallback<ClickEvent>(e => { e.StopPropagation(); Dispatch(ev); });
+        }
+
+        // ── 按压 / 抖动(flow.motion,同 assemble.wirePress / wiggle)────────────────
+        VisualElement _lastPressed;
+
+        /// <summary>可点元素没有按下态是**缺陷不是风格**:点下去毫无反应,玩家读到的是"卡了"。</summary>
+        void WirePress(VisualElement el)
+        {
+            var cfg = _motionCfg != null ? Get(_motionCfg, "press") as Dictionary<string, object> : null;
+            if (cfg == null) return;
+            Curve c;
+            _curves.TryGetValue("press", out c);
+            float target = cfg.ContainsKey("scale") ? Num(Get(cfg, "scale")) : 0.96f;
+            el.RegisterCallback<PointerDownEvent>(e =>
+            {
+                _lastPressed = el;
+                if (c != null) Play(el, c, false, (x, v) => { float s = Mathf.Lerp(1f, target, v); x.style.scale = new Scale(new Vector2(s, s)); }, null);
+                else el.style.scale = new Scale(new Vector2(target, target));
+            });
+            EventCallback<PointerUpEvent> up = e => { el.style.scale = new Scale(Vector2.one); };
+            el.RegisterCallback(up);
+            el.RegisterCallback<PointerLeaveEvent>(e => { el.style.scale = new Scale(Vector2.one); });
+        }
+
+        /// <summary>一个元素说「错了」。guard 拒绝时抖一下 —— 参数来自 flow.motion.guardFail。</summary>
+        public void Wiggle(VisualElement el)
+        {
+            var cfg = _motionCfg != null ? Get(_motionCfg, "guardFail") as Dictionary<string, object> : null;
+            if (el == null || cfg == null) return;
+            float amp = cfg.ContainsKey("amp") ? Num(Get(cfg, "amp")) : 6f;
+            float dur = (cfg.ContainsKey("duration") ? Num(Get(cfg, "duration")) : 120f) / 1000f;
+            float t = 0f;
+            IVisualElementScheduledItem item = null;
+            item = el.schedule.Execute(() =>
+            {
+                t += 0.016f;
+                float x = Mathf.Clamp01(t / dur);
+                // 一去一回一归零。抖动是**一次性、播完即弃**的,所以直接按相位算,不复用转场曲线。
+                float off = Mathf.Sin(x * Mathf.PI * 2f) * amp * (1f - x);
+                el.style.translate = new Translate(off, 0f);
+                if (x >= 1f) { el.style.translate = new Translate(0f, 0f); item.Pause(); }
+            }).Every(16);
         }
 
         static bool IsInside(VisualElement el, VisualElement ancestor)
@@ -365,6 +557,8 @@ namespace Figma2Unity
             var guards = Get(ev, "guard") as List<object>;
             if (!GuardOk(guards))
             {
+                // 以前这里对玩家是**彻底的沉默**:协议没勾就点"开始",界面毫无反应。
+                Wiggle(_lastPressed);
                 FlowAction gf;
                 if (_actions.TryGetValue("onGuardFail", out gf)) gf(null, ev);
                 return;
@@ -373,8 +567,8 @@ namespace Figma2Unity
             var arg = Get(ev, "arg");
             switch (doName)
             {
-                case "openModal": OpenModal(arg as string); break;
-                case "closeModal": CloseModal(); break;
+                case "openModal": OpenModal(arg as string, CurveForEvent(ev)); break;
+                case "closeModal": CloseModal(CurveForEvent(ev)); break;
                 case "toggleFlag":
                     var flag = arg as string;
                     if (flag != null)
@@ -468,7 +662,26 @@ namespace Figma2Unity
                 row.AddToClassList("flow-row");           // 等价 data-row,行点击委托靠它识别
                 if (fillRow != null) fillRow(row, i);
                 container.Add(row);
+                StaggerIn(row, i);
             }
+        }
+
+        /// <summary>逐项入场:全部同时出现 = 一整块东西闪进来,量感全无;错开一点才读得出"有几条"。</summary>
+        void StaggerIn(VisualElement row, int index)
+        {
+            var cfg = _motionCfg != null ? Get(_motionCfg, "stagger") as Dictionary<string, object> : null;
+            Curve c;
+            if (cfg == null || !_curves.TryGetValue("stagger", out c)) return;
+            float step = (cfg.ContainsKey("step") ? Num(Get(cfg, "step")) : 45f) / 1000f;
+            float from = cfg.ContainsKey("from") ? Num(Get(cfg, "from")) : 24f;
+            row.style.opacity = 0f;
+            row.schedule.Execute(() =>
+                Play(row, c, false, (e, v) =>
+                {
+                    e.style.opacity = v;
+                    e.style.translate = new Translate(0f, from * (1f - v));
+                }, null)
+            ).StartingIn((long)(index * step * 1000));
         }
 
         VisualElement CloneRow(string capName, string templateName)

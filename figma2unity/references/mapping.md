@@ -83,12 +83,30 @@ IR 样式值是 **CSS 风格字符串**(`radius="45px"`、`border="2.0px solid r
 用法:`new AnimationCurve(points.Select(p => new Keyframe(p[0], p[1])).ToArray())`,
 再自己 tween;**别**图省事换成 `transition-timing-function` 的关键字。
 
+**接线**:把 `motion.json` 拖成 `FlowBinder` 的 `motionJson`(TextAsset)。不配 = 全部瞬时显隐,
+是**声明在案的降级**,不是静默丢失。配了则自动生效:
+
+| 机制 | 行为 | 曲线来源 |
+|---|---|---|
+| 弹窗入场 / **出场** | `events[].transition`,含 `SCALE_IN/OUT`、`MOVE_IN/OUT`、`SLIDE_IN/OUT`、`DISSOLVE` | figma 声明的,或预设补的 |
+| 按压反馈 | 每个绑了事件的元素 `PointerDown` → 缩到 `motion.press.scale` | 预设(figma 无此概念) |
+| 列表逐项入场 | `RenderRows` 每行按 `motion.stagger.step` 错开 | 预设 |
+| guard 拒绝 | 抖一下(`motion.guardFail`) | 预设 |
+
+**2026-07-29 于 Unity 6000.4.8f1 batchmode 实机核验**:`FlowBinder` 把 `motion.json` 读成 6 条
+`AnimationCurve`(各 17 关键帧),`Evaluate(0.25)` 与 python 求解器**逐条一致到小数点后 6 位**
+(`DISSOLVE 0.378138` / `MOVE_IN 0.779131` / `SCALE_OUT 0.775382` / `press` / `stagger`),
+编译零错零警告。**动画的视觉播放未在 Play Mode 点验**(需要真跑场景)。
+
 | 处置 | 说明 |
 |---|---|
-| **known-loss:不播** | `FlowBinder.cs` **尚未接线**,曲线表烘出来没人读;生成时打 `[known-loss]`,不是静默丢失 |
 | **known-loss:具名弹簧预设** | `GENTLE/QUICK/BOUNCY/SLOW`、`*_BACK` figma 没公开控制点 → 标 `unresolved` 不采样,**不编数** |
 | **approx:弹簧被 duration 截断** | 弹簧没有固定时长,窗口短于收敛时间就切一截,生成时打 `truncated:` |
 | **known-loss:`SMART_ANIMATE`** | 同名图层自动配对插值,跨引擎无对应物;曲线照采,配对逻辑不实现 |
+| **known-loss:弹簧曲线** | 采样点照采,但 CSS/USS 都没有原生弹簧;按采样关键帧插值 = 形状对、可打断性没有 |
+
+⚠️ 用 `style.scale` / `style.translate`,**不用** `transform.scale` / `transform.position` ——
+后者在 Unity 6 起全部 `[Obsolete]`,会打破本后端"编译零警告"的声明。
 
 ## 坐标与缩放(Unity 侧摆放)
 
