@@ -5,7 +5,7 @@
 # 目标 Godot 4.2+;2026-07-03 于 Godot 4.3-stable 编译冒烟通过(场景渲染已眼比对齐 figma2html;
 # 交互链未实机点验)。2026-07-29 实机核验 motion:6 条曲线读成 Curve,sample(0.3) 与 python
 # 求解器 + Unity 侧三方一致到小数点后 6 位;转场真播(中途 alpha=0.509/offsetY=942.5 → 终态 1.0/0.0)。
-注意:新工程先 `godot --headless --import` 一次,否则 class_name 未注册。
+# 注意:新工程先 `godot --headless --import` 一次,否则 class_name 未注册。
 #
 # 用法(见 app_hook.example.gd):
 #   var binder := FlowBinder.new()
@@ -235,30 +235,45 @@ func _play(el: Control, c: Dictionary, reverse: bool, apply: Callable, done: Cal
 		tw.finished.connect(func() -> void: done.call())
 
 
-## 转场类型 → 怎么把进度贴到元素上(与 assemble.js transitionCss 同一张表)。
-func _applier(c: Dictionary) -> Callable:
+## 转场类型 → 怎么把进度贴到画面上(与 assemble.js transitionCss 同一张表)。
+##
+## ⚠️ **位移/缩放只贴面板本体,遮罩只跟着淡。** 早先把 transform 贴在弹窗**层**上,
+## 而遮罩是层的子节点 —— 于是遮罩跟着面板一起滑/缩,顶部不变暗、四边缩进露出底屏。
+## 数值层面完全看不出来(曲线取值一个不差),是实机截图才抓到的。
+func _apply(mname: String, c: Dictionary, v: float) -> void:
+	var layer := modals[mname]["el"] as Control
+	layer.modulate.a = v                      # 遮罩 + 面板整体淡入淡出
+	var panel := find_el(layer, String(modals[mname].get("panel", "")))
+	if panel == null:
+		return                                # 没声明 panel 就只淡,不猜该动谁
 	var t := String(c.get("type", "DISSOLVE"))
-	var from_scale := float(c.get("from_scale", 0.95))
 	if t == "SCALE_IN" or t == "SCALE_OUT":
-		return func(el: Control, v: float) -> void:
-			el.modulate.a = v
-			var s := lerpf(from_scale, 1.0, v)
-			el.pivot_offset = el.size / 2.0
-			el.scale = Vector2(s, s)
-	if t in ["MOVE_IN", "SLIDE_IN", "MOVE_OUT", "SLIDE_OUT"]:
-		var dir := String(c.get("direction", "BOTTOM"))
+		var from_scale := float(c.get("from_scale", 0.95))
+		var sc := lerpf(from_scale, 1.0, v)
+		panel.pivot_offset = panel.size / 2.0
+		panel.scale = Vector2(sc, sc)
+	elif t in ["MOVE_IN", "SLIDE_IN", "MOVE_OUT", "SLIDE_OUT"]:
 		var ux := 0.0
 		var uy := 1.0
-		match dir:
+		match String(c.get("direction", "BOTTOM")):
 			"LEFT": ux = -1.0; uy = 0.0
 			"RIGHT": ux = 1.0; uy = 0.0
 			"TOP": ux = 0.0; uy = -1.0
 			_: ux = 0.0; uy = 1.0
-		return func(el: Control, v: float) -> void:
-			el.modulate.a = v
-			el.position = Vector2(ux * el.size.x * (1.0 - v), uy * el.size.y * (1.0 - v))
-	return func(el: Control, v: float) -> void:      # DISSOLVE 及未实现的类型 → 淡入
-		el.modulate.a = v
+		if not panel.has_meta("home"):
+			panel.set_meta("home", panel.position)
+		var home: Vector2 = panel.get_meta("home")
+		panel.position = home + Vector2(ux * layer.size.x, uy * layer.size.y) * (1.0 - v)
+
+
+func _reset_panel(mname: String) -> void:
+	var layer := modals[mname]["el"] as Control
+	layer.modulate.a = 1.0
+	var panel := find_el(layer, String(modals[mname].get("panel", "")))
+	if panel != null:
+		panel.scale = Vector2.ONE
+		if panel.has_meta("home"):
+			panel.position = panel.get_meta("home")
 
 
 # ── 弹窗显隐(底屏常驻)────────────────────────────────────────────────
@@ -272,9 +287,9 @@ func open_modal(mname: String, c: Variant = null) -> void:
 	var el := modals[mname]["el"] as Control
 	el.visible = true
 	if c is Dictionary:
-		_play(el, c, false, _applier(c), Callable())
+		_play(el, c, false, func(_x, v: float) -> void: _apply(mname, c, v), Callable())
 	else:
-		el.modulate.a = 1.0
+		_reset_panel(mname)
 
 
 ## **有入场必有出场** —— 只做入场 = 消失时硬闪。没有转场声明就保持瞬时,不自作主张。
@@ -286,12 +301,10 @@ func close_modal(c: Variant = null) -> void:
 			(modals[k]["el"] as Control).visible = false
 		return
 	var el := modals[cur]["el"] as Control
-	_play(el, c, true, _applier(c), func() -> void:
+	_play(el, c, true, func(_x, v: float) -> void: _apply(cur, c, v), func() -> void:
 		if current == null:                          # 期间又开了别的弹窗就别抢着藏
 			el.visible = false
-			el.modulate.a = 1.0
-			el.position = Vector2.ZERO
-			el.scale = Vector2.ONE)
+			_reset_panel(cur))
 
 
 # ── 状态/守卫(truthy 判定对齐 assemble.js guardOk)──────────────────

@@ -101,15 +101,30 @@
     // 复位到起点 → 强制生效 → 放开。中间那次读 offsetWidth **不能省**:
     // 元素身上挂着 transition 时,移除终态不会瞬间跳回起点,而是平滑退回去;
     // 下一帧再加回来,它才退了约 6%,肉眼完全看不出动过。这不是 bug,是可打断性的代价。
-    _play(el, t, to, done) {
-      el.style.transition = 'none';
-      el.style.transform = t.from.transform;
-      el.style.opacity = t.from.opacity;
-      void el.offsetWidth;
-      el.style.transition = 'opacity ' + t.dur + 'ms ' + t.ease + ', transform ' + t.dur + 'ms ' + t.ease;
-      el.style.transform = to.transform;
-      el.style.opacity = to.opacity;
+    //
+    // ⚠️ **位移/缩放只贴面板本体,遮罩只跟着淡。** 早先把 transform 贴在弹窗**层**上,
+    // 而遮罩是层的子元素 —— 于是遮罩跟着面板一起滑/缩:顶部不变暗、四边缩进露出底屏。
+    // 数值层面完全看不出来(曲线取值一个不差),是 Godot 实机截图才抓到的,html 同构同病。
+    _play(layer, panel, t, forward, done) {
+      const px = panel || layer;
+      const set = (o, tr) => {
+        layer.style.opacity = o;
+        px.style.transform = tr;
+      };
+      layer.style.transition = 'none';
+      px.style.transition = 'none';
+      set(forward ? '0' : '1', forward ? t.from.transform : '');
+      void layer.offsetWidth;
+      const tr = ' ' + t.dur + 'ms ' + t.ease;
+      layer.style.transition = 'opacity' + tr;
+      px.style.transition = 'transform' + tr;
+      set(forward ? '1' : '0', forward ? '' : t.from.transform);
       if (done) setTimeout(done, t.dur);
+    },
+
+    _panelOf(name) {
+      const m = this.modals[name];
+      return m && m.panel ? this.$(m.el, m.panel) : null;
     },
 
     // ── 弹窗显隐(底屏常驻)──
@@ -121,8 +136,9 @@
       if (m) {
         const el = m.el, t = this.transitionCss(transition);
         el.style.display = '';
-        if (t) this._play(el, t, { transform: '', opacity: '1' });
-        else { el.style.transition = ''; el.style.opacity = ''; el.style.transform = ''; }
+        this.current = name;
+        if (t) this._play(el, this._panelOf(name), t, true);
+        else this._resetLayer(name);
       }
       this.current = name;
     },
@@ -135,17 +151,19 @@
       const t = m ? this.transitionCss(transition) : null;
       this.current = null;
       if (!t) { this._hideAll(); return; }
-      const el = m.el;
-      el.style.transition = 'none';
-      el.style.transform = ''; el.style.opacity = '1';
-      void el.offsetWidth;
-      el.style.transition = 'opacity ' + t.dur + 'ms ' + t.ease + ', transform ' + t.dur + 'ms ' + t.ease;
-      el.style.transform = t.from.transform;
-      el.style.opacity = t.from.opacity;
-      setTimeout(() => {
+      this._play(m.el, this._panelOf(cur), t, false, () => {
         // 期间又开了别的弹窗就别抢着藏(快速连点会撞上)
-        if (this.current === null) { this._hideAll(); el.style.transition = ''; el.style.transform = ''; el.style.opacity = ''; }
-      }, t.dur);
+        if (this.current === null) { this._hideAll(); this._resetLayer(cur); }
+      });
+    },
+
+    _resetLayer(name) {
+      const m = this.modals[name];
+      if (!m) return;
+      const p = this._panelOf(name);
+      m.el.style.transition = ''; m.el.style.opacity = '';
+      if (p) { p.style.transition = ''; p.style.transform = ''; }
+      else { m.el.style.transform = ''; }
     },
 
     // ── 默认动效:按压 / 逐项入场 / guard 失败(flow.motion,来源见其 source 字段)──

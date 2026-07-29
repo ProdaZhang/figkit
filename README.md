@@ -22,7 +22,7 @@ figma REST ──► figma_capture ──►  IR: <screen>.ui.json (pixels) + fl
 |---|---|---|
 | figma2html | ✅ 65 | ✅ rendered + interactions (Edge headless screenshot) |
 | figma2dsl | ✅ 19 | ✅ (same render pipeline) |
-| figma2godot | ✅ 21 | ✅ **Godot 4.3**: .tscn rendered, pixel-compared vs HTML; GDScript compiles clean; motion plays in-engine and its curves agree with Python **and Unity** to 6 decimals at a non-key sample point |
+| figma2godot | ✅ 21 | ✅ **Godot 4.3**: .tscn rendered, pixel-compared vs HTML; GDScript compiles clean; motion runs in-engine and was **screenshotted mid-transition** — curves agree with Python and Unity to 6 decimals at a non-key point, and the frames caught a backdrop bug no numeric check could see |
 | figma2unity | ✅ 13 | ✅ **Unity 6000.4.8f1**: C# compiles zero-warning, UXML/USS pass Unity's importer, CloneTree structure asserted; `motion.json` loads as 6 `AnimationCurve`s agreeing with Python **and Godot** to 6 decimals (visual pass in Play Mode still pending) |
 | figma2unreal | ✅ 40 | ⏳ not yet compiled in UE. Two **engine-free gates** hold the line meanwhile: `uespec_contract.py` (python-emitted ↔ C++-read field parity, known-loss must be declared) and `uht_lint.py` (UE reflection conventions R1–R6: `.generated.h` last, `GENERATED_BODY`, `UINTERFACE` pairing, `Execute_` dispatch, GC visibility of UObject members, include→module registry). They check *conventions and contracts, not API truth* — whether `FSlateFontInfo` really has that field still needs a real compile. Risk self-assessment in `references/mapping.md` |
 | figma2cocos | ✅ 11 | 🟡 TS strict-typechecks against official `@cocos/creator-types` (engine d.ts, decorators incl.); not yet run in Creator |

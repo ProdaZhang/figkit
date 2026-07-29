@@ -327,36 +327,50 @@ namespace Figma2Unity
             }).Every(16);
         }
 
-        /// <summary>转场类型 → 怎么把进度 v(0=起点 1=终点)贴到元素上。</summary>
-        static Action<VisualElement, float> Applier(Curve c)
+        /// <summary>把进度贴到画面上。
+        ///
+        /// ⚠️ **位移/缩放只贴面板本体,遮罩只跟着淡。** 早先把 transform 贴在弹窗**层**上,
+        /// 而 backdrop 是层的子元素 —— 于是遮罩跟着面板一起滑/缩:顶部不变暗、四边缩进
+        /// 露出底屏。数值层面完全看不出来(曲线取值一个不差),是 Godot 实机截图抓到的,
+        /// 三端同构同病。</summary>
+        void ApplyProgress(string modalName, Curve c, float v)
         {
+            ModalInfo m;
+            if (!_modals.TryGetValue(modalName, out m)) return;
+            m.layer.style.opacity = v;                       // 遮罩 + 面板整体淡
+            var panel = m.panelId != null ? m.layer.Q(SafeName(m.panelId)) : null;
+            if (panel == null) return;                        // 没声明 panel 就只淡,不猜该动谁
             string type = c.type ?? "DISSOLVE";
-            float from = c.fromScale;
             if (type == "SCALE_IN" || type == "SCALE_OUT")
-                return (e, v) =>
-                {
-                    e.style.opacity = v;
-                    float s = Mathf.Lerp(from, 1f, v);
-                    e.style.scale = new Scale(new Vector2(s, s));
-                };
-            if (type == "MOVE_IN" || type == "SLIDE_IN" || type == "MOVE_OUT" || type == "SLIDE_OUT")
             {
-                float sx = 0f, sy = 0f;
+                float s = Mathf.Lerp(c.fromScale, 1f, v);
+                panel.style.transformOrigin = new TransformOrigin(Length.Percent(50), Length.Percent(50));
+                panel.style.scale = new Scale(new Vector2(s, s));
+            }
+            else if (type == "MOVE_IN" || type == "SLIDE_IN" || type == "MOVE_OUT" || type == "SLIDE_OUT")
+            {
+                float sx = 0f, sy = 1f;
                 switch (c.direction)
                 {
-                    case "LEFT": sx = -1f; break;
-                    case "RIGHT": sx = 1f; break;
-                    case "TOP": sy = -1f; break;
-                    default: sy = 1f; break;              // BOTTOM 及缺省
+                    case "LEFT": sx = -1f; sy = 0f; break;
+                    case "RIGHT": sx = 1f; sy = 0f; break;
+                    case "TOP": sx = 0f; sy = -1f; break;
+                    default: sx = 0f; sy = 1f; break;         // BOTTOM 及缺省
                 }
-                return (e, v) =>
-                {
-                    e.style.opacity = v;
-                    float w = e.resolvedStyle.width, h = e.resolvedStyle.height;
-                    e.style.translate = new Translate(sx * w * (1f - v), sy * h * (1f - v));
-                };
+                float w = m.layer.resolvedStyle.width, h = m.layer.resolvedStyle.height;
+                panel.style.translate = new Translate(sx * w * (1f - v), sy * h * (1f - v));
             }
-            return (e, v) => { e.style.opacity = v; };     // DISSOLVE 及未实现的类型(退化成淡入)
+        }
+
+        void ResetModal(string modalName)
+        {
+            ModalInfo m;
+            if (!_modals.TryGetValue(modalName, out m)) return;
+            m.layer.style.opacity = 1f;
+            var panel = m.panelId != null ? m.layer.Q(SafeName(m.panelId)) : null;
+            if (panel == null) return;
+            panel.style.scale = new Scale(Vector2.one);
+            panel.style.translate = new Translate(0f, 0f);
         }
 
         Curve CurveForEvent(Dictionary<string, object> ev)
@@ -385,7 +399,8 @@ namespace Figma2Unity
             if (!_modals.TryGetValue(name, out m)) { _current = name; return; }
             m.layer.style.display = DisplayStyle.Flex;
             _current = name;
-            if (c != null) Play(m.layer, c, false, Applier(c), null);
+            if (c != null) Play(m.layer, c, false, (e, v) => ApplyProgress(name, c, v), null);
+            else ResetModal(name);
         }
 
         public void CloseModal() { CloseModal(null); }
@@ -402,9 +417,9 @@ namespace Figma2Unity
                 return;
             }
             var layer = m.layer;
-            Play(layer, c, true, Applier(c), () =>
+            Play(layer, c, true, (e, v) => ApplyProgress(cur, c, v), () =>
             {
-                if (_current == null) layer.style.display = DisplayStyle.None;   // 期间又开了别的就别抢着藏
+                if (_current == null) { layer.style.display = DisplayStyle.None; ResetModal(cur); }
             });
         }
 
