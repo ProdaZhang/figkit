@@ -1,0 +1,19 @@
+{
+  "name": "figkit-motion",
+  "version": "0.2.0",
+  "description": "Motion catalog: 59 effects, 63 tokens, 6 shared algorithms — method and parameters, engine-agnostic",
+  "author": {
+    "name": "ProdaZhang",
+    "url": "https://github.com/ProdaZhang"
+  },
+  "homepage": "https://github.com/ProdaZhang/figkit",
+  "repository": "https://github.com/ProdaZhang/figkit",
+  "license": "MIT",
+  "keywords": [
+    "motion",
+    "animation",
+    "design-tokens",
+    "easing",
+    "ui"
+  ]
+}

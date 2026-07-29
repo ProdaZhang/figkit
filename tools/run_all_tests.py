@@ -2,7 +2,7 @@
 """run_all_tests.py — 仓库唯一的测试入口(跨平台,纯标准库)。
 
 用法:
-    python3 tools/run_all_tests.py            # 全部:spec parity + 六套 skill 测试
+    python3 tools/run_all_tests.py            # 全部:spec parity + 七套 skill 测试
     python3 tools/run_all_tests.py godot dsl  # 只跑指定后端(前缀匹配 figma2*)
     python3 tools/run_all_tests.py --list     # 看有哪些套件
 
@@ -25,8 +25,10 @@ except Exception:
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(_HERE)
-BACKENDS = ["figma2dsl", "figma2html", "figma2unity",
-            "figma2godot", "figma2unreal", "figma2cocos"]
+# 七套 skill。前六个是后端(吃 IR、产东西);figkit-motion 是**查阅层** ——
+# 它不产物、不吃 IR,但它的 tokens.json 是 motion.py 那份预设的出处,所以同样要跑测试。
+SUITES = ["figma2dsl", "figma2html", "figma2unity",
+          "figma2godot", "figma2unreal", "figma2cocos", "figkit-motion"]
 
 
 _COUNTS = {}        # 套件名 -> 通过的检查条数(顺带数出来,不额外跑第二遍)
@@ -76,19 +78,19 @@ def main(argv):
     args = [a for a in argv[1:] if not a.startswith("-")]
     if "--list" in argv[1:]:
         print("spec-parity")
-        for b in BACKENDS:
+        for b in SUITES:
             print(b)
         return 0
 
-    picked = BACKENDS if not args else [
-        b for b in BACKENDS if any(a.lower().lstrip("figma2") in b.lower() for a in args)]
+    picked = SUITES if not args else [
+        b for b in SUITES if any(a.lower().lstrip("figma2") in b.lower() for a in args)]
     if not picked:
-        print("没有匹配的套件: %s(可选: %s)" % (", ".join(args), ", ".join(BACKENDS)),
+        print("没有匹配的套件: %s(可选: %s)" % (", ".join(args), ", ".join(SUITES)),
               file=sys.stderr)
         return 2
 
     failed = []
-    if picked == BACKENDS:      # 只在跑全量时校验 spec 一致性与跨后端一致性
+    if picked == SUITES:      # 只在跑全量时校验 spec 一致性与跨后端一致性
         if not _run("spec parity", [os.path.join("tools", "spec_parity.py")], ROOT):
             failed.append("spec-parity")
         if not _run("conformance (cross-backend)", ["run_all.py"],
@@ -103,7 +105,7 @@ def main(argv):
         if not _run(b, ["run_all.py"], d, key=b):
             failed.append(b)
 
-    if picked == BACKENDS and not failed:   # 全量且全绿时才核 README(局部跑数字必然对不上)
+    if picked == SUITES and not failed:   # 全量且全绿时才核 README(局部跑数字必然对不上)
         stale = check_readme_counts()
         if stale:
             print("\n== README 矩阵 ==")
@@ -115,7 +117,7 @@ def main(argv):
     if failed:
         print("FAILED: " + ", ".join(failed), file=sys.stderr)
         return 1
-    print("ALL GREEN (%d 套)" % (len(picked) + (2 if picked == BACKENDS else 0)))
+    print("ALL GREEN (%d 套)" % (len(picked) + (2 if picked == SUITES else 0)))
     return 0
 
 

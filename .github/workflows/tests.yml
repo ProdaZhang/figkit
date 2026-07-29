@@ -1,6 +1,6 @@
 name: tests
 
-# 唯一入口 = tools/run_all_tests.py(spec parity + 六套纯标准库测试,不是 pytest)。
+# 唯一入口 = tools/run_all_tests.py(spec parity + 七套纯标准库测试,不是 pytest)。
 # 这里不再抄一份 shell 循环 —— 文档、CI、本地跑的是同一个脚本,才不会各说各话。
 #
 # 平台矩阵的理由:本仓在 Windows 上开发,而 CI 曾经只跑 ubuntu —— 主力平台反倒没人守。

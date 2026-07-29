@@ -535,6 +535,41 @@ def test_engine_binders_interpolate_the_sampled_curve_linearly():
     assert not bad, "\n  ".join(bad)
 
 
+def test_preset_values_match_the_motion_catalog():
+    """★ `motion.py` 的 PRESET 必须与 `figkit-motion/tokens.json` **逐条相等**。
+
+    这两处是同一个决定的两个副本:目录是给人读的方法与参数,PRESET 是 figkit 真正写进
+    flow.json 的那份值。**两份值必然漂**,而漂了没有任何症状 —— 文档照样读得通顺,
+    产物照样跑,只是「文档说 260ms」和「实际写 300ms」变成了两件事。
+
+    对账靠 tokens.json 里的 `preset` 字段(令牌名两边不同名:目录叫 `press-flat`,
+    PRESET 叫 `press-scale` —— 前者是「按下态长什么样」,后者是「figkit 只用得到那个缩放系数」)。
+    """
+    sys.path.insert(0, os.path.join(ROOT, "figma2html", "scripts"))
+    import motion as M
+    with io.open(os.path.join(ROOT, "figkit-motion", "tokens.json"), encoding="utf-8") as f:
+        tokens = json.load(f)
+    drift, linked = [], 0
+    for name, spec in sorted(tokens.items()):
+        if name.startswith("_") or "preset" not in spec:
+            continue
+        key = spec["preset"]
+        if key not in M.PRESET:
+            drift.append("tokens.json 的 %s 指向 PRESET['%s'],但 motion.py 里没有" % (name, key))
+            continue
+        linked += 1
+        want, got = spec["value"], M.PRESET[key]["value"]
+        if isinstance(want, list):
+            got = list(got)
+        if want != got:
+            drift.append("%s: 目录 %r ≠ PRESET['%s'] %r" % (name, want, key, got))
+        if spec["calibration"] != M.PRESET[key]["calibration"]:
+            drift.append("%s: 校准分档 目录 %s ≠ PRESET %s"
+                         % (name, spec["calibration"], M.PRESET[key]["calibration"]))
+    assert linked >= 13, "只对上了 %d 条,PRESET 有 %d 条 —— 有令牌没接进目录" % (linked, len(M.PRESET))
+    assert not drift, "目录与预设漂了:\n  " + "\n  ".join(drift)
+
+
 def test_motion_not_played_is_written_down_in_every_mapping():
     """曲线烘出来了但**没有后端在播** —— 这是登记在案的降级,不是静默丢失。
     每家 mapping.md 都得能查到,否则就成了"代码里有、文档里没有"的那类账。"""

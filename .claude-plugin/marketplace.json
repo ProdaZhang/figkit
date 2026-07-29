@@ -53,6 +53,14 @@
       "version": "0.2.0",
       "author": { "name": "ProdaZhang" },
       "keywords": ["figma", "cocos-creator", "typescript", "design-to-code"]
+    },
+    {
+      "name": "figkit-motion",
+      "source": "./figkit-motion",
+      "description": "The motion catalog the six backends share: 59 effects (when to use one, when not to), 63 parameter tokens with their calibration status, and 6 algorithms (bezier inversion, analytic spring, momentum projection, rubber-banding, velocity sampling, FLIP). Method and parameters, not a runtime library.",
+      "version": "0.2.0",
+      "author": { "name": "ProdaZhang" },
+      "keywords": ["motion", "animation", "design-tokens", "easing", "ui"]
     }
   ]
 }

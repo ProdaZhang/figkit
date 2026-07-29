@@ -5,7 +5,7 @@
 One entry point, works on Windows / macOS / Linux, pure stdlib, no pytest:
 
 ```bash
-python3 tools/run_all_tests.py            # spec parity + cross-backend conformance + all six suites
+python3 tools/run_all_tests.py            # spec parity + cross-backend conformance + all seven suites
 python3 tools/run_all_tests.py godot dsl  # just those backends
 python3 tools/run_all_tests.py --list     # what's available
 ```
