@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FigKit · figma2html main-screen demo</title>
+  <style>
+    /* 示例不带子集字体(合成屏无需);真项目用 scripts/subset_font.py 产 woff2 + @font-face 'FigCJK' */
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #1a1a2e; overflow: hidden; width: 100vw; height: 100vh; font-family: 'FigCJK', 'Source Han Sans SC', 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
+           /* 见 runtime/app.tmpl.html 的注释:整页禁选中,否则反复点按会触发双击选中、
+              蹦出划词工具栏盖住界面。加了按压反馈之后这条更要紧(点得更勤了)。 */
+           user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+    .selectable { user-select: text; -webkit-user-select: text; }
+    #stage-wrap { position: fixed; inset: 0; overflow: hidden; }
+    #stage { position: relative; background: #000; }
+    .screen-layer { position: absolute; inset: 0; }
+    #boot-err { position: fixed; left: 0; right: 0; top: 4px; text-align: center; font-size: 14px; color: #7fd; z-index: 999; pointer-events: none; }
+    /* 下面两个类归 app.js(飞向目标 / 高亮闪),不是 IR 的一部分 —— 引擎不知道哪个元素是钱包 */
+    .flyer { position: absolute; left: 0; top: 0; width: 44px; height: 44px; border-radius: 22px;
+             background: #efbf00; box-shadow: 0 0 0 3px rgba(255,215,106,.35); pointer-events: none; z-index: 80; }
+    .flash { position: absolute; inset: 0; border-radius: inherit; background: #fff; opacity: 0;
+             pointer-events: none; }
+  </style>
+</head>
+<body>
+  <div id="boot-err"></div>
+  <div id="stage-wrap">
+    <div id="stage">
+      <div id="layer-base" class="screen-layer"></div>   <!-- 底屏 -->
+      <div id="modal-layers"></div>                       <!-- 弹窗层(引擎注入) -->
+    </div>
+  </div>
+
+  <!-- 运行时(直接引 skill 的 runtime;拷出去部署时把这两个文件放同目录即可) -->
+  <script src="../../runtime/render.js"></script>
+  <script src="../../runtime/assemble.js"></script>
+  <!-- 内联夹具(make_fixture.py 生成):让 file:// 双击打开也能跑,见下面 loadSync -->
+  <script src="fixtures.js"></script>
+  <!-- mock 通信层(window.NET + window.MOCK);接真后端换掉本文件 -->
+  <script src="net.js"></script>
+  <!-- app 专属 hook -->
+  <script src="app.js"></script>
+
+  <script>
+  (function () {
+    // 优先用内联夹具:file:// 下浏览器会拦掉对本地文件的 XHR,不内联就只能白屏。
+    // 起了 http server 时两条路都通,内联仍优先(少几次请求,且与 fixtures.js 同源真值)。
+    function loadSync(p) {
+      const B = window.__FIGKIT_FIXTURES;
+      if (B && Object.prototype.hasOwnProperty.call(B, p)) return B[p];
+      try {
+        const x = new XMLHttpRequest(); x.open('GET', p, false); x.send(null);
+        if (x.status === 200 || x.status === 0) return JSON.parse(x.responseText);
+      } catch (e) { /* file:// 下 send() 直接抛,落到下面的提示 */ }
+      return null;
+    }
+    const FLOW = loadSync('flow.json');            // 流程声明:base/modals/events/list/bindings/caps
+    if (!FLOW) {
+      document.getElementById('boot-err').innerHTML =
+        'Could not load <code>flow.json</code>. Run <code>python3 make_fixture.py</code> in this folder ' +
+        'to regenerate <code>fixtures.js</code>, or serve this directory over HTTP.';
+      document.getElementById('boot-err').style.color = '#f99';
+      return;
+    }
+    const caps = {};
+    Object.keys(FLOW.caps || {}).forEach(k => caps[k] = loadSync(FLOW.caps[k]));   // 各屏 .ui.json
+    const net = window.NET || null;
+    if (window.APPHOOK && window.APPHOOK.register) window.APPHOOK.register(window.FigApp);
+    window.FigApp.build(FLOW, caps, net);
+    if (window.APPHOOK && window.APPHOOK.init) window.APPHOOK.init(window.FigApp, net);
+  })();
+  </script>
+</body>
+</html>

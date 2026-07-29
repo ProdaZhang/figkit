@@ -23,7 +23,7 @@ figma REST ──► figma_capture ──►  IR: <screen>.ui.json (pixels) + fl
 
 | backend | offline tests | in-engine verification |
 |---|---|---|
-| figma2html | ✅ 65 | ✅ rendered + interactions (Edge headless screenshot) |
+| figma2html | ✅ 70 | ✅ rendered + interactions (Edge headless screenshot) |
 | figma2dsl | ✅ 19 | ✅ (same render pipeline) |
 | figma2godot | ✅ 21 | ✅ **Godot 4.3**: .tscn rendered, pixel-compared vs HTML; GDScript compiles clean; motion runs in-engine and was **screenshotted mid-transition** — curves agree with Python and Unity to 6 decimals at a non-key point, and the frames caught a backdrop bug no numeric check could see |
 | figma2unity | ✅ 13 | ✅ **Unity 6000.4.8f1**: C# compiles zero-warning, UXML/USS pass Unity's importer, CloneTree structure asserted; `motion.json` loads as 6 `AnimationCurve`s agreeing with Python **and Godot** to 6 decimals (visual pass in Play Mode still pending) |
@@ -44,6 +44,14 @@ Or clone and **double-click [`figma2html/examples/login/app.html`](figma2html/ex
 *(Recorded deterministically by [`tools/docs-assets/`](tools/docs-assets/) — each frame is a fresh page replayed to a given step, with the real animation objects paused at a given millisecond.)*
 
 Prefer a server? `cd figma2html && python3 -m http.server 8321` → `http://localhost:8321/examples/login/app.html`.
+
+### A second, bigger screen — and the half FigKit deliberately doesn't do
+
+**[`figma2html/examples/main/app.html`](figma2html/examples/main/app.html)** — 73 elements over three screens: a currency bar, a pet card, a five-tab dock, an inventory grid, a codex list, and two tabs a guard keeps locked.
+
+![the main-screen demo: the bag sliding up with its grid staggering in, the codex dissolving, a locked tab shaking, then CLAIM sending coins arcing into the top bar](docs/shots/demo-main.gif)
+
+The tail of that GIF is the point. Coins flying into the wallet, the number rolling up, the pill flashing — **FigKit implements none of it**, because it has no idea which element is the wallet. Those three live in [`examples/main/app.js`](figma2html/examples/main/app.js), and their method and parameters come from [`figkit-motion`](figkit-motion/): not one animation number is hardcoded, and a test checks that every token the hook reads actually exists in the catalog. That is the boundary this repo keeps: **the engine owns mechanics, you own meaning** — and the catalog is what stops "you own it" from meaning "you're on your own".
 
 All three screens are *synthesized* by [`make_fixture.py`](figma2html/examples/login/make_fixture.py) through the real capture pipeline — no Figma file, no token, no network. Then compile the same screens for an engine:
 
