@@ -306,17 +306,23 @@ namespace Figma2Unity
             return 0f;
         }
 
-        /// <summary>按采样曲线驱动一段动画。t 归一化 0..1,回调自己决定往哪儿贴。</summary>
+        /// <summary>按采样曲线驱动一段动画。t 归一化 0..1,回调自己决定往哪儿贴。
+        ///
+        /// ⚠️ **进度读的是时钟,不是"回调被叫了几次"。** 这里一度写的是 `elapsed += 0.016f`
+        /// —— 把 `.Every(16)` 的**期望**间隔当成实际间隔。主线程一卡,回调照样一次加 16ms,
+        /// 于是 300ms 的转场在墙钟上跑成 400ms;别家(Godot 的 tween、Cocos 的 `schedule(dt)`、
+        /// html 的 CSS transition)全是跟真实时间走的,只有这里会随帧率变长。
+        /// `TimerState.now` 是引擎给的毫秒时钟,拿它减起点既对齐了三端,也不会累积漂移。</summary>
         void Play(VisualElement el, Curve c, bool reverse, Action<VisualElement, float> apply, Action done)
         {
             if (el == null || c == null || c.durationSec <= 0f) { if (apply != null) apply(el, reverse ? 0f : 1f); if (done != null) done(); return; }
-            float elapsed = 0f;
+            long t0 = -1L;
             apply(el, reverse ? 1f : 0f);
             IVisualElementScheduledItem item = null;
-            item = el.schedule.Execute(() =>
+            item = el.schedule.Execute((TimerState ts) =>
             {
-                elapsed += 0.016f;
-                float x = Mathf.Clamp01(elapsed / c.durationSec);
+                if (t0 < 0L) t0 = ts.now;
+                float x = Mathf.Clamp01((ts.now - t0) / 1000f / c.durationSec);
                 float v = c.curve.Evaluate(x);
                 apply(el, reverse ? 1f - v : v);
                 if (x >= 1f)
@@ -548,12 +554,12 @@ namespace Figma2Unity
             if (el == null || cfg == null) return;
             float amp = cfg.ContainsKey("amp") ? Num(Get(cfg, "amp")) : 6f;
             float dur = (cfg.ContainsKey("duration") ? Num(Get(cfg, "duration")) : 120f) / 1000f;
-            float t = 0f;
+            long t0 = -1L;                                   // 真实时钟,理由同 Play
             IVisualElementScheduledItem item = null;
-            item = el.schedule.Execute(() =>
+            item = el.schedule.Execute((TimerState ts) =>
             {
-                t += 0.016f;
-                float x = Mathf.Clamp01(t / dur);
+                if (t0 < 0L) t0 = ts.now;
+                float x = Mathf.Clamp01((ts.now - t0) / 1000f / dur);
                 // 一去一回一归零。抖动是**一次性、播完即弃**的,所以直接按相位算,不复用转场曲线。
                 float off = Mathf.Sin(x * Mathf.PI * 2f) * amp * (1f - x);
                 el.style.translate = new Translate(off, 0f);

@@ -28,6 +28,7 @@
       this.flow = flow; this.caps = caps; this.net = net;
       this.state = Object.assign({}, flow.state || {});
       const w = (flow.stage && flow.stage.w) || 1080, h = (flow.stage && flow.stage.h) || 1920;
+      this.stage = { w: w, h: h };     // 转场位移的基准(见 transitionCss);弹窗层 inset:0 = 同尺寸
       mountStage(document.getElementById('stage'), w, h);
 
       // 底屏
@@ -76,13 +77,22 @@
     },
 
     // tr → { dur, ease, from:{transform, opacity} }(from = 动画的**起点**;出场则是终点)
+    //
+    // ⚠️ **位移的基准是舞台,不是面板。** 这里一度写成 CSS 百分比(`translate(0,100%)`),
+    // 而 CSS 百分比是**相对元素自身**的 —— godot / unity / cocos 三家都拿层(=舞台)尺寸
+    // 乘进度,只有这里在拿面板自己的尺寸乘。login 的选服面板 860×1160、舞台 1080×1920:
+    // 同一条曲线、同一个毫秒,html 从下方 1160px 滑入,别家从 1920px —— 起手那一帧
+    // 面板有 380px 已经在屏内,别家完全在屏外。**曲线取值一个不差**,漂的是"进度贴到
+    // 哪个距离上",与当年遮罩跟着面板滑那个 bug 是同一层。舞台基准才是实机记录在案的
+    // 那个(figma2godot/references/mapping.md:MOVE_IN 中途 offsetY=942.5 = 1920×(1−0.509))。
     transitionCss(tr) {
       if (!tr) return null;
       const dur = Math.max(0, Number(tr.duration) || 0);
       const ease = this.easeCss(tr.easing);
       if (!dur || !ease) return null;
-      const off = { LEFT: ['-100%', '0'], RIGHT: ['100%', '0'],
-                    TOP: ['0', '-100%'], BOTTOM: ['0', '100%'] }[tr.direction] || null;
+      const S = this.stage || { w: 1080, h: 1920 };
+      const u = { LEFT: [-1, 0], RIGHT: [1, 0], TOP: [0, -1], BOTTOM: [0, 1] }[tr.direction] || null;
+      const off = u ? [u[0] * S.w + 'px', u[1] * S.h + 'px'] : null;
       const at = (t) => ({ transform: t, opacity: '0' });
       switch (tr.type) {
         case 'DISSOLVE':   return { dur, ease, from: at('') };
@@ -182,13 +192,22 @@
     // 一个元素说「错了」。用 WAAPI 而不是 transition:抖动是**一次性、播完即弃**的,
     // 而 transition 被快速重复触发时要先关掉才能重放(见 _play 的注释);
     // WAAPI 的 animate() 每次都是新动画,没有这个坑。
+    //
+    // ⚠️ **波形要与三个引擎同形:`sin(2πx)·amp·(1−x)`,一去一回一归零且带衰减。**
+    // 这里一度是四个等距线性关键帧(0 → −amp → +amp → 0)整段套 ease-in-out:没有衰减、
+    // 峰值落在 1/3 与 2/3 而不是 1/4 与 3/4、还先往左而别家先往右。同一个 token 值、
+    // 同样叫 wiggle,四端抖出四种样子。曲线在 python 侧解一次是为了不让这种事发生,
+    // 这条却根本没走曲线 —— 所以照相位采样,交给浏览器逐段线性插值(与引擎侧一致)。
     wiggle(el) {
       const g = this.motionOf('guardFail');
       if (!g || !el || !el.animate) return;
-      const a = g.amp || 6;
-      el.animate([{ transform: 'translateX(0)' }, { transform: 'translateX(' + -a + 'px)' },
-                  { transform: 'translateX(' + a + 'px)' }, { transform: 'translateX(0)' }],
-                 { duration: g.duration || 120, easing: 'ease-in-out' });
+      const amp = g.amp || 6, N = 24, frames = [];
+      for (let i = 0; i <= N; i++) {
+        const x = i / N;
+        frames.push({ transform: 'translateX(' +
+          (Math.sin(x * Math.PI * 2) * amp * (1 - x)).toFixed(3) + 'px)' });
+      }
+      el.animate(frames, { duration: g.duration || 120, easing: 'linear' });
     },
 
     // ── 状态 ──

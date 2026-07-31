@@ -582,6 +582,132 @@ def test_motion_not_played_is_written_down_in_every_mapping():
     assert not missing, "\n  ".join(missing)
 
 
+def _runtime(pkg, *parts):
+    return io.open(os.path.join(ROOT, pkg, "runtime", *parts), encoding="utf-8").read()
+
+
+def _nocomment(src):
+    """剥掉 `//` 行注释再做源码级检查。
+
+    **这是踩了三次的坑**:godot 那条 blur 断言被自己的注释误伤过、cocos 那条 easing 断言
+    也是(所以它改查 import 清单),这条查 `0.016f` 的又被上面那段"这里一度写的是
+    `elapsed += 0.016f`"的说明文字判红了。源码级断言查的是**代码**,注释里出现被禁的字样
+    恰恰是最该写的地方 —— 解释为什么不这么写。
+    """
+    return re.sub(r"//[^\n]*", "", src)
+
+
+def _block(src, start, end, what):
+    """截出一个函数体。源码级检查只在**看对了地方**时才有意义,所以找不到就报错,不静默放行。"""
+    i = src.find(start)
+    assert i >= 0, "在源码里没找到 %s(结构变了?检查改名)" % what
+    j = src.find(end, i + len(start))
+    assert j > i, "没找到 %s 的结尾" % what
+    return src[i:j]
+
+
+def test_transitions_displace_by_the_stage_not_the_panel():
+    """★ 采样点一致、插值模式一致之后,还剩最后一步从来没人对账:**进度贴到哪个距离上**。
+
+    实测踩到过:html 的 `transitionCss` 拿 CSS 百分比写位移(`translate(0,100%)`),
+    而 CSS 百分比是**相对元素自身**的;godot / unity / cocos 三家都拿层(=舞台)尺寸乘进度。
+    login 的选服面板 860×1160、舞台 1080×1920 —— 同一条曲线、同一个毫秒,html 从 1160px
+    处滑入,别家从 1920px:起手那一帧 html 面板有 380px 已经在屏内,别家完全在屏外。
+    四家测试照样全绿,因为**曲线取值一个不差**,漂的是基准。这与当年遮罩跟着面板滑那个
+    bug 完全同一层("把进度贴到哪儿"),而那次是靠实机截图才抓到的。
+
+    舞台基准是**有实机记录**的那个:figma2godot/references/mapping.md 记着 MOVE_IN 中途
+    `alpha=0.509 / offsetY=942.5` = 1920×(1−0.509)。引擎跑不进 CI,所以守源码层。
+    """
+    bad = []
+    html = _block(_runtime("figma2html", "assemble.js"), "transitionCss(tr) {", "\n    },",
+                  "assemble.js 的 transitionCss")
+    # 查的是"块里有没有 % 这个长度单位",不是"% 有没有紧挨着 translate(" ——
+    # 百分比原本就写在上面那张 off 表里、离 translate( 隔着两行,按后者写的正则连原缺陷都抓不到
+    # (本条断言的变异验证抓到过它自己这个洞)。注释里的 % 先剔掉,免得误伤说明文字。
+    if "%" in _nocomment(html):
+        bad.append("assemble.js transitionCss 里出现了 %(CSS 的百分比相对元素自身 = 面板基准)")
+    if "this.stage" not in html:
+        bad.append("assemble.js transitionCss 没引用 this.stage(位移基准必须是舞台)")
+
+    gd = _block(_runtime("figma2godot", "flow_binder.gd"), "func _apply(", "\nfunc ",
+                "flow_binder.gd 的 _apply")
+    if "layer.size" not in gd:
+        bad.append("flow_binder.gd _apply 的位移没乘 layer.size")
+
+    cs = _block(_runtime("figma2unity", "FlowBinder.cs"), "void ApplyProgress(", "\n        void ",
+                "FlowBinder.cs 的 ApplyProgress")
+    if "m.layer.resolvedStyle" not in cs:
+        bad.append("FlowBinder.cs ApplyProgress 的位移没乘 m.layer.resolvedStyle")
+
+    ts = _block(_runtime("figma2cocos", "flow-binder.ts"), "private applyProgress(", "\n  private ",
+                "flow-binder.ts 的 applyProgress")
+    if "layer.getComponent(UITransform)" not in ts:
+        bad.append("flow-binder.ts applyProgress 的位移没取 layer 的 UITransform 尺寸")
+
+    assert not bad, "转场位移基准漂了:\n  " + "\n  ".join(bad)
+
+
+# 四端的抖动都该是这一条:sin(2πx)·amp·(1−x)。写法差异(TAU / Mathf.PI / 1f)先抹平再比。
+_WAVE = re.compile(r"sin\(\w+\*pi\*2\)\*amp\*\(1-\w+\)")
+
+
+def _norm_wave(s):
+    s = s.lower().replace("mathf.", "").replace("math.", "").replace("tau", "pi*2")
+    s = re.sub(r"\s+", "", s)
+    s = re.sub(r"(\d)\.0+(?!\d)", r"\1", s)        # 1.0 → 1
+    s = re.sub(r"(\d)f(?![\w.])", r"\1", s)        # C# 的 1f / 2f → 1 / 2
+    return s
+
+
+def test_guard_shake_is_the_same_waveform_in_every_backend():
+    """★ guardFail 的抖动没走曲线层 —— 于是曲线那一整套对账对它完全不生效。
+
+    html 一度是四个等距线性关键帧(0 → −amp → +amp → 0)整段套 ease-in-out:**没有衰减**、
+    峰值落在 1/3 与 2/3 而不是 1/4 与 3/4、还先往左而别家先往右。同一个 `wiggle-amp`、
+    同样叫 wiggle,四端抖出四种样子,而每家测试都是绿的。
+
+    形状只有一条:`sin(2πx)·amp·(1−x)`,一去一回一归零且带衰减。写法差异(TAU / Mathf.PI /
+    1f 字面量)先抹平再比 —— 比的是**波形**,不是拼写。
+    """
+    where = [
+        ("figma2html/assemble.js", _runtime("figma2html", "assemble.js"),
+         "wiggle(el) {", "\n    },"),
+        ("figma2godot/flow_binder.gd", _runtime("figma2godot", "flow_binder.gd"),
+         "func wiggle(", "\nfunc "),
+        ("figma2unity/FlowBinder.cs", _runtime("figma2unity", "FlowBinder.cs"),
+         "public void Wiggle(", "\n        }"),
+        ("figma2cocos/flow-binder.ts", _runtime("figma2cocos", "flow-binder.ts"),
+         "wiggle(node: Node | null): void {", "\n  }"),
+    ]
+    bad = []
+    for name, src, start, end in where:
+        blk = _nocomment(_block(src, start, end, name + " 的 wiggle"))
+        if not _WAVE.search(_norm_wave(blk)):
+            bad.append("%s 的抖动不是 sin(2πx)·amp·(1−x)" % name)
+    assert not bad, "抖动波形不同形:\n  " + "\n  ".join(bad)
+
+
+def test_animation_progress_reads_the_clock_not_the_tick_count():
+    """★ 时长是**墙钟毫秒**,不是"回调被叫了几次 × 期望间隔"。
+
+    unity 一度写的是 `elapsed += 0.016f` 配 `.Every(16)` —— 把调度器的**期望**间隔当成
+    实际间隔。主线程一卡,回调照样一次加 16ms,300ms 的转场在墙钟上跑成 400ms;而
+    godot 的 tween、cocos 的 `schedule(dt)`、html 的 CSS transition 全是跟真实时间走的。
+    掉帧才看得出来,所以本机跑一次永远发现不了,只能守源码。
+    """
+    bad = []
+    cs = _nocomment(_runtime("figma2unity", "FlowBinder.cs"))
+    if re.search(r"\+=\s*0\.016f", cs):
+        bad.append("FlowBinder.cs 又在按固定 0.016f 累加(掉帧时动画会被拉长)")
+    if "TimerState" not in cs or "ts.now" not in cs:
+        bad.append("FlowBinder.cs 没用 TimerState.now 这个真实时钟")
+    ts = _nocomment(_runtime("figma2cocos", "flow-binder.ts"))
+    if not re.search(r"\(dt:\s*number\)", ts):
+        bad.append("flow-binder.ts 的动画回调没收 dt(cocos 的 schedule 是给了真实间隔的)")
+    assert not bad, "动画进度没读时钟:\n  " + "\n  ".join(bad)
+
+
 def _run():
     ok = True
     for name, fn in sorted(globals().items()):
