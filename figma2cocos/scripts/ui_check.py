@@ -27,6 +27,9 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(errors="replace")
 
 SEL_RE = re.compile(r"^@(\w+):(\w+)$")   # @any:modal / @panelOutside:modal
+# @in:<modal>:<nodeId> —— 弹窗**内部**的元素(v1.1)。节点 id 自带冒号("4:99"),
+# 所以 @in: 之后只有第一段是弹窗名,其余整段都是 id。
+IN_RE = re.compile(r"^@in:([^:]+):(.+)$")
 URL_RE = re.compile(r"url\(([^)]+)\)")
 
 
@@ -59,6 +62,24 @@ def ids_of(cap):
 
 # ── 引用完整性(纯函数,便于测试内存构造坏 flow)────────────────────────
 
+def subtree_ids(cap, roots):
+    """roots 及其全部后代的 id —— 与 render.js 的 `subtreeOf` 同一语义。
+
+    `@in:` 只查"在这一屏里"是不够的:cap 是**整帧**,而弹窗只把 roots 那几棵子树抬出来叠加。
+    落在 roots 之外的节点,校验能过、运行时却根本不在那一层里。
+    """
+    keep = set(roots or [])
+    els = cap.get("els") or []
+    changed = True
+    while changed:
+        changed = False
+        for e in els:
+            if e.get("id") not in keep and e.get("parent") and e.get("parent") in keep:
+                keep.add(e.get("id"))
+                changed = True
+    return keep
+
+
 def check_flow(flow, caps):
     """校验 flow 对 caps 的全部 id 引用。返回错误列表(空=通过)。"""
     errors = []
@@ -73,12 +94,14 @@ def check_flow(flow, caps):
         base_ids = ids_of(caps[base_name])
 
     # modals[*].cap / roots / panel
+    modal_ids = {}          # 弹窗名 -> 该弹窗抬起来的子树里的全部 id(@in: 要查它)
     for mname, m in modals.items():
         cname = m.get("cap")
         if cname not in caps:
             errors.append("modals[%s]: cap '%s' 未载入/未声明" % (mname, cname))
             continue
         cid = ids_of(caps[cname])
+        modal_ids[mname] = subtree_ids(caps[cname], m.get("roots"))
         for r in (m.get("roots") or []):
             if r not in cid:
                 errors.append("modals[%s]: root '%s' 不在 cap '%s' 里" % (mname, r, cname))
@@ -91,6 +114,15 @@ def check_flow(flow, caps):
         sels = ev.get("el")
         sels = sels if isinstance(sels, list) else [sels]
         for sel in sels:
+            mi = IN_RE.match(str(sel))
+            if mi:
+                mname, nid = mi.group(1), mi.group(2)
+                if mname not in modals:
+                    errors.append("events[%d]: 选择器 '%s' 指向不存在的 modal" % (i, sel))
+                elif mname in modal_ids and nid not in modal_ids[mname]:
+                    errors.append("events[%d]: '%s' 的 '%s' 不在弹窗 '%s' 抬起来的子树里"
+                                  % (i, sel, nid, mname))
+                continue
             m2 = SEL_RE.match(str(sel))
             if m2:
                 if m2.group(2) not in modals:

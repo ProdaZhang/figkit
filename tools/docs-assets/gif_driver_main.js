@@ -39,12 +39,14 @@
     [function () { Q(BAG).click(); }, 90],                    // 1 背包下滑 · 早期
     [function () { Q(BAG).click(); }, 190],                   // 2 背包下滑 · 中段 + 格子逐项
     [function () { Q(BAG).click(); }, null],                  // 3 背包完全显示(12 格铺满)
-    [function () {                                            // 4 背包出场中途(preset 补的)
+    [function () {                                            // 4 按弹窗里的 ✗ → 出场中途
       Q(BAG).click();
       return wait(500).then(function () {
         // 出场那一帧要先停时钟:closeModal 播完会用定时器把层藏起来,那个定时器不受 pause 影响。
         window.setTimeout = function () { return 0; };
-        document.querySelector('[data-modal="bag"]').click();   // @panelOutside:bag
+        // 点的是**弹窗里的那个 ✗**(`@in:bag:4:12`,v1.1 才有的写法),不是"点面板外关"。
+        // 这是 figma 原稿真画的那条线;v1.0 只能拿 @panelOutside 近似,而那是另一回事。
+        document.querySelector('[data-modal="bag"] [data-id="4:12"]').click();
         requestAnimationFrame(function () {
           requestAnimationFrame(function () { freeze(90); });
         });

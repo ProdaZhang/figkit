@@ -80,9 +80,9 @@ public:
 /** flow 事件的强类型运行时形态(uespec 已结构化,这里只是再落成 C++ 结构)。 */
 struct FFigmaFlowTarget
 {
-	FString Kind;  // "node" / "any" / "panelOutside"
-	FString Id;    // kind==node
-	FString Modal; // kind==any / panelOutside
+	FString Kind;  // "node" / "any" / "panelOutside" / "in"
+	FString Id;    // kind==node / in
+	FString Modal; // kind==any / panelOutside / in
 };
 
 struct FFigmaFlowEvent

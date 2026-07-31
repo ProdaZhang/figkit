@@ -509,7 +509,7 @@ static void MakeButtonInvisible(UButton* Btn)
 	Btn->SetStyle(Style);
 }
 
-UButton* UFigmaUiWidget::AddClickOverlay(const FString& ElementId)
+UButton* UFigmaUiWidget::AddClickOverlay(const FString& ElementId, int32 ZOverride)
 {
 	const FFigmaElementSlot* S = SlotById.Find(ElementId);
 	if (!S || !S->ParentPanel)
@@ -520,7 +520,8 @@ UButton* UFigmaUiWidget::AddClickOverlay(const FString& ElementId)
 	UButton* Btn = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass());
 	MakeButtonInvisible(Btn);
 	// +10000:压在同面板所有视觉之上(视觉全部 HitTestInvisible,按钮独占命中)
-	PlaceOnCanvas(Btn, S->ParentPanel, S->Pos, S->Size, S->ZOrder + 10000);
+	PlaceOnCanvas(Btn, S->ParentPanel, S->Pos, S->Size,
+	              ZOverride >= 0 ? ZOverride : S->ZOrder + 10000);
 	return Btn;
 }
 

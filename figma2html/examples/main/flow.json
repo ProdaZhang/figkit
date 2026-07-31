@@ -65,6 +65,26 @@
   },
   {
    "on": "click",
+   "el": "@in:bag:4:12",
+   "do": "closeModal",
+   "transition": {
+    "type": "SCALE_OUT",
+    "duration": 180,
+    "toScale": 0.95,
+    "easing": {
+     "type": "CUSTOM_CUBIC_BEZIER",
+     "bezier": [
+      0.23,
+      1,
+      0.32,
+      1
+     ]
+    },
+    "source": "preset:base"
+   }
+  },
+  {
+   "on": "click",
    "el": "1:30",
    "do": "claim"
   },

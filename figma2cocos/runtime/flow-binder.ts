@@ -52,6 +52,7 @@ export interface FigmaAppHook {
 
 type ActionFn = (...args: unknown[]) => unknown;
 const SEL_RE = /^@(\w+):(\w+)$/;
+const IN_RE = /^@in:([^:]+):(.+)$/;    // @in:<modal>:<nodeId>;id 自带冒号,只切第一段
 
 /** motion.json 里一条烘好的曲线(采样点 + 该怎么把进度贴到画面上所需的元数据)。 */
 export interface CurveDef {
@@ -424,6 +425,20 @@ export class FlowBinder extends Component {
     for (const ev of this.flow?.events || []) {
       const sels = Array.isArray(ev.el) ? ev.el : [ev.el];
       for (const sel of sels) {
+        // @in:<modal>:<nodeId> —— 弹窗**内部**的元素(v1.1),比如那个 ✗。
+        // 节点 id 自带冒号("4:99"),所以 @in: 之后只有第一段是弹窗名,其余整段都是 id。
+        const inm = String(sel).match(IN_RE);
+        if (inm) {
+          const inner = this.getNode(inm[1], inm[2]);
+          if (!inner) { console.warn('[flow-binder] 弹窗内事件元素未找到:', sel); continue; }
+          this.wirePress(inner);
+          inner.on(Node.EventType.TOUCH_END, (e: EventTouch) => {
+            // 不停冒泡的话,层上的 @any/@panelOutside 会跟着再触发一次。
+            e.propagationStopped = true;
+            this.dispatch(ev, e);
+          }, this);
+          continue;
+        }
         const sp = String(sel).match(SEL_RE);         // @any:modal / @panelOutside:modal
         if (sp) {
           const kind = sp[1], modal = sp[2];

@@ -345,11 +345,21 @@ def _bad_list_container(f):
     f["list"]["container"] = "99:3"
 
 
+def _bad_in_modal(f):
+    f["events"][0]["el"] = "@in:nosuch:3:11"            # 弹窗名不存在
+
+
+def _bad_in_node(f):
+    f["events"][0]["el"] = "@in:serverlist:99:9"        # 节点不在这个弹窗抬起来的子树里
+
+
 BAD_FLOWS = {
     "事件 el 不存在": _bad_event,
     "modal root 不存在": _bad_modal_root,
     "checkbox el 不存在": _bad_checkbox,
     "list container 不存在": _bad_list_container,
+    "@in: 的弹窗不存在": _bad_in_modal,
+    "@in: 的节点不在弹窗子树里": _bad_in_node,
 }
 
 
@@ -358,6 +368,19 @@ def test_good_flow_accepted_by_every_consumer():
     bad = [("%s rc=%d\n%s" % (b, rc, t[:300]))
            for b, (rc, t) in sorted(_feed_flow(None, "good").items()) if rc != 0]
     assert not bad, "合法 flow 被拒:\n  " + "\n  ".join(bad)
+
+
+def test_in_modal_selector_accepted_by_every_consumer():
+    """★ v1.1 新增的 `@in:<modal>:<nodeId>` —— 三家离线校验器要**一致地放行**。
+
+    坏引用被一致拦下(见 BAD_FLOWS 里那两条)只证明了一半:一个把所有 `@in:` 都当成
+    坏引用的校验器,那两条也一样是绿的。所以正向锚必须单列一条。
+    """
+    def use_it(f):
+        f["events"].append({"on": "click", "el": "@in:serverlist:3:11", "do": "closeModal"})
+    bad = [("%s rc=%d\n%s" % (b, rc, t[:300]))
+           for b, (rc, t) in sorted(_feed_flow(use_it, "in_ok").items()) if rc != 0]
+    assert not bad, "合法的 @in: 被拒:\n  " + "\n  ".join(bad)
 
 
 def test_bad_flow_rejected_by_every_consumer():

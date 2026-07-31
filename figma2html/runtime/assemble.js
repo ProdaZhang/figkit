@@ -6,7 +6,8 @@
 //
 // flow 事件 action 内置:openModal(arg) / closeModal / toggleFlag(arg) / send(arg)
 //   其余 do 名 → 查 app 注册的 action。
-// 事件元素选择器:figma node id(底屏元素)/ 特殊 "@any:<modal>"、"@panelOutside:<modal>"。
+// 事件元素选择器:figma node id(底屏元素)/ 特殊 "@any:<modal>"、"@panelOutside:<modal>"、
+//                "@in:<modal>:<nodeId>"(弹窗内部的元素,如那个 ✗)。
 
 (function () {
   const APP = {
@@ -226,6 +227,20 @@
       (this.flow.events || []).forEach(ev => {
         const sels = Array.isArray(ev.el) ? ev.el : [ev.el];
         sels.forEach(sel => {
+          // @in:<modal>:<nodeId> —— 弹窗**内部**的元素(v1.1)。真实 figma 文件里最常见的
+          // 那条连线就是它:弹窗里的 ✗。v1.0 只能拿 @any / @panelOutside 近似成"点哪都关"。
+          // 节点 id 自带冒号("4:99"),所以 @in: 之后只有第一段是弹窗名,其余整段都是 id。
+          const inm = String(sel).match(/^@in:([^:]+):(.+)$/);
+          if (inm) {
+            const layer = self.layers[inm[1]], el = layer && self.$(layer, inm[2]);
+            if (!el) { console.warn('[assemble] 弹窗内事件元素未找到:', sel); return; }
+            el.style.cursor = 'pointer';
+            self.wirePress(el);
+            // stopPropagation 不能省:同一层上多半还挂着 @any/@panelOutside,
+            // 冒泡上去就会"按了 ✗,顺手又触发一次点外面关闭"。
+            el.addEventListener('click', e => { e.stopPropagation(); self.dispatch(ev, e); });
+            return;
+          }
           const sp = String(sel).match(/^@(\w+):(\w+)$/);   // @any:modal / @panelOutside:modal
           if (sp) {
             const kind = sp[1], modal = sp[2], layer = self.layers[modal];

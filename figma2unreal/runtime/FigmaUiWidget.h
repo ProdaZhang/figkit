@@ -73,8 +73,11 @@ public:
 	 * 选择"叠透明按钮"而非 OnMouseButtonDown 的理由:不动已建视觉树、不自管坐标换算/
 	 * 命中测试,UButton 自带按压/命中处理;视觉 Widget 全部 HitTestInvisible,
 	 * 故按钮不会被视觉层挡住。
+	 *
+	 * ZOverride ≥ 0 时用它当 ZOrder,而不是默认的 元素z+10000 —— `@in:` 的弹窗内按钮
+	 * 需要压过 `@any` 那层全帧点击层(30000),否则点不到。
 	 */
-	UButton* AddClickOverlay(const FString& ElementId);
+	UButton* AddClickOverlay(const FString& ElementId, int32 ZOverride = -1);
 
 	/** 在根画布任意矩形上叠透明按钮(@any / @panelOutside / 遮罩点击用)。 */
 	UButton* AddRectOverlay(const FVector2D& Pos, const FVector2D& Size, int32 ZOrder);

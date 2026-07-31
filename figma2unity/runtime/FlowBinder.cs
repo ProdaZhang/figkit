@@ -497,6 +497,30 @@ namespace Figma2Unity
 
         void WireOne(string sel, Dictionary<string, object> ev)
         {
+            // @in:<modal>:<nodeId> —— 弹窗**内部**的元素(v1.1),真实 figma 文件里最常见的
+            // 那条连线(弹窗里的 ✗)。节点 id 自带冒号("4:99"),所以 @in: 之后只有第一段是
+            // 弹窗名,其余整段都是 id —— 下面那条按第一个冒号切的通用分支会把它切错。
+            if (sel.StartsWith("@in:"))
+            {
+                string rest = sel.Substring(4);
+                int cut = rest.IndexOf(':');
+                if (cut < 0) { Debug.LogWarning("[FlowBinder] 选择器无效: " + sel); return; }
+                ModalInfo host;
+                if (!_modals.TryGetValue(rest.Substring(0, cut), out host))
+                {
+                    Debug.LogWarning("[FlowBinder] 选择器指向不存在的弹窗: " + sel);
+                    return;
+                }
+                var inner = host.layer.Q(SafeName(rest.Substring(cut + 1)));
+                if (inner == null) { Debug.LogWarning("[FlowBinder] 弹窗内事件元素未找到: " + sel); return; }
+                inner.pickingMode = PickingMode.Position;
+                WirePress(inner);
+                // StopPropagation 不能省:同一层上多半还挂着 @any/@panelOutside,
+                // 冒泡上去就成了"按了 ✗,顺手又触发一次点外面关闭"。
+                inner.RegisterCallback<ClickEvent>(e => { e.StopPropagation(); Dispatch(ev); });
+                return;
+            }
+
             // 特殊选择器 @any:<modal> / @panelOutside:<modal>
             if (sel.Length > 0 && sel[0] == '@')
             {

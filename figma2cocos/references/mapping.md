@@ -46,6 +46,7 @@ flow.json 映射(`flow-binder.ts`,语义对齐 assemble.js):
 | `events[].on:"click"` | `Node.EventType.TOUCH_END`;元素级监听 `propagationStopped=true`(对齐 stopPropagation) |
 | `events[].el`(id) | 底屏 id→Node 索引(对齐 `baseEl`) |
 | `@any:<modal>` | 层节点 TOUCH_END(子元素未拦截的触摸冒泡到层) |
+| `@in:<modal>:<nodeId>`(v1.1) | 弹窗层内按 id 取节点(走 `maps` 索引)+ `propagationStopped`;不停冒泡的话层上的 `@any`/`@panelOutside` 会跟着再触发一次 |
 | `@panelOutside:<modal>` | 层 TOUCH_END + `panel.UITransform.getBoundingBoxToWorld().contains(触点)` 反选 |
 | `guard` | state 全真才放行(null/undefined/false/0/'' 均为假),失败回调 `onGuardFail` |
 | `openModal/closeModal/toggleFlag/send` | 内置;其余 `do` 名 → 查 hook 注册的 action |

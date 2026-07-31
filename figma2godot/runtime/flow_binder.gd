@@ -350,6 +350,26 @@ func _wire_events() -> void:
 		var sels = ev["el"] if ev["el"] is Array else [ev["el"]]
 		for sel in sels:
 			var s := String(sel)
+			# @in:<modal>:<nodeId> —— 弹窗**内部**的元素(v1.1),真实 figma 文件里最常见的
+			# 那条连线(弹窗里的 ✗)。节点 id 自带冒号("4:99"),所以 @in: 之后只有第一段是
+			# 弹窗名,其余整段都是 id —— 下面那条按冒号 split 的通用分支会把它切成三段。
+			if s.begins_with("@in:"):
+				var rest := s.substr(4)
+				var cut := rest.find(":")
+				if cut < 0 or not layers.has(rest.substr(0, cut)):
+					push_warning("[flow_binder] 选择器无效: " + s)
+					continue
+				var inner := find_el(layers[rest.substr(0, cut)], rest.substr(cut + 1))
+				if inner == null:
+					push_warning("[flow_binder] 弹窗内事件元素未找到: " + s)
+					continue
+				# _pass_through 把弹窗内全部子节点设成了 PASS(好让点击冒泡给层做
+				# @any/@panelOutside);这一个要**收下**点击,所以改回 STOP。
+				inner.mouse_filter = Control.MOUSE_FILTER_STOP
+				inner.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+				_wire_press(inner)
+				inner.gui_input.connect(_on_el_input.bind(inner, ev))
+				continue
 			if s.begins_with("@"):                      # @any:<modal> / @panelOutside:<modal>
 				var sp := s.substr(1).split(":")
 				if sp.size() != 2 or not layers.has(sp[1]):

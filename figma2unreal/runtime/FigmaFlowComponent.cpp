@@ -19,8 +19,11 @@ DEFINE_LOG_CATEGORY_STATIC(LogFigmaFlow, Log, All);
 //   9000  @panelOutside 的全帧点击层(压在视觉上、被面板盾/行按钮盖住)
 //   10000+ AddClickOverlay(元素 z + 10000):面板盾、行按钮、底屏事件按钮
 //   30000 @any 的全帧点击层(点哪都触发,必须最顶)
+//   40000 @in:<modal>:<id> 的弹窗内按钮 —— 必须压过 @any,否则那层全帧点击层
+//         会把弹窗里的 ✗ 整个盖住,按下去只会触发"点哪都关"
 static const int32 ZOrderPanelOutside = 9000;
 static const int32 ZOrderAny = 30000;
+static const int32 ZOrderInModal = 40000;
 
 void UFigmaClickProxy::HandleClick()
 {
@@ -270,6 +273,20 @@ void UFigmaFlowComponent::WireEvents()
 			{
 				// 对齐 assemble.js:普通 id 只在底屏找(弹窗内交互走 @any/@panelOutside/list)
 				if (UButton* Btn = BaseWidget ? BaseWidget->AddClickOverlay(T.Id) : nullptr)
+				{
+					Btn->OnClicked.AddDynamic(MakeProxy(i, -1), &UFigmaClickProxy::HandleClick);
+				}
+			}
+			else if (T.Kind == TEXT("in"))
+			{
+				// 弹窗**内部**的元素(v1.1):真实 figma 文件里最常见的那条连线,弹窗里的 ✗。
+				UFigmaUiWidget* MW = ModalWidgets.FindRef(T.Modal);
+				if (!MW)
+				{
+					UE_LOG(LogFigmaFlow, Warning, TEXT("@in: 引用不存在的 modal: %s"), *T.Modal);
+					continue;
+				}
+				if (UButton* Btn = MW->AddClickOverlay(T.Id, ZOrderInModal))
 				{
 					Btn->OnClicked.AddDynamic(MakeProxy(i, -1), &UFigmaClickProxy::HandleClick);
 				}

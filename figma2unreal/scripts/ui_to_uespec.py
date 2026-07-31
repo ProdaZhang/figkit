@@ -290,7 +290,38 @@ def convert_cap(cap):
 _SPECIAL = re.compile(r'^@(\w+):(\w+)$')
 
 
-def _norm_target(sel, errors, modals, id_universe):
+_IN = re.compile(r'^@in:([^:]+):(.+)$')     # @in:<modal>:<nodeId>;id 自带冒号,只切第一段
+
+
+def _subtree_ids(spec, roots):
+    """roots 及其全部后代的 id —— 与 render.js 的 subtreeOf 同一语义。
+
+    `@in:` 查的必须是弹窗**真正抬起来的那棵子树**,而不是"在这一屏里":
+    落在 roots 之外的节点运行时根本不在那一层。三家离线校验器要给出同一个判定。
+    """
+    keep = set(roots or [])
+    els = spec.get('els') or []
+    changed = True
+    while changed:
+        changed = False
+        for e in els:
+            if e.get('id') not in keep and e.get('parent') and e.get('parent') in keep:
+                keep.add(e.get('id'))
+                changed = True
+    return keep
+
+
+def _norm_target(sel, errors, modals, id_universe, modal_subtree=None):
+    # @in:<modal>:<nodeId> —— 弹窗**内部**的元素(v1.1),比如那个 ✗。
+    # 必须先于 _SPECIAL 判:后者按第一个冒号切,会把 "bag:4:99" 整段当成弹窗名。
+    mi = _IN.match(str(sel))
+    if mi:
+        modal, nid = mi.group(1), mi.group(2)
+        if modal not in modals:
+            errors.append('特殊选择器引用了不存在的 modal: %r' % sel)
+        elif nid not in (modal_subtree or {}).get(modal, set()):
+            errors.append('@in: 的节点 %r 不在弹窗 %r 抬起来的子树里' % (nid, modal))
+        return {'kind': 'in', 'modal': modal, 'id': nid}
     m = _SPECIAL.match(str(sel))
     if m:
         kind, modal = m.group(1), m.group(2)
@@ -316,6 +347,7 @@ def convert_flow(flow, cap_specs, cap_files):
         errors.append('base 指向不存在的 cap: %r' % base)
 
     modals = {}
+    modal_subtree = {}          # 弹窗名 -> 它抬起来的子树里的全部 id(@in: 要查它)
     for name, m in (flow.get('modals') or {}).items():
         cap_name = m.get('cap', '')
         if cap_name not in cap_specs:
@@ -329,6 +361,7 @@ def convert_flow(flow, cap_specs, cap_files):
         if panel is not None and panel not in ids:
             errors.append('modal %r 的 panel %r 不在 cap %r 里' % (name, panel, cap_name))
         modals[name] = {'cap': cap_name, 'roots': roots, 'panel': panel}
+        modal_subtree[name] = _subtree_ids(cap_specs.get(cap_name) or {}, roots)
 
     events = []
     for ev in (flow.get('events') or []):
@@ -336,7 +369,8 @@ def convert_flow(flow, cap_specs, cap_files):
         sels = sels if isinstance(sels, list) else [sels]
         events.append({
             'on': ev.get('on', 'click'),
-            'targets': [_norm_target(s, errors, modals, id_universe) for s in sels],
+            'targets': [_norm_target(s, errors, modals, id_universe, modal_subtree)
+                        for s in sels],
             'guard': list(ev.get('guard') or []),
             'do': ev.get('do', ''),
             'arg': ev.get('arg') if 'arg' in ev else None,

@@ -3,8 +3,8 @@
 `login` 演的是**管线**(捕获 → IR → 六个后端),界面刻意做到最小。
 这一份演另外两件事:
 
-1. **这套 IR 撑不撑得住一个真正的游戏界面** —— 73 个元素、三屏、两种弹窗形态(网格 / 列表)、
-   两个被 guard 锁住的页签。
+1. **这套 IR 撑不撑得住一个真正的游戏界面** —— 75 个元素、三屏、两种弹窗形态(网格 / 列表)、
+   两个被 guard 锁住的页签,以及背包右上角那个 ✗。
 2. **引擎不做、只能由 app hook 做的那半边。** 领奖时金币飞进顶栏、数字滚上去、胶囊闪一下 ——
    **figkit 一条都不实现**,它不知道哪个元素是"钱包"。这三条写在 `app.js` 里,
    方法与参数来自 [`figkit-motion`](../../../figkit-motion/)。
@@ -18,15 +18,20 @@
 **双击 `app.html`** 即可 —— `fixtures.js` 把 `flow.json` + 三份 `.ui.json` + 动效令牌内联成
 `window.__FIGKIT_FIXTURES`,绕开浏览器在 `file://` 下对本地 XHR 的封锁。
 
-点点看:**Bag**(下滑 + 格子逐项)· **Codex**(淡入 + 行克隆)· **Shop / Friends**(guard 拦下 + 抖动)·
-**CLAIM**(飞 → 滚 → 闪)。
+点点看:**Bag**(下滑 + 格子逐项,右上角 ✗ 关掉)· **Codex**(淡入 + 行克隆)·
+**Shop / Friends**(guard 拦下 + 抖动)· **CLAIM**(飞 → 滚 → 闪)。
+
+那个 ✗ 是本例里最小、却唯一逼出 spec 升版的东西。v1.1 之前 `events[].el` 只能指 base 屏的
+节点,于是**弹窗里的关闭按钮**(真实 figma 文件里最常见的一条连线)根本没法表达,只能拿
+「点哪都关 / 点面板外关」近似 —— 那是另一回事。现在它是 `@in:bag:4:12`,而且是**原稿画的线**
+(`nodes.json` 里 4:12 上的 CLOSE),由 `flow_from_figma.py` 导进来,不是手写的。
 
 ## 这份 flow.json 是怎么来的
 
 正是 README「Real Figma input」的第 4、5 步:
 
 ```bash
-# 4. 导入原稿里连好的线(本例是两条:Bag → 背包弹窗、Codex → 图鉴弹窗)
+# 4. 导入原稿里连好的线(本例三条:Bag / Codex → 弹窗,以及背包里的 ✗ → 关闭)
 python3 ../../scripts/flow_from_figma.py nodes.json flow.json \
         main=screen-main.ui.json bag=screen-bag.ui.json codex=screen-codex.ui.json
 # 5. 补上 figma 表达不了的那半边:guard、列表绑定、领奖这个自定义 action

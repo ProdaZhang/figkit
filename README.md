@@ -6,7 +6,7 @@
 
 ```
 figma REST ──► figma_capture ──►  IR: <screen>.ui.json (pixels) + flow.json (behavior)
-                                   │        spec/ v1.0 FROZEN — the shared contract
+                                   │        spec/ v1.1 — the shared contract, additive-only
         ┌──────────┬───────────┬───┴───────┬───────────┬───────────┐
         ▼          ▼           ▼           ▼           ▼           ▼
    figma2html  figma2dsl  figma2unity figma2godot figma2unreal figma2cocos
@@ -23,7 +23,7 @@ figma REST ──► figma_capture ──►  IR: <screen>.ui.json (pixels) + fl
 
 | backend | offline tests | in-engine verification |
 |---|---|---|
-| figma2html | ✅ 70 | ✅ rendered + interactions, and the runtime's **behaviour** is now asserted in a real browser rather than looked at — 4 checks in [`tools/html-smoke/`](tools/html-smoke/), in CI on windows. It reads numbers out of the page (offsets, row texts, guard outcome), not pixels |
+| figma2html | ✅ 71 | ✅ rendered + interactions, and the runtime's **behaviour** is now asserted in a real browser rather than looked at — 4 checks in [`tools/html-smoke/`](tools/html-smoke/), in CI on windows. It reads numbers out of the page (offsets, row texts, guard outcome), not pixels |
 | figma2dsl | ✅ 19 | ✅ (same render pipeline) |
 | figma2godot | ✅ 21 | ✅ **Godot 4.3**: both examples render; GDScript compiles clean. The login and main-screen shots below are a **real pixel comparison** against HTML — mean 2.2–3.9/255, under 2.5% of pixels off by more than 24, all of it on glyph edges (the two shots used to be at different scales, which looked fine and compared to nothing; `shoot_stage.py` fixes that). Motion runs in-engine and was **screenshotted mid-transition** — curves agree with Python and Unity to 6 decimals at a non-key point, and the frames caught a backdrop bug no numeric check could see |
 | figma2unity | ✅ 13 | ✅ **Unity 6000.4.8f1**: C# compiles zero-warning; both examples' UXML/USS pass Unity's importer with CloneTree structure asserted (main screen: 37/29/13 elements, nesting and copy intact, 12-cell grid present); `motion.json` loads as `AnimationCurve`s agreeing with Python **and Godot** to 6 decimals (visual pass in Play Mode still pending) |
@@ -31,7 +31,7 @@ figma REST ──► figma_capture ──►  IR: <screen>.ui.json (pixels) + fl
 | figma2cocos | ✅ 14 | 🟡 TS strict-typechecks against official `@cocos/creator-types` 3.8.3 (engine d.ts, decorators incl.) — and **you can run that gate**: `cd tools/cocos-typecheck && npm ci && python3 check.py`, also in CI. It checks two things, because passing alone would not prove the second: zero errors, **and** that planting a certain type error into the real source makes `tsc` report it. Not yet run in Creator. Its motion is baked by its own `bake_motion.py`, and those sampled points are compared point-by-point against the other three backends |
 | figkit-motion | ✅ 6 | 📖 **not a backend** — the motion catalog the other six share: 59 effects (when to use one, **and when not to**), 63 parameter tokens with a `calibration` status, 6 shared algorithms. No runtime, no artifact. Its `tokens.json` and `motion.py`'s `PRESET` are compared token-by-token by the conformance suite, so the prose and the values figkit actually writes can't drift apart |
 
-Per-backend tests only compare a backend against its own expectations, so **24 more live in [`tools/conformance/`](tools/conformance/)**: one fixture exercising every IR feature, a table where each backend declares what it renders / approximates / drops, and checks that the declaration matches the real artifact, that every degradation is logged, and that it is written down in that backend's known-loss table. Same suite pins the backends to identical handling of malformed IR and of broken `flow.json` references, to the same sampled curve points, and — the layer that curve values alone can't reach — to the same *displacement basis*, the same shake waveform, and progress read off a clock rather than a tick count. (Counts above are verified by `tools/run_all_tests.py`, so they can't quietly go stale.)
+Per-backend tests only compare a backend against its own expectations, so **25 more live in [`tools/conformance/`](tools/conformance/)**: one fixture exercising every IR feature, a table where each backend declares what it renders / approximates / drops, and checks that the declaration matches the real artifact, that every degradation is logged, and that it is written down in that backend's known-loss table. Same suite pins the backends to identical handling of malformed IR and of broken `flow.json` references, to the same sampled curve points, and — the layer that curve values alone can't reach — to the same *displacement basis*, the same shake waveform, and progress read off a clock rather than a tick count. (Counts above are verified by `tools/run_all_tests.py`, so they can't quietly go stale.)
 
 ## Try it (no Figma account, no install, ~10 seconds)
 
@@ -47,7 +47,9 @@ Prefer a server? `cd figma2html && python3 -m http.server 8321` → `http://loca
 
 ### A second, bigger screen — and the half FigKit deliberately doesn't do
 
-**[`figma2html/examples/main/app.html`](figma2html/examples/main/app.html)** — 73 elements over three screens: a currency bar, a pet card, a five-tab dock, an inventory grid, a codex list, and two tabs a guard keeps locked.
+**[`figma2html/examples/main/app.html`](figma2html/examples/main/app.html)** — 75 elements over three screens: a currency bar, a pet card, a five-tab dock, an inventory grid, a codex list, two tabs a guard keeps locked, and a ✗ inside the bag.
+
+That ✗ is the smallest new thing here and the one that took a spec bump. Until **v1.1**, `events[].el` could only name nodes on the base screen, so the most common link in any real Figma file — the close button *inside* a popup — had no representation; the workarounds meant "click anywhere" or "click outside", which is not the same thing. It is now `@in:<modal>:<nodeId>`, the ✗ in that GIF is a line the designer drew, and `flow_from_figma.py` imported it instead of reporting it as untranslatable.
 
 ![the main-screen demo: the bag sliding up with its grid staggering in, the codex dissolving, a locked tab shaking, then CLAIM sending coins arcing into the top bar](docs/shots/demo-main.gif)
 

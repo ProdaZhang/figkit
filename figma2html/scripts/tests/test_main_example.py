@@ -77,6 +77,24 @@ def test_figma_authored_events_match_the_node_tree():
     for v in nodes["nodes"].values():
         walk(v["document"])
 
+    # v1.1:原稿还画了第三条线 —— 背包弹窗里的 ✗(CLOSE)。它住在**弹窗那一屏**上,
+    # v1.0 的 events 只绑 base 屏,所以当时搬不过来;现在落成 @in:bag:<id>。
+    closes = set()
+    def walk_close(n, screen):
+        for it in (n.get("interactions") or []):
+            for act in (it.get("actions") or []):
+                if act.get("type") in ("CLOSE", "BACK"):
+                    closes.add((screen, n["id"]))
+        for c in (n.get("children") or []):
+            walk_close(c, screen)
+    for v in nodes["nodes"].values():
+        walk_close(v["document"], v["document"]["id"])
+    assert closes, "夹具里应当有一条弹窗内的 CLOSE 连线"
+    for _, nid in closes:
+        assert any(str(e["el"]).endswith(":" + nid) and str(e["el"]).startswith("@in:")
+                   for e in flow["events"]), \
+            "nodes.json 里 %s 上画了 CLOSE,flow.json 里却没有对应的 @in: 事件" % nid
+
     assert len(drawn) == 2, "夹具里应当正好有两条 OVERLAY 连线,实际 %d" % len(drawn)
     imported = [e for e in flow["events"]
                 if e.get("transition") and "source" not in e["transition"]]
@@ -93,7 +111,9 @@ def test_preset_motion_is_generated_and_idempotent():
     flow = _json(os.path.join(EX, "flow.json"))
     filled = [e for e in flow["events"]
               if (e.get("transition") or {}).get("source") == "preset:base"]
-    assert len(filled) == 2, "两个 closeModal 都该被补上出场,实际 %d" % len(filled)
+    # 三条 closeModal:两条 @panelOutside,加上 v1.1 之后弹窗里那个 ✗(@in:bag:4:12)。
+    # 它是 figma 原稿画的线,但原稿没给转场 —— 出场同样由预设补上,所以也带 source。
+    assert len(filled) == 3, "三个 closeModal 都该被补上出场,实际 %d" % len(filled)
     for key in ("press", "stagger", "guardFail"):
         assert flow["motion"][key]["source"] == "preset:base", key
 

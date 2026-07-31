@@ -1092,6 +1092,79 @@
         }
        },
        {
+        "id": "4:12",
+        "name": "bag-close",
+        "type": "FRAME",
+        "visible": true,
+        "absoluteBoundingBox": {
+         "x": 830,
+         "y": 545,
+         "width": 96,
+         "height": 96
+        },
+        "fills": [
+         {
+          "type": "SOLID",
+          "visible": true,
+          "color": {
+           "r": 0.945,
+           "g": 0.914,
+           "b": 0.847
+          },
+          "opacity": 1
+         }
+        ],
+        "children": [
+         {
+          "id": "4:13",
+          "name": "bag-close-x",
+          "type": "TEXT",
+          "visible": true,
+          "characters": "✗",
+          "absoluteBoundingBox": {
+           "x": 830,
+           "y": 566,
+           "width": 96,
+           "height": 56
+          },
+          "fills": [
+           {
+            "type": "SOLID",
+            "visible": true,
+            "color": {
+             "r": 0.224,
+             "g": 0.224,
+             "b": 0.224
+            },
+            "opacity": 1
+           }
+          ],
+          "style": {
+           "fontSize": 44,
+           "fontWeight": 700,
+           "fontFamily": "Source Han Sans SC",
+           "textAlignHorizontal": "CENTER",
+           "textAlignVertical": "CENTER",
+           "letterSpacing": 0
+          }
+         }
+        ],
+        "cornerRadius": 48,
+        "interactions": [
+         {
+          "trigger": {
+           "type": "ON_CLICK"
+          },
+          "actions": [
+           {
+            "type": "CLOSE",
+            "transition": null
+           }
+          ]
+         }
+        ]
+       },
+       {
         "id": "4:20",
         "name": "bag-grid",
         "type": "FRAME",

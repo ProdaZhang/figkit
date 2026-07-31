@@ -141,6 +141,7 @@ tscn 节点名不允许 `. : @ / " %` —— **统一换 `_`**:figma id `1:40` �
 | `base` | 底屏场景整实例常驻(含自身 StageBg) |
 | `modals[*].roots/panel` | 该屏场景实例化后**按 roots 剪枝**(顶层只留 roots 子树,StageBg 等释放)+ `Backdrop`(半透明 ColorRect)叠加;`panel` 用于 `@panelOutside` 的 `get_global_rect` 判定。选"整场景实例+剪枝"而非"显隐":顶层子几何本就是帧绝对 px,剪完即对位,且 SubResource 引用保持完整 |
 | `events[]` | `gui_input` 按节点名绑(绑定元素设 `MOUSE_FILTER_STOP` + `accept_event()`≈stopPropagation);`@any:`/`@panelOutside:` 绑在弹窗层上,弹窗内容全部 `MOUSE_FILTER_PASS` 冒泡(仿 DOM bubbling);`guard` → state truthy 全过才放行(失败回调 `onGuardFail`) |
+| `@in:<modal>:<nodeId>`(v1.1) | 在弹窗层里 `find_el`;该节点从 `_pass_through` 的 `MOUSE_FILTER_PASS` 改回 `STOP` 收下点击,`accept_event()` 挡住冒泡 |
 | `list` | `render_rows()`:容器首行 `duplicate()` 当模板,按第二行 offset 差算步长,逐项回调填充 + `set_meta("item")`,行点击派给 `onRowClick` action |
 | `bindings.checkbox` | 引擎通用双态:改 Panel 的 StyleBoxFlat `bg_color` + 动态 `CheckMark` Label 填 `mark` 字符 |
 | 其余 `do` 名 / 域内回填 | app hook 注册的 action 字典(`app_hook.example.gd`),引擎不写死 |

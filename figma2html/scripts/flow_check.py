@@ -14,7 +14,8 @@ devtools、点到那个元素,才发现"点了没反应"。同一类错误在 fi
   1. flow.caps 里每个 .ui.json 存在且能载入;
   2. base → 已声明的 cap;
   3. modals[*].cap 存在;roots / panel 的 id 在该 modal 的 cap 里;
-  4. events[].el → base cap;特殊选择器 @any:<modal> / @panelOutside:<modal> 只查 modal 名;
+  4. events[].el → base cap;@any:<modal> / @panelOutside:<modal> 只查 modal 名;
+     @in:<modal>:<nodeId> 既查 modal 名,也查该节点确实在这个弹窗**抬起来的子树**里;
   5. list.modal 已声明、list.container 在其 cap 里、容器下有 ≥1 个模板行;
   6. bindings.checkbox.el → base cap。
 
@@ -32,6 +33,9 @@ if hasattr(sys.stdout, "reconfigure"):      # Windows 老代码页打中文不�
     sys.stdout.reconfigure(errors="replace")
 
 SEL_RE = re.compile(r"^@(\w+):(\w+)$")      # @any:modal / @panelOutside:modal
+# @in:<modal>:<nodeId> —— 弹窗**内部**的元素(v1.1)。节点 id 自带冒号("4:99"),
+# 所以 @in: 之后只有第一段是弹窗名,其余整段都是 id。
+IN_RE = re.compile(r"^@in:([^:]+):(.+)$")
 
 
 def load_caps(flow, cap_dir):
@@ -54,6 +58,24 @@ def ids_of(cap):
     return set(e.get("id") for e in (cap.get("els") or []))
 
 
+def subtree_ids(cap, roots):
+    """roots 及其全部后代的 id —— 与 render.js 的 `subtreeOf` 同一语义。
+
+    `@in:` 只查"在这一屏里"是不够的:cap 是**整帧**,而弹窗只把 roots 那几棵子树抬出来叠加。
+    落在 roots 之外的节点,校验能过、运行时却根本不在那一层里 —— 正是最难查的那一类。
+    """
+    keep = set(roots or [])
+    els = cap.get("els") or []
+    changed = True
+    while changed:
+        changed = False
+        for e in els:
+            if e.get("id") not in keep and e.get("parent") and e.get("parent") in keep:
+                keep.add(e.get("id"))
+                changed = True
+    return keep
+
+
 def check_flow(flow, caps):
     """校验 flow 对 caps 的全部 id 引用 → 错误列表(空 = 通过)。纯函数,便于内存构造坏 flow 做测试。"""
     errors = []
@@ -64,12 +86,14 @@ def check_flow(flow, caps):
         errors.append("base: cap '%s' 未载入/未声明" % base_name)
     base_ids = ids_of(caps.get(base_name, {}))
 
+    modal_ids = {}          # 弹窗名 -> 该弹窗那一屏的全部 id(@in: 选择器要查它)
     for mname, m in modals.items():
         cname = (m or {}).get("cap")
         if cname not in caps:
             errors.append("modals[%s]: cap '%s' 未载入/未声明" % (mname, cname))
             continue
         cid = ids_of(caps[cname])
+        modal_ids[mname] = subtree_ids(caps[cname], m.get("roots"))
         for r in (m.get("roots") or []):
             if r not in cid:
                 errors.append("modals[%s]: root '%s' 不在 cap '%s' 里" % (mname, r, cname))
@@ -81,6 +105,15 @@ def check_flow(flow, caps):
         sels = ev.get("el")
         sels = sels if isinstance(sels, list) else [sels]
         for sel in sels:
+            mi = IN_RE.match(str(sel))
+            if mi:
+                mname, nid = mi.group(1), mi.group(2)
+                if mname not in modals:
+                    errors.append("events[%d]: 选择器 '%s' 指向不存在的 modal" % (i, sel))
+                elif mname in modal_ids and nid not in modal_ids[mname]:
+                    errors.append("events[%d]: '%s' 的 '%s' 不在弹窗 '%s' 抬起来的子树里"
+                                  % (i, sel, nid, mname))
+                continue
             m2 = SEL_RE.match(str(sel))
             if m2:
                 if m2.group(2) not in modals:

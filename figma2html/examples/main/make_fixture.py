@@ -200,9 +200,21 @@ def build_trees(C):
             R("4:%d" % (50 + k), "cell-dot", cx + 48, cy + 48, 72, 72, LISTBG, radius=36),
         ]))
 
+    # 弹窗右上角那个 ✗ —— figma 里最常见的一条连线,v1.0 表达不了(events 只绑 base 屏),
+    # v1.1 的 @in:<modal>:<nodeId> 就是为它加的。这里照原稿的画法在**弹窗那一屏**上连 CLOSE,
+    # 由 flow_from_figma.py 落成 @in:bag:4:12。
+    # 配色取**面板**这一支(LISTBG 底 + INK 字)。第一版顺手用了 PANEL2 + WHITE ——
+    # 那是给深色底屏用的(白 14% 透明 + 白字),落在浅色面板上等于隐形:
+    # 冒烟测试照样绿(它按 id 点),渲染出来却什么都看不见。用眼睛看了一遍才发现。
+    bag_close = F("4:12", "bag-close", 830, 545, 96, 96, fill=LISTBG, radius=48, children=[
+        T("4:13", "bag-close-x", 830, 566, 96, 56, "✗", INK, 44, 700),
+    ])
+    wire(bag_close, click({"type": "CLOSE", "transition": None}))
+
     bag = F("4:1", "bag-screen", 0, 0, 1080, 1920, fill=DEEP, children=[
         F("4:10", "bag-panel", 90, 520, 900, 1080, fill=PAPER, radius=28, children=[
             T("4:11", "bag-title", 90, 570, 900, 60, C["bag_title"], INK, 44, 700),
+            bag_close,
             F("4:20", "bag-grid", 150, 680, 780, 840, fill=LISTBG, radius=20, children=cells),
         ]),
     ])

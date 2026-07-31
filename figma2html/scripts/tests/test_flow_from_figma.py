@@ -144,11 +144,26 @@ def test_conditional_is_reported():
                                                   "conditionalBlocks": []})])], "CONDITIONAL")
 
 
-def test_back_inside_a_modal_screen_is_reported_with_the_handwritten_workaround():
-    """v1.0 的 events 只绑 base 屏 —— 弹窗里的关闭按钮搬不动,但要告诉人手写哪一条。"""
+def test_close_inside_a_modal_screen_becomes_an_in_selector():
+    """v1.1:弹窗**里**的关闭按钮 —— figma 里最常见的那条连线,现在搬得动了。
+
+    要点在**顺序**:声明 pop 是弹窗的那条 OVERLAY 连线排在关闭按钮**后面**。
+    v1.1 之所以要把弹窗内的关闭先攒起来、等整轮扫完再落地,就是为了这种排列 ——
+    按出现顺序处理的话,轮到 2:9 时还不知道 pop 会被当成弹窗用。
+    """
+    flow, notes = _build([
+        _node("2:9", interactions=[_click({"type": "BACK"})]),          # 弹窗里的 ✗
+        _node("1:8", interactions=[_click(_overlay("2:1"))]),           # 稍后才声明 pop 是弹窗
+    ])
+    assert {"on": "click", "el": "@in:pop:2:9", "do": "closeModal"} in flow["events"], flow
+    assert not notes, notes
+
+
+def test_close_inside_a_screen_that_is_never_opened_as_a_modal_is_still_reported():
+    """没有任何连线把它当弹窗打开过 → 不知道该绑哪个弹窗。**不猜**,如实报告。"""
     flow, notes = _build([_node("2:9", interactions=[_click({"type": "BACK"})])])
     assert flow["events"] == []
-    assert any("BACK" in n and "@panelOutside" in n for n in notes), notes
+    assert any("不知道该绑到哪个弹窗" in n for n in notes), notes
 
 
 def test_back_on_the_base_screen_does_become_close_modal():

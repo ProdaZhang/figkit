@@ -19,24 +19,26 @@
                  路径按字面写进 caps(浏览器按它加载),同时用来读 frame id 与元素集合。
   --strict     有任何一条交互没能搬过来就 exit 3(给 CI 用;默认 exit 0,只在 stderr 报告)
 
-搬得动 / 搬不动(对照 spec/flow-events.md 的 v1.0 能力):
+搬得动 / 搬不动(对照 spec/flow-events.md 的 v1.1 能力):
 
-  | figma                                   | flow.json          |
-  |-----------------------------------------|--------------------|
-  | ON_CLICK + NODE/OVERLAY → 某个 cap       | openModal(cap)     |
-  | ON_CLICK + BACK / CLOSE(在 base 屏上)    | closeModal         |
-  | 转场(type/duration/easing)               | events[].transition|
-  | 其余触发器(hover/drag/按键/超时/媒体)      | ✗ 报告             |
-  | NAVIGATE / SWAP / SCROLL_TO / CHANGE_TO  | ✗ 报告             |
-  | URL / SET_VARIABLE / CONDITIONAL         | ✗ 报告             |
-  | 任何挂在**非 base 屏**节点上的交互          | ✗ 报告(见下)       |
+  | figma                                     | flow.json            |
+  |-------------------------------------------|----------------------|
+  | ON_CLICK + NODE/OVERLAY → 某个 cap         | openModal(cap)       |
+  | ON_CLICK + BACK / CLOSE(在 base 屏上)      | closeModal           |
+  | ON_CLICK + BACK / CLOSE(在**弹窗**那一屏上) | @in:<modal>:<id>(v1.1)|
+  | 转场(type/duration/easing)                 | events[].transition  |
+  | 其余触发器(hover/drag/按键/超时/媒体)        | ✗ 报告               |
+  | NAVIGATE / SWAP / SCROLL_TO / CHANGE_TO    | ✗ 报告               |
+  | URL / SET_VARIABLE / CONDITIONAL           | ✗ 报告               |
+  | 弹窗那一屏上的**其他**交互(非 BACK/CLOSE)    | ✗ 报告               |
 
-**已知缺口(v1.0 的真实边界,不是本脚本偷懒)**:`assemble.js` 的 `wireEvents` 只在 base 图层
-上按 id 找元素,所以 `events[].el` **只能引用 base 屏的节点**。而"弹窗里的 ✗ 关闭按钮"恰恰
-住在弹窗那一屏 —— figma 里最常见的一条交互,v1.0 表达不了。v1.0 的替代写法是
-`@any:<modal>`(点哪都关)或 `@panelOutside:<modal>`(点面板外关),但那与"点这个按钮"
-语义不同,**所以本脚本不替你写**,只在报告里点名该补哪一条。
-这是 CONTRIBUTING 原则 1 说的"由某个后端撞出的真实缺口",已记在 spec 的变更行里。
+**v1.1 补上的正是这一条**:v1.0 里 `events[].el` 只能引用 base 屏的节点,而"弹窗里的 ✗
+关闭按钮"恰恰住在弹窗那一屏 —— figma 里最常见的一条交互,当时表达不了,只能拿
+`@any:<modal>`(点哪都关)/ `@panelOutside:<modal>`(点面板外关)近似,而那与"点这个
+按钮"根本不是一回事。现在直接落成 `@in:<modal>:<nodeId>`。
+
+仍然**不猜**:那一屏若没有任何 OVERLAY 连线把它当弹窗打开过,就不知道该绑到哪个弹窗上,
+照旧如实报告。这正是 CONTRIBUTING 原则 1 说的"由某个后端撞出的真实缺口触发结构变更"。
 """
 import json
 import os
@@ -145,6 +147,7 @@ def build_flow(doc_roots, pairs, caps):
 
     raw = []                                         # 先摊平成候选,再合并同类项
     used_modals = []
+    pending_close = []      # 弹窗内的 BACK/CLOSE;等 used_modals 定了再落成 @in:
     for node in doc_roots:
         for inter in interactions_of(node):
             trig = (inter.get("trigger") or {}).get("type")
@@ -161,10 +164,10 @@ def build_flow(doc_roots, pairs, caps):
                 tr = norm_transition(act.get("transition"))
                 if atype in ("BACK", "CLOSE"):
                     if where != base_name:
-                        notes.append(
-                            "跳过 %s 的 %s:它住在 '%s' 屏,而 v1.0 的 events 只绑 base 屏。"
-                            "手写替代:{\"on\":\"click\",\"el\":\"@panelOutside:<modal>\","
-                            "\"do\":\"closeModal\"}" % (label, atype, where))
+                        # v1.1:弹窗**里**的关闭按钮(最常见的就是那个 ✗)现在有得写了。
+                        # 但"这一屏是不是真被当成弹窗用了"要等整轮扫完才知道(声明它的
+                        # OVERLAY 连线可能排在后面),所以先记下,循环之后再定。
+                        pending_close.append((node["id"], where, label, tr))
                         continue
                     raw.append(("click", node["id"], "closeModal", None, tr))
                     continue
@@ -189,6 +192,15 @@ def build_flow(doc_roots, pairs, caps):
                 if target not in used_modals:
                     used_modals.append(target)
                 raw.append(("click", node["id"], "openModal", target, tr))
+
+    # 弹窗内的关闭按钮 → @in:<modal>:<nodeId>(v1.1)。这一屏没被任何连线当成弹窗打开过
+    # 就仍然落不了地 —— 那是真的缺信息,照旧如实报告,不猜。
+    for nid, where, label, tr in pending_close:
+        if where in used_modals:
+            raw.append(("click", "@in:%s:%s" % (where, nid), "closeModal", None, tr))
+        else:
+            notes.append("跳过 %s 的关闭:它住在 '%s' 屏,而这一屏没有任何 OVERLAY 连线把它"
+                         "当弹窗打开过 —— 不知道该绑到哪个弹窗上" % (label, where))
 
     events, index = [], {}
     for on, el, do, arg, tr in raw:
