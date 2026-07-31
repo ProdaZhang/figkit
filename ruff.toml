@@ -1,0 +1,29 @@
+# ruff — 本仓的 python lint 配置。
+#
+# **规则集是刻意选窄的:只留会咬人的,不打 style 仗。**
+# ruff 全量默认在本仓报 876 条,其中 533 条是 UP031(printf 风格格式化)——
+# 那是作者一以贯之的写法,没有一条是缺陷;E701/E702(一行多语句)另有 135 条,
+# 同样是刻意的紧凑写法(`a, b = scan(c); ht = ht or a`)。
+# 逼着改 668 行能跑的代码,那不是质量门,是风格战;而门一旦变成噪音,就没人看了。
+#
+# 留下的是**能指出真错**的:
+#   F    pyflakes —— 未定义名、未使用导入/变量、f-string 写错、重复定义
+#   E9   语法错误
+#   B    bugbear  —— 可变默认参数、循环里的闭包变量、except 里裸 raise 之类
+#   PLE  pylint 的 error 档(不是 warning/convention)
+#
+# `target-version` 必须钉住:CI 有一条 python 3.9 腿(见 CONTRIBUTING 的版本下限),
+# 不钉的话 ruff 会按当前解释器推断,然后建议 `zip(strict=)`(3.10+)这种在 3.9 上跑不了的写法 ——
+# lint 反过来教你写坏代码,是最难看的一种。
+target-version = "py39"
+
+[lint]
+select = ["F", "E9", "B", "PLE"]
+
+[lint.per-file-ignores]
+# 每个 skill 必须能单独安装,跨目录 import 会断,所以脚本先 sys.path.insert 再 import ——
+# "import 不在文件顶部"在这里是**约定**不是疏忽,每处都有注释说明。
+"*/scripts/*.py" = ["E402"]
+"*/scripts/tests/*.py" = ["E402"]
+"tools/**/*.py" = ["E402"]
+"*/examples/*/make_fixture.py" = ["E402"]

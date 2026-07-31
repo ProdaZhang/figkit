@@ -10,7 +10,7 @@ try:
     from fontTools import subset
 except ImportError:                      # 唯一的外部依赖,别让人对着 ModuleNotFoundError 猜
     print("需要 fonttools:  pip install fonttools brotli", file=sys.stderr)
-    raise SystemExit(2)
+    raise SystemExit(2) from None   # 要的是那句提示,不是 ImportError 的栈
 
 
 def collect_chars(ui_paths):

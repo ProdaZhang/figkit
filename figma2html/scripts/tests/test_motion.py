@@ -267,7 +267,7 @@ def test_every_preset_token_declares_its_calibration_state():
 
 def test_preset_curves_are_all_solvable():
     """预设里的每条曲线都必须能被求解器吃下(别塞一个 figma 具名枚举进来)。"""
-    for name, v in M.PRESET.items():
+    for name in M.PRESET:
         if not name.startswith("ease"):
             continue
         kind, payload = M.resolve_easing(M.preset_easing(name))

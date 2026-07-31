@@ -156,6 +156,22 @@ def _stage(example):
     return page, [page, js]
 
 
+@check("malformed_flow_degrades_with_a_sentence_not_a_throw")
+def _c4(m):
+    """★ "畸形 IR 给一句话,不给 traceback" —— 这条规矩 v0.2.0 就立了,却只在 python 侧兑现过。
+
+    四个**运行时**从没被测过这一点,而实测 Unity 那边 `MiniJson` 是会 throw 的、调用处
+    没有 try —— 它下一行那个 `== null` 判断在真·畸形输入上永远轮不到执行。
+    这里在真浏览器里把最空的 flow 喂给 assemble.js:不许抛,也不许一声不吭。
+    """
+    bad = []
+    if m["threw"]:
+        bad.append("空 flow 把引擎抛崩了:%s" % m["threw"])
+    if not m["warned"]:
+        bad.append("空 flow 被静默接受 —— 页面会是一块空舞台,看着像渲染坏了")
+    return bad
+
+
 @check("close_button_inside_a_modal_works_and_only_it_does", example="main")
 def _m0(m):
     """★ v1.1 的 `@in:<modal>:<nodeId>`:弹窗里的 ✗。

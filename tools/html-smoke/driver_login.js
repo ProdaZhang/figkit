@@ -94,6 +94,24 @@
       };
     },
 
+    // ⑤ 畸形 flow 喂给引擎:**不许抛**,而且不许一声不吭。
+    //    本仓的规矩是"畸形 IR 给一句话,不给 traceback"(v0.2.0 立的),但那条一直只在
+    //    python 侧的 flow_check 上兑现,四个**运行时**从没被测过。
+    //    先把 app 注册的 action 清掉 —— 要测的是引擎,不是这个示例的域内 hook。
+    4: function () {
+      var warns = [], threw = null;
+      var realWarn = console.warn;
+      console.warn = function () { warns.push(Array.prototype.join.call(arguments, ' ')); };
+      try {
+        window.FigApp.actions = {};
+        window.FigApp.build({}, {}, null);            // 连 base / caps / events 都没有
+      } catch (e) {
+        threw = String(e && e.message || e);
+      }
+      console.warn = realWarn;
+      return function () { report({ threw: threw, warned: warns.length > 0, warns: warns.slice(0, 3) }); };
+    },
+
     // ④ checkbox 双态由引擎通用绑定管:点一下 flag 翻转、勾出现;再点回去勾消失。
     3: function () {
       Q('1:30').click();

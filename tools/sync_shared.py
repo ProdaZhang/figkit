@@ -16,7 +16,6 @@
 镜像上,这时候同步等于把刚写的东西删掉。默认拒绝,`--force` 才继续。
 """
 import filecmp
-import io
 import os
 import shutil
 import sys

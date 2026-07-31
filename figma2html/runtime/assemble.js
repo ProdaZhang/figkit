@@ -32,9 +32,11 @@
       this.stage = { w: w, h: h };     // 转场位移的基准(见 transitionCss);弹窗层 inset:0 = 同尺寸
       mountStage(document.getElementById('stage'), w, h);
 
-      // 底屏
+      // 底屏。**底屏 cap 缺了要吭声**:不吭声的话页面就是一块空舞台,
+      // 看着像"渲染坏了",实际是 flow.base 指了个不存在的 cap —— 那是最难查的一类。
       this.layers.base = document.getElementById('layer-base');
       if (caps[flow.base]) renderScreen(caps[flow.base], this.layers.base);
+      else console.warn('[assemble] base cap 未载入:', flow.base, '—— 底屏会是空的');
 
       // 弹窗 = 抽面板子树叠加 + 半透明遮罩
       const wrap = document.getElementById('modal-layers');

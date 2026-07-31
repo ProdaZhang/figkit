@@ -183,7 +183,7 @@ def test_interaction_on_a_node_outside_every_cap_is_reported():
 # ── 端到端:真 demo 的 nodes.json ────────────────────────────────────────────
 def _run_cli(outdir, extra=()):
     out = os.path.join(outdir, "flow.json")
-    for name, rel in PAIRS:                       # caps 按 flow.json 所在目录解析 → 拷进来
+    for _, rel in PAIRS:                          # caps 按 flow.json 所在目录解析 → 拷进来
         with open(os.path.join(EX, rel), encoding="utf-8") as f:
             src = f.read()
         with open(os.path.join(outdir, rel), "w", encoding="utf-8", newline="") as f:

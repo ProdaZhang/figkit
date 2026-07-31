@@ -74,7 +74,7 @@ def test_catches_bad_modal_root():
 
 def test_catches_bad_modal_panel():
     def m(f):
-        for name, mm in f["modals"].items():
+        for mm in f["modals"].values():
             if mm.get("panel"):
                 mm["panel"] = "99:2"
                 return

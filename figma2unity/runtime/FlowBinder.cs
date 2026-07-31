@@ -116,8 +116,22 @@ namespace Figma2Unity
                 Debug.LogError("[FlowBinder] uiDocument / flowJson 未配置");
                 return;
             }
-            _flow = MiniJson.Parse(flowJson.text) as Dictionary<string, object>;
-            if (_flow == null) { Debug.LogError("[FlowBinder] flow.json 解析失败"); return; }
+            // ⚠️ **MiniJson 是会 throw 的**(FormatException),所以下面那句 `== null` 判断
+            // 在真·畸形输入上**永远轮不到执行** —— 抛出去就是一个未捕获异常。
+            // 而本仓的规矩是"畸形 IR 给一句话,不给 traceback"(v0.2.0 立的),
+            // 另外三家运行时都守住了:godot 的 parse_string 返回 null 后 push_error、
+            // unreal 判 Deserialize 的返回值、cocos 吃的是 Creator 导入期已解析好的 JsonAsset。
+            // 只有这里破了口 —— 自家规矩的反例最不该出现在自家代码里。
+            try
+            {
+                _flow = MiniJson.Parse(flowJson.text) as Dictionary<string, object>;
+            }
+            catch (Exception e)
+            {
+                Debug.LogError("[FlowBinder] flow.json 解析失败(不是合法 JSON): " + e.Message);
+                return;
+            }
+            if (_flow == null) { Debug.LogError("[FlowBinder] flow.json 解析失败:顶层不是对象"); return; }
 
             _assets.Clear();
             if (screens != null)
@@ -262,7 +276,18 @@ namespace Figma2Unity
         void LoadMotion()
         {
             if (motionJson == null) return;
-            var root = MiniJson.Parse(motionJson.text) as Dictionary<string, object>;
+            Dictionary<string, object> root;
+            try
+            {
+                root = MiniJson.Parse(motionJson.text) as Dictionary<string, object>;
+            }
+            catch (Exception e)
+            {
+                // 动效解析不了不该带塌整个界面:登记一句,退回瞬时显隐(mapping.md 里
+                // "没有 motion.json = 全部瞬时"本来就是声明在案的降级)。
+                Debug.LogWarning("[FlowBinder] motion.json 解析失败,转场退回瞬时: " + e.Message);
+                return;
+            }
             var curves = root != null ? Get(root, "curves") as Dictionary<string, object> : null;
             if (curves == null) return;
             foreach (var kv in curves)

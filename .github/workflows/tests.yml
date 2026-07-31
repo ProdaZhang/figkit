@@ -53,6 +53,20 @@ jobs:
       - run: python check.py
         working-directory: tools/cocos-typecheck
 
+  # python lint。规则集刻意选窄(见 ruff.toml):只留会指出真错的那几类,不打 style 仗 ——
+  # 全量默认在本仓报 876 条,其中 668 条是作者一以贯之的写法,没有一条是缺陷。
+  # 门一旦变成噪音就没人看了,那还不如没有。
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      # 钉版本:lint 规则会随版本变,不钉的话哪天升级就凭空多出一批红,与代码无关。
+      - run: pip install ruff==0.16.1
+      - run: ruff check .
+
   # figma2html 的运行时在真浏览器里的行为冒烟。windows runner 自带 Edge,不装任何依赖
   # (断言的是 driver 量回来的**数**,不是像素,所以连 Pillow 都不需要)。
   #

@@ -711,6 +711,64 @@ def test_guard_shake_is_the_same_waveform_in_every_backend():
     assert not bad, "抖动波形不同形:\n  " + "\n  ".join(bad)
 
 
+def test_every_runtime_guards_the_json_it_is_handed():
+    """★ "畸形 IR 给一句话,不给 traceback" —— 这条规矩 v0.2.0 就立了。
+
+    但它当时只在**转换器**那侧兑现(五个后端补了输入校验、exit 2 列出问题),
+    四个**运行时**的入口从来没人查过。实测:Unity 的 `MiniJson` 一路 `throw
+    FormatException`,而调用处直接接返回值 —— 它下一行那个 `== null` 判断在真·畸形
+    输入上**永远轮不到执行**,结果就是一个未捕获异常。另外三家都守住了,写自家规矩
+    反例的偏偏是自家代码。
+
+    引擎跑不进 CI,所以查源码:每家的 JSON 入口都必须**在同一处**看得见防护。
+    html 那侧不靠这条 —— 它在 `tools/html-smoke` 里被真浏览器喂过空 flow。
+
+    ⚠️ 每一条都先钉**存在性锚点**再查防护。只查"有调用且没设防"的写法,在调用被改名
+    或删掉时会静默通过 —— 变异验证当场抓到过:把 unreal 那句 `if (!Deserialize(...))`
+    整个换成 `if (false)`,调用没了,断言反而绿。不可能红的断言等于没有断言。
+    """
+    bad = []
+
+    # 锚在**被解析的输入**上,不锚解析器的名字:`MiniJson.Parse` 有两处调用,
+    # 只要求"至少有一处叫这个名"的话,把其中一处改名照样能溜过去(变异验证抓到过)。
+    # 要守的本来就是这两个入口 —— flow.json 与 motion.json —— 不是某个函数名。
+    cs = _nocomment(_runtime("figma2unity", "FlowBinder.cs")).split("\n")
+    for entry in ("flowJson.text", "motionJson.text"):
+        hits = [i for i, l in enumerate(cs) if entry in l and "(" in l]
+        if not hits:
+            bad.append("FlowBinder.cs 里找不到解析 %s 的地方(改名了?这条断言就成了摆设)" % entry)
+        for i in hits:
+            if not any("try" in cs[j] for j in range(max(0, i - 4), i)):
+                bad.append("FlowBinder.cs:%d 解析 %s 时不在 try 里(MiniJson 是会 throw 的)"
+                           % (i + 1, entry))
+
+    gd = _nocomment(_runtime("figma2godot", "flow_binder.gd")).split("\n")
+    hits = [i for i, l in enumerate(gd) if "JSON.parse_string" in l]
+    if not hits:
+        bad.append("flow_binder.gd 里找不到 JSON.parse_string(改名了?)")
+    for i in hits:
+        near = "\n".join(gd[i:i + 6])
+        if "push_error" not in near and "push_warning" not in near:
+            bad.append("flow_binder.gd:%d 解析之后没判返回值(parse_string 失败返回 null)" % (i + 1))
+
+    cpp = _nocomment(io.open(os.path.join(ROOT, "figma2unreal", "runtime",
+                                          "FigmaFlowComponent.cpp"), encoding="utf-8").read()).split("\n")
+    hits = [i for i, l in enumerate(cpp) if "FJsonSerializer::Deserialize" in l]
+    if not hits:
+        bad.append("FigmaFlowComponent.cpp 里找不到 JSON 反序列化调用(改名了?)")
+    for i in hits:
+        if "if (" not in cpp[i]:
+            bad.append("FigmaFlowComponent.cpp:%d 的 Deserialize 返回值没被判" % (i + 1))
+
+    ts = _nocomment(_runtime("figma2cocos", "flow-binder.ts"))
+    if "flowAsset" not in ts:
+        bad.append("flow-binder.ts 里找不到 flowAsset(改名了?)")
+    elif "!this.flowAsset" not in ts:
+        bad.append("flow-binder.ts 没判 flowAsset / flowAsset.json 是否在")
+
+    assert not bad, "运行时的 JSON 入口没设防:\n  " + "\n  ".join(bad)
+
+
 def test_animation_progress_reads_the_clock_not_the_tick_count():
     """★ 时长是**墙钟毫秒**,不是"回调被叫了几次 × 期望间隔"。
 
