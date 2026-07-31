@@ -1,147 +1,178 @@
-# IR → Godot 4 映射全表(ui_to_tscn.py / flow_binder.gd 的契约)
+# IR → Godot 4: the full mapping (the contract `ui_to_tscn.py` / `flow_binder.gd` implement)
 
-输入 = figma2html 的中间表示(IR):`.ui.json`(像素快照,schema 见
-`../../figma2html/references/ui.json-schema.md`)+ `flow.json`(交互声明,见
-`../../figma2html/references/flow-events.md`)。本表是编译后端的唯一映射权威。
+> The zh-CN original is kept alongside as `mapping.zh.md`. English is the authority: land edits
+> here first, then mirror. `tools/conformance` compares the two structurally (row counts and code
+> blocks), so a one-sided edit goes red.
 
-## 1. 顶层(cap → 场景)
+Input = figma2html's intermediate representation: `.ui.json` (the pixel snapshot, schema in
+`../../figma2html/references/ui.json-schema.md`) plus `flow.json` (the interaction declaration, see
+`../../figma2html/references/flow-events.md`). This table is the sole mapping authority for the backend.
 
-| IR | Godot | 说明 |
+## 1. Top level (cap → scene)
+
+| IR | Godot | Notes |
 |---|---|---|
-| 一个 `<stem>.ui.json` | 一个 `<stem>.tscn`(text scene, `format=3`) | stem = 文件名去 `.ui.json` |
-| `w` / `h` | 根 `Control` 的 `offset_right` / `offset_bottom` | 根节点名 = stem(消毒后) |
-| `stageBg` 纯色 `rgba(...)` | 子节点 `StageBg`(ColorRect,`mouse_filter = 2`) | 首个子节点,垫底 |
-| `stageBg` `url(path) ...` | `StageBg`(TextureRect + ext_resource,cover) | 素材摆放见 §6 |
-| `stageBg` `linear-gradient(...)` | `StageBg`(TextureRect + GradientTexture2D) | 真渐变 |
-| `stageBg` 径向/其它渐变 | `StageBg`(ColorRect 平均色) | known-loss(§7) |
+| One `<stem>.ui.json` | One `<stem>.tscn` (text scene, `format=3`) | stem = the filename minus `.ui.json` |
+| `w` / `h` | The root `Control`'s `offset_right` / `offset_bottom` | Root node name = stem (sanitised) |
+| `stageBg` solid `rgba(...)` | A `StageBg` child (ColorRect, `mouse_filter = 2`) | First child, underneath everything |
+| `stageBg` `url(path) ...` | `StageBg` (TextureRect + ext_resource, cover) | Asset placement in §6 |
+| `stageBg` `linear-gradient(...)` | `StageBg` (TextureRect + GradientTexture2D) | A real gradient |
+| `stageBg` radial or other gradient | `StageBg` (ColorRect, averaged colour) | known-loss (§7) |
 
-## 2. 节点命名
+## 2. Node naming
 
-tscn 节点名不允许 `. : @ / " %` —— **统一换 `_`**:figma id `1:40` → 节点名 `1_40`。
-`flow_binder.gd` 的 `node_name()` 用同一规则,因此 flow.json 里照写原始 figma id 即可。
-同级消毒后撞名(极罕见)→ 追加 `_` 兜底。保留名:`StageBg`、`Backdrop`、`CheckMark`、`modal_*`。
+A tscn node name may not contain `. : @ / " %` — all of them **become `_`**: Figma id `1:40` → node
+name `1_40`. `flow_binder.gd`'s `node_name()` applies the same rule, so flow.json keeps the raw
+Figma ids. A sanitised collision among siblings (very rare) gets a trailing `_`. Reserved names:
+`StageBg`, `Backdrop`, `CheckMark`, `modal_*`.
 
-## 3. 几何 / 层级(照 render.js pass2)
+## 3. Geometry and hierarchy (following render.js pass2)
 
-| IR | Godot | 说明 |
+| IR | Godot | Notes |
 |---|---|---|
-| `x,y,w,h`(相对帧绝对 px) | anchors 全 0(左上,默认不落盘)+ `offset_left/top = (x,y) − 父(x,y)`,`offset_right/bottom = left/top + (w,h)` | 与 render.js"绝对几何转父相对"同算法 |
-| `parent` | 节点树挂载路径(`parent="."` / `parent="1_10"` / 多级 `a/b`) | 父 id 不在本屏(子树抽取)→ 当根 |
-| `z` | **同级树序**(children 按 `(z, 原序)` 排序) | Godot Control 绘制顺序 = 树序;不写 `z_index`(它跨层累加,语义不同)。跨父的全局 z 交叉是 known-loss(§7) |
-| `rot`(度) | `rotation`(**弧度**)+ `pivot_offset = Vector2(w/2, h/2)` | Godot 默认绕左上角转,必须补中心 pivot 才对齐 CSS `transform-origin: center` |
-| `opacity` | `modulate = Color(1, 1, 1, a)` | modulate 向下传播 = CSS opacity 连带子树;别用 self_modulate |
+| `x,y,w,h` (absolute px within the frame) | anchors all 0 (top-left, not written out by default) + `offset_left/top = (x,y) − parent(x,y)`, `offset_right/bottom = left/top + (w,h)` | Same algorithm as render.js's "absolute geometry → parent-relative" |
+| `parent` | The mount path in the node tree (`parent="."` / `parent="1_10"` / nested `a/b`) | A parent id not present in this screen (subtree extraction) becomes a root |
+| `z` | **Sibling tree order** (children sorted by `(z, original order)`) | A Godot Control's draw order is its tree order. `z_index` is deliberately not written (it accumulates across layers, which is different semantics). Global z interleaving across parents is known-loss (§7) |
+| `rot` (degrees) | `rotation` (**radians**) + `pivot_offset = Vector2(w/2, h/2)` | Godot rotates about the top-left by default; the centre pivot is what makes it match CSS `transform-origin: center` |
+| `opacity` | `modulate = Color(1, 1, 1, a)` | modulate propagates downward, like CSS opacity affecting the subtree. Do not use self_modulate |
 
-## 4. 盒子样式(RECTANGLE/FRAME/… → Panel + StyleBoxFlat)
+## 4. Box styling (RECTANGLE/FRAME/… → Panel + StyleBoxFlat)
 
-有 `fill`/`border`/`shadow` 任一 → `Panel` + `theme_override_styles/panel = StyleBoxFlat`;
-全空的纯容器 → `Control`(空 Panel 会画主题默认灰皮,必须避开)。
+Any of `fill`/`border`/`shadow` present → `Panel` + `theme_override_styles/panel = StyleBoxFlat`;
+a pure container with none of them → `Control` (an empty Panel paints the theme's default grey skin,
+which has to be avoided).
 
-| IR(CSS 风格字符串) | StyleBoxFlat | 说明 |
+| IR (CSS-flavoured string) | StyleBoxFlat | Notes |
 |---|---|---|
-| `fill: rgba(r,g,b,a)` | `bg_color` | 0-255 → 0-1,4 位小数 |
-| `fill` 为空但有描边/阴影 | `bg_color = Color(0,0,0,0)` + `draw_center = false` | 只画边/影 |
-| `radius: "45px"` / `"a b c d"`(CSS 简写 1/2/3/4 值) | `corner_radius_top_left/top_right/bottom_right/bottom_left`(四角独立) | CSS 序 TL TR BR BL |
-| `radius: "50%"`(capture 对**每个 ELLIPSE** 都产) | 四角同取 `min(w,h) × 50%` | **正方形精确、非正方形近似**:Godot 的 corner_radius 是标量,画不出椭圆角。口径与 figma2unreal 一致。曾因 `float('50%')` 抛异常而**整个丢掉**(椭圆渲染成方块且无告警),现由 tools/conformance 守着 |
-| `border: "2.0px solid rgba(...)"` | `border_width_left/top/right/bottom` + `border_color` | 宽度取整、最小 1;Godot 边框向内画,CSS `box-sizing: border-box` 同语义 |
-| `shadow: "ox oy blur [spread] rgba(...)"` | `shadow_color` + `shadow_offset = Vector2(ox, oy)` + `shadow_size` | **Godot 原生支持,别丢**。`shadow_size ≈ blur + spread`、最小 1(size=0 时 Godot 不绘制,CSS 的 0-blur 硬阴影会消失,故兜底 1) |
-| `fill: linear-gradient(角度, 色标…)` | 节点改为 `TextureRect` + `GradientTexture2D`(`Gradient` 存 offsets/colors;角度 → `fill_from/fill_to` UV:CSS 0deg=向上、90deg=向右) | 真渐变;色标缺位置按 CSS 规则插值 |
-| `fill: radial-/conic-gradient(...)` | `Panel` + 色标**平均色** | known-loss(§7) |
+| `fill: rgba(r,g,b,a)` | `bg_color` | 0-255 → 0-1, four decimals |
+| `fill` empty but a border or shadow present | `bg_color = Color(0,0,0,0)` + `draw_center = false` | Draws only the edge or shadow |
+| `radius: "45px"` / `"a b c d"` (CSS 1/2/3/4-value shorthand) | `corner_radius_top_left/top_right/bottom_right/bottom_left` (four independent corners) | CSS order TL TR BR BL |
+| `radius: "50%"` (capture emits it for **every ELLIPSE**) | all four corners take `min(w,h) × 50%` | **Exact on squares, approximate otherwise**: Godot's corner_radius is a scalar and cannot draw an elliptical corner. Same reading as figma2unreal. This was once **dropped entirely** because `float('50%')` raised — ellipses rendered as squares, with no warning — and is now held by tools/conformance |
+| `border: "2.0px solid rgba(...)"` | `border_width_left/top/right/bottom` + `border_color` | Width rounded, minimum 1. Godot draws borders inward, the same semantics as CSS `box-sizing: border-box` |
+| `shadow: "ox oy blur [spread] rgba(...)"` | `shadow_color` + `shadow_offset = Vector2(ox, oy)` + `shadow_size` | **Godot supports this natively; do not drop it.** `shadow_size ≈ blur + spread`, minimum 1 (at size=0 Godot draws nothing, which would make a CSS zero-blur hard shadow vanish, hence the floor) |
+| `fill: linear-gradient(angle, stops…)` | The node becomes a `TextureRect` + `GradientTexture2D` (`Gradient` holds offsets/colors; angle → `fill_from/fill_to` UV, with CSS 0deg=up and 90deg=right) | A real gradient; stops without positions are interpolated by the CSS rules |
+| `fill: radial-/conic-gradient(...)` | `Panel` + the **averaged** stop colour | known-loss (§7) |
 
-## 5. 文字(TEXT → Label)
+## 5. Text (TEXT → Label)
 
-| IR `text.*` | Godot Label | 说明 |
+| IR `text.*` | Godot Label | Notes |
 |---|---|---|
-| `content` | `text = "..."`(转义 `\\` `\"` `\n` `\t`) | 含 `\n` 时另加 `autowrap_mode = 3`(WORD_SMART,对齐 pre-wrap;单行不设 = 对齐 nowrap) |
-| `alignH` / `alignV`(flex 值) | `horizontal_alignment` / `vertical_alignment`(`flex-start→0 center→1 flex-end→2`) | alignH 缺省时退回 textAlign |
+| `content` | `text = "..."` (escaping `\\` `\"` `\n` `\t`) | When it contains `\n`, also sets `autowrap_mode = 3` (WORD_SMART, matching pre-wrap); leaving it unset on a single line matches nowrap |
+| `alignH` / `alignV` (flex values) | `horizontal_alignment` / `vertical_alignment` (`flex-start→0 center→1 flex-end→2`) | With alignH absent, falls back to textAlign |
 | `color` | `theme_override_colors/font_color` | |
-| `size` | `theme_override_font_sizes/font_size`(int) | |
-| `lh`(行高 px) | `theme_override_constants/line_spacing = lh − size` | 仅 lh>0 时写;可为负 |
-| `stroke`("wpx rgba(...)") | `theme_override_colors/font_outline_color` + `theme_override_constants/outline_size = round(w/2)` | webkit-text-stroke 骑线 + `paint-order:stroke` → 可见≈外侧一半,故取 w/2(近似) |
-| `weight` / `family` / `ls` | **不落盘** | 需要字体资源才有意义,见 §6 字体与 §7 known-loss |
+| `size` | `theme_override_font_sizes/font_size` (int) | |
+| `lh` (line height px) | `theme_override_constants/line_spacing = lh − size` | Written only when lh>0; may be negative |
+| `stroke` ("wpx rgba(...)") | `theme_override_colors/font_outline_color` + `theme_override_constants/outline_size = round(w/2)` | webkit-text-stroke straddles the outline and `paint-order:stroke` makes roughly the outer half visible, hence w/2 (approximate) |
+| `weight` / `family` / `ls` | **not written** | Only meaningful with a font resource; see §6 fonts and the §7 known-loss table |
 
-## 6. 图片 / 素材 / 字体
+## 6. Images, assets, fonts
 
-| IR | Godot | 说明 |
+| IR | Godot | Notes |
 |---|---|---|
-| `img`(项目相对路径,按 imageRef 命名跨屏复用) | `TextureRect` + `[ext_resource type="Texture2D" path="res://<img>"]` | **素材摆放**:把 figma2html 导出的 `_assets/` 整目录原样拷进 Godot 工程根(路径逐段保留),`res://` + IR 路径即命中;同 imageRef 多处引用共享同一 ext_resource |
-| `imgSize: cover`(或空) | `expand_mode = 1` + `stretch_mode = 6`(KEEP_ASPECT_COVERED) | 等比铺满裁切 |
-| `imgSize: contain` | `expand_mode = 1` + `stretch_mode = 5`(KEEP_ASPECT_CENTERED) | 等比完整居中 |
-| 其它 imgSize 值 | `stretch_mode = 0`(SCALE) | 拉伸兜底 |
-| `vec: true` 且无 PNG | 无填充 → `Control`(透明占位) | 对齐 render.js"缺图回退透明,不平涂黑" |
-| 字体 | 工程级配置:在 Godot 主题(或 `theme_override_fonts/font`)挂 CJK 字体(如思源黑体),按 `weight` 备 Regular/Medium/Bold 几档 | 转换器不产字体资源;figma2html 的 `subset_font.py` 产的 woff2 Godot 不直接吃,用 ttf/otf |
+| `img` (project-relative path, named by imageRef so it is reused across screens) | `TextureRect` + `[ext_resource type="Texture2D" path="res://<img>"]` | **Asset placement**: copy figma2html's exported `_assets/` directory into the Godot project root verbatim (keeping every path segment), and `res://` + the IR path resolves. Multiple references to the same imageRef share one ext_resource |
+| `imgSize: cover` (or empty) | `expand_mode = 1` + `stretch_mode = 6` (KEEP_ASPECT_COVERED) | Fills proportionally and crops |
+| `imgSize: contain` | `expand_mode = 1` + `stretch_mode = 5` (KEEP_ASPECT_CENTERED) | Fits proportionally and centres |
+| Any other imgSize | `stretch_mode = 0` (SCALE) | Stretch fallback |
+| `vec: true` with no PNG | No fill → `Control` (transparent placeholder) | Matches render.js: a missing image falls back to transparent, never a black fill |
+| Fonts | Project-level configuration: attach a CJK font (e.g. Source Han Sans) in the Godot theme (or `theme_override_fonts/font`), with Regular/Medium/Bold cuts to serve `weight` | The converter emits no font resources. The woff2 that figma2html's `subset_font.py` produces is not directly usable by Godot; use ttf/otf |
 
-## 7. Known-loss 表(转换必丢/近似项,接受前先看)
+## 7. Known-loss table (what conversion drops or approximates — read before accepting)
 
-| IR 特性 | 处理 | 损失说明 |
+| IR feature | Handling | What is lost |
 |---|---|---|
-| `blur`(filter 模糊) | **丢弃** | Control 无逐节点 filter;真要 → 引擎内加 BackBufferCopy/shader,属手工后处理 |
-| `radial-/conic-gradient` | 平均色回退 | StyleBoxFlat/GradientTexture2D(本管线用法)不覆盖;GradientTexture2D 其实有 radial fill,但径向中心/半径与 CSS 语义不齐,宁可显式降级 |
-| `linear-gradient` + 圆角/描边/阴影同体 | 渐变保真,圆角/描边/阴影**丢** | 节点变 TextureRect 后无 StyleBox;真要 → 手工套 Panel 父 + clip |
-| `text.ls`(字距) | 丢弃 | 需 FontVariation `spacing_glyph`,依赖字体资源 |
-| `text.weight` / `family` | 不落盘 | 见 §6 字体;不配主题时用引擎默认字体渲染 |
-| `text.stroke` 宽度 | `outline_size = round(w/2)` 近似 | 骑线 vs 外描的差,±1px 级 |
-| CSS 阴影 `blur=0` 硬阴影 | `shadow_size = 1` 兜底 | Godot size=0 不画;1px 轻微软化 |
-| `shadow` 挂在 TEXT/img 元素上 | 丢弃 | box-shadow ≠ 字体阴影;Label 只有 font shadow,语义不同不硬凑 |
-| 全局 `z` 跨父交叉 | 同级排序近似 | 兄弟内正确;跨父穿插(罕见)会平化 |
-| 列表滚动(overflow-y auto) | `clip_contents = true` 只裁不滚 | 要滚 → 手工把容器包进 ScrollContainer |
-| `rot` 在组件实例内部子节点 | 上游已丢(capture 回退 0) | figma REST 限制,见 figma2html「已知限制:旋转」;补救走 hook 覆盖 |
-| `flow.events[].transition`(转场) | 烘成 `motion.json` 采样曲线,**但没人播** | 见下面「转场缓动」一节 |
+| `blur` (filter blur) | **dropped** | Control has no per-node filter. If you truly need it, add a BackBufferCopy/shader in-engine — a manual post-process |
+| `radial-/conic-gradient` | Averaged colour fallback | Not covered by StyleBoxFlat or by GradientTexture2D as used in this pipeline. GradientTexture2D does have a radial fill, but its centre/radius semantics do not line up with CSS, so an explicit degradation is preferred |
+| `linear-gradient` together with radius / border / shadow | Gradient preserved; radius, border and shadow **dropped** | Once the node becomes a TextureRect there is no StyleBox. If you need both, wrap it manually in a Panel parent and clip |
+| `text.ls` (letter spacing) | dropped | Needs FontVariation `spacing_glyph`, which depends on a font resource |
+| `text.weight` / `family` | not written | See §6 fonts; without a theme it renders in the engine default font |
+| `text.stroke` width | `outline_size = round(w/2)`, approximate | The straddled-vs-outer difference, on the order of ±1px |
+| CSS hard shadow with `blur=0` | `shadow_size = 1` floor | Godot draws nothing at size=0; 1px softens it slightly |
+| `shadow` on a TEXT or img element | dropped | box-shadow is not a font shadow; a Label only has a font shadow, and the semantics differ too much to fake |
+| Global `z` interleaving across parents | Approximated by sibling ordering | Correct within siblings; cross-parent interleaving (rare) is flattened |
+| List scrolling (overflow-y auto) | `clip_contents = true` clips without scrolling | To scroll, wrap the container in a ScrollContainer by hand |
+| `rot` on a node inside a component instance | Already lost upstream (capture falls back to 0) | A Figma REST limitation, see figma2html's "known limitation: rotation"; work around it in the hook |
+| `flow.events[].transition` | Baked into `motion.json` sample points, **and played** | See "Transition easing" below |
 
-### 转场缓动(motion.json)
+### Transition easing (motion.json)
 
-给 `ui_to_tscn.py` 传第三个参数 `flow.json`,就会在 outdir 里多产一个 `motion.json`:
-每条带转场的事件一份 **17 点等距采样曲线**(x/y 都是 0..1 进度)。
+Pass `flow.json` as `ui_to_tscn.py`'s third argument and it emits one extra file into outdir,
+`motion.json`: per event carrying a transition, a **17-point evenly spaced sampled curve** (x and y
+are both 0..1 progress).
 
-**为什么是采样点,不是 `Tween.EASE_*` 枚举。** figma 给的是一条具体曲线
-(`cubic-bezier(.32,.72,0,1)` 或弹簧三参),`Tween.EASE_OUT` 是**另一条同名不同形**的曲线。
-挑"最像的枚举"是各后端各挑各的 —— 同一份 IR 在六个引擎里六种手感,而每家测试都绿。
-量级参考:easeOutCubic 与 `cubic-bezier(.23,1,.32,1)` 最大差 **19.8 个百分点**,且差在起步段。
-采样点没有这个自由度,`tools/conformance` 还会拿它跟 unity/unreal **逐点对账**。
+**Why sample points rather than a `Tween.EASE_*` enum.** Figma hands over a specific curve
+(`cubic-bezier(.32,.72,0,1)`, or a spring's three parameters); `Tween.EASE_OUT` is a **different
+curve sharing the name**. Picking "the closest enum" means every backend picks its own — one IR
+becomes six different feels across six engines while every test stays green. For scale: easeOutCubic
+differs from `cubic-bezier(.23,1,.32,1)` by up to **19.8 percentage points**, and the worst of it is
+in the opening moments. Sample points have no such freedom, and `tools/conformance` compares them
+against unity and unreal **one by one**.
 
-用法:`Curve` 资源逐点 `add_point(Vector2(x, y))`,再 `tween_method` 按 `curve.sample(t)` 插值。
+Usage: build a `Curve` resource with `add_point(Vector2(x, y))` per point, then `tween_method`
+interpolating through `curve.sample(t)`.
 
-**接线**:`flow_binder.gd` 的 `motion_path`(缺省 `res://motion.json`)。文件不存在 = 全部瞬时显隐,
-是**声明在案的降级**,不是静默丢失。存在则自动生效:弹窗入场/**出场** · 按压 · 列表逐项 · guard 抖动。
+**Wiring**: `flow_binder.gd`'s `motion_path` (default `res://motion.json`). File absent = everything
+shows and hides instantly, a **declared degradation**, not a silent loss. Present and it takes
+effect automatically: modal entrance / **exit** · press · list stagger · guard shake.
 
-**2026-07-29 于 Godot 4.3-stable 实机核验**:6 条曲线读成 `Curve`(各 17 点),
-`sample(0.3)` 与 python 求解器、以及 Unity 侧**三方一致到小数点后 6 位**;
-转场真播(MOVE_IN 中途 `alpha=0.509 / offsetY=942.5` → 终态 `1.000 / 0.0`,出场后 `visible=false`)。
+**Verified in Godot 4.3-stable, 2026-07-29**: 6 curves read as `Curve` (17 points each), and
+`sample(0.3)` agrees with the Python solver *and* the Unity side — three-way, **to six decimal
+places**. Transitions genuinely play (mid-`MOVE_IN`: `alpha=0.509 / offsetY=942.5` → final
+`1.000 / 0.0`; after the exit, `visible=false`).
 
-⚠️ **位移/缩放只贴 `modals[*].panel`,遮罩只跟着淡。** 早先把 transform 贴在弹窗**层**上,
-而 Backdrop 是层的子节点 —— 遮罩跟着面板一起滑/缩:顶部不变暗、四边缩进露出底屏。
-**曲线取值一个不差,是实机截图才抓到的**;html / unity 同构同病,已一并修。
-没声明 `panel` 的弹窗只做淡入淡出 —— 不猜该动哪个节点。
+⚠️ **Translation and scale go on `modals[*].panel` only; the backdrop merely fades.** Transform used
+to be applied to the modal **layer**, and Backdrop is a child of that layer — so the backdrop slid
+and scaled along with the panel: the top never dimmed, and the edges pulled in to reveal the base
+screen. **Every curve value was correct; only a screenshot from the running engine caught it.** html
+and unity had the same shape of bug and were fixed together. A modal with no declared `panel` only
+fades — it does not guess which node should move.
 
-⚠️ **必须用 `sample()` 且把切线设成 `TANGENT_LINEAR`。** `sample_baked()` 量化到
-`bake_resolution`(默认 100),会与别家差 ~1.4e-3;默认切线(0)会让每段两头压平。
-采样点一致**只保证关键帧上一致**,帧间插值模式不对齐照样各算各的 ——
-`tools/conformance` 有源码层守卫。
+⚠️ Directional transitions travel **the stage's** dimension, not the panel's own box (see
+`spec/flow-events.md`). `layer.size` is what the multiplication uses; html once used a CSS
+percentage, which is relative to the element, and started an 860×1160 panel 1160px away where the
+engines started it 1920px away. Curve values are identical either way, so `tools/conformance` pins
+the basis directly.
 
-| 处置 | 说明 |
+⚠️ **Use `sample()` and set the tangents to `TANGENT_LINEAR`.** `sample_baked()` quantises to
+`bake_resolution` (100 by default) and lands ~1.4e-3 away from the others; the default tangent (0)
+flattens both ends of every segment. Matching sample points **only guarantees agreement at the
+keyframes** — with different interpolation between them, every engine still computes its own thing.
+`tools/conformance` guards this at source level.
+
+| Handling | Note |
 |---|---|
-| **known-loss:具名弹簧预设** | figma 的 `GENTLE/QUICK/BOUNCY/SLOW` 与 `*_BACK` 没公开控制点 → 标 `unresolved` 不采样,**不编数**(编"差不多"的数 = 产物看着正常而手感是错的) |
-| **approx:弹簧被 duration 截断** | figma 的弹簧带 duration,而弹簧没有固定时长;窗口短于收敛时间就切一截,生成时打 `truncated:` |
-| **known-loss:`SMART_ANIMATE`** | 自动匹配同名图层插值,跨引擎无对应物;曲线照采,**配对逻辑不实现** |
+| **known-loss: named spring presets** | Figma publishes no control points for `GENTLE/QUICK/BOUNCY/SLOW` or `*_BACK` → marked `unresolved` and not sampled. **No invented numbers** (numbers that are "about right" produce an artifact that looks normal and feels wrong) |
+| **approx: spring truncated by duration** | Figma's springs carry a duration, and a spring has no fixed length; a window shorter than its settling time cuts it off, and the generator stamps `truncated:` |
+| **known-loss: `SMART_ANIMATE`** | Auto-matching same-named layers has no cross-engine equivalent; the curve is sampled, **the pairing logic is not implemented** |
 
-## 8. 坐标系 / 缩放建议
+## 8. Coordinate system and scaling
 
-- 生成场景是**固定像素舞台**(根 Control = `w×h`,如 1080×1920),内部全部绝对定位,
-  **不参与** Godot 布局容器(HBox 等)的重排 —— 语义与 render.js 的 absolute DOM 一致。
-- 整场景适配窗口:项目设置 `display/window/size/viewport_width/height = 帧尺寸`,
-  `stretch/mode = canvas_items`、`stretch/aspect = keep` —— 等价 figma2html `mountStage`
-  的等比缩放。嵌进别的场景当子界面时,包一层 `SubViewport` 或对根 Control 设 `scale`。
-- pivot:所有旋转节点已带 `pivot_offset = size/2`(中心),缩放动画想绕中心也直接可用。
-- `flow_binder.gd` 作为舞台根:`binder.size = flow.stage`,底屏场景与弹窗层都挂它下面。
+- The generated scene is a **fixed-pixel stage** (root Control = `w×h`, e.g. 1080×1920) with
+  everything absolutely positioned inside; it **does not participate** in Godot's layout containers
+  (HBox and friends) — the same semantics as render.js's absolute DOM.
+- To fit the whole scene to the window: project settings `display/window/size/viewport_width/height =
+  the frame size`, `stretch/mode = canvas_items`, `stretch/aspect = keep` — the equivalent of
+  figma2html's `mountStage` proportional scaling. To embed it inside another scene as a sub-UI, wrap
+  it in a `SubViewport` or set `scale` on the root Control.
+- Pivot: every rotated node already carries `pivot_offset = size/2` (centre), so a scale animation
+  about the centre works directly too.
+- `flow_binder.gd` as the stage root: `binder.size = flow.stage`, with the base screen scene and
+  every modal layer mounted beneath it.
 
-## 9. flow.json → 运行时(flow_binder.gd,语义对齐 assemble.js)
+## 9. flow.json → runtime (flow_binder.gd, semantics aligned with assemble.js)
 
-| flow 字段 | Godot 行为 |
+| flow field | Godot behaviour |
 |---|---|
-| `caps` | `.ui.json` 路径 → 同 stem 的 `.tscn`(`scene_dir` 里 load) |
-| `base` | 底屏场景整实例常驻(含自身 StageBg) |
-| `modals[*].roots/panel` | 该屏场景实例化后**按 roots 剪枝**(顶层只留 roots 子树,StageBg 等释放)+ `Backdrop`(半透明 ColorRect)叠加;`panel` 用于 `@panelOutside` 的 `get_global_rect` 判定。选"整场景实例+剪枝"而非"显隐":顶层子几何本就是帧绝对 px,剪完即对位,且 SubResource 引用保持完整 |
-| `events[]` | `gui_input` 按节点名绑(绑定元素设 `MOUSE_FILTER_STOP` + `accept_event()`≈stopPropagation);`@any:`/`@panelOutside:` 绑在弹窗层上,弹窗内容全部 `MOUSE_FILTER_PASS` 冒泡(仿 DOM bubbling);`guard` → state truthy 全过才放行(失败回调 `onGuardFail`) |
-| `@in:<modal>:<nodeId>`(v1.1) | 在弹窗层里 `find_el`;该节点从 `_pass_through` 的 `MOUSE_FILTER_PASS` 改回 `STOP` 收下点击,`accept_event()` 挡住冒泡 |
-| `list` | `render_rows()`:容器首行 `duplicate()` 当模板,按第二行 offset 差算步长,逐项回调填充 + `set_meta("item")`,行点击派给 `onRowClick` action |
-| `bindings.checkbox` | 引擎通用双态:改 Panel 的 StyleBoxFlat `bg_color` + 动态 `CheckMark` Label 填 `mark` 字符 |
-| 其余 `do` 名 / 域内回填 | app hook 注册的 action 字典(`app_hook.example.gd`),引擎不写死 |
+| `caps` | `.ui.json` path → the `.tscn` of the same stem (loaded from `scene_dir`) |
+| `base` | The base screen scene stays instantiated (including its own StageBg) |
+| `modals[*].roots/panel` | That screen's scene is instantiated and then **pruned by roots** (only the roots subtrees survive at the top level; StageBg and the rest are freed), with a `Backdrop` (translucent ColorRect) overlaid. `panel` drives the `get_global_rect` test for `@panelOutside`. Whole-scene-instantiate-and-prune beats show/hide because the top-level children's geometry is already frame-absolute px — prune and it lines up — and SubResource references stay intact |
+| `events[]` | `gui_input` bound by node name (the bound element gets `MOUSE_FILTER_STOP` + `accept_event()`, ≈ stopPropagation). `@any:` / `@panelOutside:` bind on the modal layer, with all modal content set to `MOUSE_FILTER_PASS` so clicks bubble (imitating DOM bubbling). `guard` → every state key must be truthy to pass (failure calls back into `onGuardFail`) |
+| `@in:<modal>:<nodeId>` (v1.1) | `find_el` inside the modal layer; that node goes from `_pass_through`'s `MOUSE_FILTER_PASS` back to `STOP` to receive the click, and `accept_event()` blocks the bubble |
+| `list` | `render_rows()`: `duplicate()` the container's first row as the template, derive the step from the second row's offset delta, fill each item through the callback plus `set_meta("item")`, and dispatch row clicks to the `onRowClick` action |
+| `bindings.checkbox` | Handled generically by the engine: change the Panel's StyleBoxFlat `bg_color` and fill a dynamic `CheckMark` Label with the `mark` character |
+| Any other `do` name / domain write-back | The action dictionary the app hook registers (`app_hook.example.gd`); the engine hard-codes none of it |
+
+## 10. Robustness
+
+`flow.json` that fails to parse produces one `push_error` and a clean return — `JSON.parse_string`
+returns null rather than throwing, and the result is checked. This is the repo-wide rule (malformed
+IR gets a sentence, not a traceback) and `tools/conformance` checks all four runtimes for it.

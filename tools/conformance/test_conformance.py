@@ -711,6 +711,61 @@ def test_guard_shake_is_the_same_waveform_in_every_backend():
     assert not bad, "抖动波形不同形:\n  " + "\n  ".join(bad)
 
 
+def test_mapping_docs_and_their_zh_mirrors_stay_structurally_paired():
+    """★ 每份 `mapping.md` 与它的 `mapping.zh.md` 必须**结构成对**。
+
+    这四份是六后端契约的对外面(README 直接指过来),v0.3.x 之前一直是中文,挡掉了一半读者;
+    译英之后原文按仓里既有的做法(`spec/*.zh.md`)留成镜像 —— 但 `spec/` 那对之所以敢留,
+    是因为有 `spec_parity.py` 守着。**没有守卫的双份文档必然漂**,而漂了的镜像比没有镜像更坏:
+    它看起来是真的。
+
+    散文没法跨语言比,能比的是**结构**:表格行数、代码块内容(去注释后与语言无关)。
+    这跟 `spec_parity.py` 的第二道检查是同一招。
+    """
+    import re as _re
+    bad = []
+    for pkg in ("figma2godot", "figma2unity", "figma2unreal", "figma2cocos"):
+        en_p = os.path.join(ROOT, pkg, "references", "mapping.md")
+        zh_p = os.path.join(ROOT, pkg, "references", "mapping.zh.md")
+        if not os.path.exists(zh_p):
+            bad.append("%s 没有 mapping.zh.md(译英时原文应留成镜像)" % pkg)
+            continue
+        en = io.open(en_p, encoding="utf-8").read()
+        zh = io.open(zh_p, encoding="utf-8").read()
+
+        # ① 英文版不该有中文正文(译漏了会当场现形)
+        leftover = [ln for ln in en.split("\n") if _re.search(r"[一-龥]", ln)]
+        if leftover:
+            bad.append("%s/mapping.md 还有 %d 行中文,第一行:%s"
+                       % (pkg, len(leftover), leftover[0][:60]))
+
+        # ② 表格行数一致 —— 少了一行 = 有一条映射没跟过来
+        rows = lambda t: sum(1 for ln in t.split("\n")
+                             if ln.strip().startswith("|") and not _re.match(r"^\|[\s:|-]+\|$", ln.strip()))
+        if rows(en) != rows(zh):
+            bad.append("%s 表格行数 en=%d ≠ zh=%d" % (pkg, rows(en), rows(zh)))
+
+        # ③ 代码块:**块数**必须一致;**内容**只比那些在 zh 侧不含中文的块。
+        #    这四份里的代码块有两类:真代码(如 unreal 的 Build.cs,跨语言逐字相同)和
+        #    带散文的 ASCII 示意图(cocos 那张烘焙管线图、坐标通式里的行内注释)——
+        #    后者两边本来就不一样,那是**翻译**不是漂移。
+        #    第一版按行剔中文,结果被"注释与代码同一行"打败(zh 整行没了、en 还在);
+        #    分块跳过才对。跳过的块由块数守着:少一块照样红。
+        def blocks(t):
+            return [_re.sub(r"\s+", "", b) for b in _re.findall(r"```[a-z]*\n(.*?)```", t, _re.S)]
+        eb, zb = blocks(en), blocks(zh)
+        if len(eb) != len(zb):
+            bad.append("%s 代码块数 en=%d ≠ zh=%d" % (pkg, len(eb), len(zb)))
+        else:
+            for i, (a, b) in enumerate(zip(eb, zb)):
+                if _re.search(r"[一-龥]", b):
+                    continue                     # zh 侧是带散文的图,跳过内容比对
+                if a != b:
+                    bad.append("%s 第 %d 个代码块与 zh 镜像不一致(改了一边?)" % (pkg, i))
+
+    assert not bad, "mapping 文档与 zh 镜像漂了:\n  " + "\n  ".join(bad)
+
+
 def test_every_runtime_guards_the_json_it_is_handed():
     """★ "畸形 IR 给一句话,不给 traceback" —— 这条规矩 v0.2.0 就立了。
 

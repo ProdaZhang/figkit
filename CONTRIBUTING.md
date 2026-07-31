@@ -16,7 +16,7 @@ CI (`.github/workflows/tests.yml`) runs the same script on **ubuntu / windows / 
 
 ## Core principles (understand before changing)
 
-1. **The IR is the spine.** `spec/ui.json-schema.md` + `spec/flow-events.md` are **v1.0 FROZEN**: additive changes only (new optional fields / enum values); a structural change needs a real gap hit by a backend, and bumps the spec version. Backends consume the IR — they never invent private extensions to it. Every capture stamps the version it followed into `.ui.json` as `spec`, and consumers treat it as **advisory**: missing means `"1.0"`, a differing minor is ignored (additive by construction), a differing major warns instead of refusing. Bumping the version means changing `IR_SPEC` in `figma_capture.py`, both spec files plus the zh mirror, and `IR_SPEC_SUPPORTED` in each backend that reads it.
+1. **The IR is the spine.** `spec/ui.json-schema.md` is **v1.0 FROZEN**; `spec/flow-events.md` is at **v1.1** under the same discipline: additive changes only (new optional fields / enum values / new special selector forms); a structural change needs a real gap hit by a backend, and bumps the minor version. v1.1 is what that looks like in practice — `@in:<modal>:<nodeId>` landed only after the gap had sat recorded-but-unpatched in the spec since v1.0. Backends consume the IR — they never invent private extensions to it. Every capture stamps the version it followed into `.ui.json` as `spec`, and consumers treat it as **advisory**: missing means `"1.0"`, a differing minor is ignored (additive by construction), a differing major warns instead of refusing. Bumping the version means changing `IR_SPEC` in `figma_capture.py`, both spec files plus the zh mirror, and `IR_SPEC_SUPPORTED` in each backend that reads it.
 2. **Broken references are caught offline.** `flow.json` is hand-written and holds nothing but Figma node ids pointing at screens, so a typo is the likeliest first mistake anyone makes. Every backend that consumes flow validates those references before doing any work — `figma2html/scripts/flow_check.py`, `figma2cocos/scripts/ui_check.py`, `figma2unreal/scripts/ui_to_uespec.py` — and exits 2 naming what is wrong. (html got its checker late: for a while a mistyped id there was only a browser console warning you'd discover by clicking and getting nothing.)
 3. **Malformed IR gets a sentence, not a traceback.** Each artifact-emitting backend validates its input (`check_ir`) before converting: top-level shape, per-element `id` and geometry, no duplicate ids, no dangling `parent`. The check is duplicated per backend on purpose — skill folders must stay self-contained and installable individually, so cross-directory imports would break the moment one is installed as a plugin. What keeps the copies honest is the conformance suite: every backend must reject the same malformed inputs the same way.
 4. **One capture, master copy in `figma2html/scripts/figma_capture.py`.** `figma2dsl` carries a byte-identical mirror guarded by `figma2dsl/scripts/tests/test_capture_parity.py`. Change capture in figma2html first, then sync the mirror.
@@ -36,17 +36,18 @@ CI (`.github/workflows/tests.yml`) runs the same script on **ubuntu / windows / 
 
 ## Translation
 
-`spec/` is English (done — the zh original lives on as `spec/*.zh.md`). Most other prose is still **zh-CN**. Translation is the easiest way to contribute: no Figma account, no engine install, no deep knowledge of the pipeline. Priority order, highest value first:
+`spec/` and all four backends' `references/mapping.md` are English (done — each zh original lives on as a `*.zh.md` mirror). Most other prose is still **zh-CN**. Translation is the easiest way to contribute: no Figma account, no engine install, no deep knowledge of the pipeline. Priority order, highest value first:
 
-1. **One backend's `references/mapping.md`** — the full IR→engine mapping plus its known-loss table, ~100 lines. Pick the engine you actually use; this is what a user reads to know what will and won't survive the conversion.
-2. **`SKILL.md` files** — usage docs for each skill.
-3. **`figma2html/examples/login/README.md`** — the demo walkthrough.
+1. **`SKILL.md` files** — usage docs for each skill, and the largest remaining block of zh-only prose.
+2. **`figma2html/examples/*/README.md`** — the demo walkthroughs.
+3. **`figma2dsl/references/`** — the UI-DSL spec extension.
 
 Conventions for translations:
 
 - Keep the file path and name unchanged. Only add a `<name>.zh.md` mirror when the zh version must remain readable to its maintainer — that's what `spec/` does.
 - Keep all identifiers, field names, code blocks and table structure byte-identical. Don't "improve" a technical claim while translating: if you think one is wrong, open an issue instead.
 - `spec/` has two guards, both in `tools/spec_parity.py`: the English file must stay byte-identical to the `figma2html/references/` shipped copy apart from the version header, and its **code blocks (comments stripped)** must still match `spec/*.zh.md`, so a schema change can't land in one language only.
+- `mapping.md` has its own guard in `tools/conformance`: table row counts must match its `.zh.md`, code blocks that are real code (no CJK) must match byte for byte, and the English file must contain no CJK at all. **A mirror nobody guards will drift, and a drifted mirror is worse than none — it still looks true.** Prose can differ; structure cannot. Land edits in English first, then mirror.
 - Tests must stay green: `python3 tools/run_all_tests.py`.
 
 ## Conventions

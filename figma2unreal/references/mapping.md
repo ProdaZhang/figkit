@@ -1,114 +1,127 @@
-# IR → UMG 映射全表(figma2unreal)
+# IR → UMG: the full mapping (figma2unreal)
 
-> **声明:C++ 运行时(runtime/)未在引擎内编译验证** —— 交付态 = 源码 + 本集成说明。
-> 目标引擎 **UE 5.3+**;首次集成请按下文步骤编译,若个别 API 因引擎小版本有出入,
-> 均为局部修正(集中在 FSlateBrush/FSlateFontInfo 字段与 UMG Setter),不影响架构。
+> The zh-CN original is kept alongside as `mapping.zh.md`. English is the authority: land edits
+> here first, then mirror. `tools/conformance` compares the two structurally (row counts and code
+> blocks), so a one-sided edit goes red.
+
+> **Statement: the C++ runtime (runtime/) has not been compile-verified inside the engine** — what
+> ships = the source plus this integration guide. Target engine **UE 5.3+**; for a first
+> integration, compile by the steps below. Should individual APIs differ across engine point
+> releases, the fixes are local (concentrated in FSlateBrush/FSlateFontInfo fields and UMG setters)
+> and do not touch the architecture.
 >
-> **无引擎门(已有,CI 每次跑)**:装不了引擎也不等于零把关,两道确定性静态门顶着 ——
-> `scripts/uespec_contract.py`(python 产出字段 ↔ C++ 读取字段双向对账,§4 的 known-loss
-> 逐条对应它的 WAIVERS 声明)与 `scripts/uht_lint.py`(UE 反射规约 R1-R6:generated.h 末位、
-> GENERATED_BODY、UINTERFACE 配对、BlueprintNativeEvent 走 Execute_、UObject 成员 GC 可见性、
-> include 模块登记 ⊆ §5 的 Build.cs)。**它们查规约与契约,不查 API 真值** ——
-> `FSlateFontInfo` 到底有没有 `LetterSpacing` 这类问题,仍然只有真编译能回答。
+> **Engine-free gates (already in place, run by CI every time)**: not being able to install the
+> engine does not mean nothing is checked — two deterministic static gates hold the line.
+> `scripts/uespec_contract.py` (two-way reconciliation between the fields Python emits and the
+> fields C++ reads, with every §4 known-loss item corresponding to one of its WAIVERS declarations)
+> and `scripts/uht_lint.py` (UE reflection conventions R1–R6: generated.h last, GENERATED_BODY,
+> UINTERFACE pairing, BlueprintNativeEvent dispatched through Execute_, GC visibility of UObject
+> members, include-module registration ⊆ the §5 Build.cs). **They check conventions and contracts,
+> not API truth** — whether `FSlateFontInfo` really has a `LetterSpacing` field is still a question
+> only a real compile can answer.
 
-架构分工(与 figma2html 双层对齐):
+Division of labour (mirroring figma2html's two layers):
 
-| 层 | 产物 | 职责 |
+| Layer | Artifact | Responsibility |
 |---|---|---|
-| python 预处理器 `scripts/ui_to_uespec.py` | `<屏>.uespec.json` / `flow.uespec.json` | **全部 CSS 字符串解析**成强类型数值/结构 + 引用校验,离线可测(tests 全绿) |
-| C++ 解释器 `runtime/FigmaUiWidget` | Widget 树 | **零解析**,按 uespec 用 WidgetTree 建 UI(视觉) |
-| C++ 解释器 `runtime/FigmaFlowComponent` | 交互 | assemble.js 语义:底屏+弹窗/守卫/toggleFlag/send/列表克隆/checkbox;域内语义走 `IFigmaAppHook` |
+| Python preprocessor `scripts/ui_to_uespec.py` | `<screen>.uespec.json` / `flow.uespec.json` | **Parses every CSS string** into strongly typed numbers/structures, plus reference validation; testable offline (tests all green) |
+| C++ interpreter `runtime/FigmaUiWidget` | The Widget tree | **Zero parsing**: builds the UI from the uespec with WidgetTree (visuals) |
+| C++ interpreter `runtime/FigmaFlowComponent` | Interaction | assemble.js semantics: base screen + modals / guards / toggleFlag / send / row cloning / checkbox; domain semantics go through `IFigmaAppHook` |
 
-## 1. 元素映射
+## 1. Element mapping
 
-| IR 字段(.ui.json) | uespec 强类型 | UMG 落点 | 保真度 |
+| IR field (.ui.json) | uespec strong type | Where it lands in UMG | Fidelity |
 |---|---|---|---|
-| `x,y,w,h`(相对帧绝对 px) | `absX/absY` + `localX/localY`(父相对,照 render.js pass2) | `UCanvasPanelSlot::SetPosition(local)/SetSize`;抽子树的根用 abs | 精确 |
-| `parent` 嵌套 | 同 | 容器元素 → `UCanvasPanel`(自身视觉铺满作背景),子元素挂进面板 | 精确 |
-| `z` | `z`(int) | `UCanvasPanelSlot::SetZOrder`(捕获序即绘制序) | 精确 |
-| `rot` | `rot`(度) | `SetRenderTransformAngle` + 中心 pivot(=CSS `transform-origin:center`) | 精确(figma INSTANCE 内部 rot 缺失是上游 API 限制,同 HTML 版) |
-| `opacity` | `opacity` | `SetRenderOpacity` | 精确 |
-| `fill: rgba(...)` | `{type:"solid",rgba:[r,g,b,a]}` | `UBorder` + `FSlateBrush`(RoundedBox)`TintColor` | 精确(sRGB→线性由 `FromSRGBColor`) |
-| `fill: linear-gradient(...)` | `{type:"linear",angleDeg,stops:[{rgba,pos}]}` | **首停靠色纯色回退 + UE_LOG**(known-loss,材质路线见 §4) | 回退 |
-| `fill: radial-gradient(...)` | `{type:"radial",stops:[...]}` | 同上回退 | 回退 |
-| `radius: "37px"` / 四值 / `50%` | `[tl,tr,br,bl]` px 浮点(`50%`→`min(w,h)/2`) | `FSlateBrush::OutlineSettings.CornerRadii`(UE5 RoundedBox 原生四角) | 精确(椭圆角 50% 为标量近似) |
-| `border: "4px solid rgba(..)"` | `{width,rgba}` | `OutlineSettings.Width/Color`(RoundedBox 描边) | 高(CSS border 内收 vs Slate outline 居线的亚像素差) |
-| `shadow: "0px 4px 0px rgba(..)"` | `[{dx,dy,blur,rgba}]` | **不渲染 + UE_LOG(Verbose)**(known-loss) | 丢失 |
-| `blur: "blur(4px)"` | `{radius}` | **不渲染 + UE_LOG(Verbose)**(known-loss;`UBackgroundBlur` 只糊背板非自身,不等价) | 丢失 |
-| `img` / `imgSize` | `{path,mode}`(mode:cover/contain/stretch/tile) | `UImage` + `LoadObject<UTexture2D>`(路径约定见 §3);**缺图回退透明 + UE_LOG(Warning)**,不平涂 | 高(cover≈stretch:figma 导出图长宽比=元素比;contain/tile 拉伸回退) |
-| `vec:true`(矢量簇折叠图) | `vec`(仅记录) | 走 `img` 的通用图片路径(capture 已把矢量簇折成 png);缺图即透明占位。**运行时不消费 `vec` 标志本身** | 同 img |
-| `stageBg` | `{type:solid/linear/radial/image,...}` | 全帧底 UBorder/UImage,ZOrder −10000(弹窗层不画) | 同 fill/img |
+| `x,y,w,h` (absolute px within the frame) | `absX/absY` + `localX/localY` (parent-relative, following render.js pass2) | `UCanvasPanelSlot::SetPosition(local)/SetSize`; a lifted subtree's root uses abs | Exact |
+| `parent` nesting | Same | Container elements → `UCanvasPanel` (their own visual fills it as a background), children mounted into the panel | Exact |
+| `z` | `z` (int) | `UCanvasPanelSlot::SetZOrder` (capture order is draw order) | Exact |
+| `rot` | `rot` (degrees) | `SetRenderTransformAngle` + a centre pivot (= CSS `transform-origin:center`) | Exact (rot missing inside a Figma INSTANCE is an upstream API limitation, same as the HTML build) |
+| `opacity` | `opacity` | `SetRenderOpacity` | Exact |
+| `fill: rgba(...)` | `{type:"solid",rgba:[r,g,b,a]}` | `UBorder` + `FSlateBrush` (RoundedBox) `TintColor` | Exact (sRGB→linear via `FromSRGBColor`) |
+| `fill: linear-gradient(...)` | `{type:"linear",angleDeg,stops:[{rgba,pos}]}` | **First-stop solid fallback + UE_LOG** (known-loss; the material route is in §4) | Fallback |
+| `fill: radial-gradient(...)` | `{type:"radial",stops:[...]}` | Same fallback | Fallback |
+| `radius: "37px"` / four values / `50%` | `[tl,tr,br,bl]` px floats (`50%`→`min(w,h)/2`) | `FSlateBrush::OutlineSettings.CornerRadii` (UE5 RoundedBox has native per-corner radii) | Exact (the `50%` elliptical corner is a scalar approximation) |
+| `border: "4px solid rgba(..)"` | `{width,rgba}` | `OutlineSettings.Width/Color` (RoundedBox outline) | High (sub-pixel difference between CSS's inward border and Slate's centred outline) |
+| `shadow: "0px 4px 0px rgba(..)"` | `[{dx,dy,blur,rgba}]` | **Not rendered + UE_LOG(Verbose)** (known-loss) | Lost |
+| `blur: "blur(4px)"` | `{radius}` | **Not rendered + UE_LOG(Verbose)** (known-loss; `UBackgroundBlur` blurs what is behind, not the element itself, which is not equivalent) | Lost |
+| `img` / `imgSize` | `{path,mode}` (mode: cover/contain/stretch/tile) | `UImage` + `LoadObject<UTexture2D>` (path convention in §3); **a missing image falls back to transparent + UE_LOG(Warning)**, never a filled placeholder | High (cover≈stretch: Figma's exported image has the element's aspect ratio; contain/tile fall back to stretch) |
+| `vec:true` (a flattened vector cluster) | `vec` (recorded only) | Goes through the ordinary image path (capture already flattened the cluster to png); a missing image is a transparent placeholder. **The runtime does not consume the `vec` flag itself** | Same as img |
+| `stageBg` | `{type:solid/linear/radial/image,...}` | A full-frame UBorder/UImage at ZOrder −10000 (modal layers do not draw it) | Same as fill/img |
 
-## 2. 文字映射
+## 2. Text mapping
 
-| IR text 字段 | uespec | UMG 落点 | 保真度 |
+| IR text field | uespec | Where it lands in UMG | Fidelity |
 |---|---|---|---|
-| `content` | 同 | `UTextBlock::SetText`(含 `\n` 由 FText 保留) | 精确 |
-| `color` | `rgba` 数组(含 `#hex` 回退解析) | `SetColorAndOpacity` | 精确 |
-| `size`(px) | `size` | `FSlateFontInfo::Size = round(px×0.75)`(CSS px→Slate pt,96dpi) | 高 |
-| `weight` | `weight` | 字面二分:≥600→"Bold",否则 "Regular"(引擎 Roboto 两字面) | 近似 |
-| `family` | `family`(仅记录) | **不映射具体字体**,统一 `DefaultFontObject`(未设→引擎 Roboto)→ known-loss;**CJK 必须在蓝图子类指定中文字体资产** | 丢失(族) |
-| `lh`(px) | `lh` | `SetLineHeightPercentage(lh/(size×1.2))` 近似 | 近似 |
-| `ls`(px) | `ls` | `FSlateFontInfo::LetterSpacing = round(ls/size×1000)`(1/1000 em) | 高 |
-| `alignH/alignV`(盒内对齐) | `start/center/end` | 外包 `UBorder` 的 `SetHorizontalAlignment/SetVerticalAlignment`(=render.js flex 对齐) | 精确 |
-| `textAlign` | 同 | `SetJustification`(justified→Left) | 精确 |
-| `stroke`(-webkit-text-stroke) | `{width,rgba}` | `FSlateFontInfo::OutlineSettings`(FontOutline) | 近似(CSS `paint-order:stroke fill` 是描边垫底,FontOutline 同为外描,视觉接近;粗描边时字重观感略胖) |
+| `content` | Same | `UTextBlock::SetText` (FText preserves `\n`) | Exact |
+| `color` | An `rgba` array (with `#hex` fallback parsing) | `SetColorAndOpacity` | Exact |
+| `size` (px) | `size` | `FSlateFontInfo::Size = round(px×0.75)` (CSS px→Slate pt at 96dpi) | High |
+| `weight` | `weight` | Literal split: ≥600→"Bold", otherwise "Regular" (the engine's Roboto has those two faces) | Approximate |
+| `family` | `family` (recorded only) | **No specific font is mapped**; everything uses `DefaultFontObject` (unset → the engine's Roboto) → known-loss. **CJK requires a Chinese font asset set on a Blueprint subclass** | Lost (family) |
+| `lh` (px) | `lh` | `SetLineHeightPercentage(lh/(size×1.2))`, approximate | Approximate |
+| `ls` (px) | `ls` | `FSlateFontInfo::LetterSpacing = round(ls/size×1000)` (1/1000 em) | High |
+| `alignH/alignV` (in-box alignment) | `start/center/end` | The wrapping `UBorder`'s `SetHorizontalAlignment/SetVerticalAlignment` (= render.js flex alignment) | Exact |
+| `textAlign` | Same | `SetJustification` (justified→Left) | Exact |
+| `stroke` (-webkit-text-stroke) | `{width,rgba}` | `FSlateFontInfo::OutlineSettings` (FontOutline) | Approximate (CSS `paint-order:stroke fill` puts the stroke underneath, and FontOutline is likewise an outer outline, so they look close; a thick stroke reads slightly heavier) |
 
-## 3. flow / 交互映射(assemble.js 语义 ↔ FigmaFlowComponent)
+## 3. flow / interaction mapping (assemble.js semantics ↔ FigmaFlowComponent)
 
-| flow.uespec | UE 实现 |
+| flow.uespec | UE implementation |
 |---|---|
-| `base` | `UFigmaUiWidget` `AddToViewport(0)` 常驻 |
-| `modals[*].roots` | `BuildFromSpec(cap, roots)` 抽子树(根用 absX/absY,= render.js `subtreeOf`),`AddToViewport(50+i)`,初始 `Collapsed`;backdrop = 全帧 `UBorder rgba(0,0,0,0.5)` ZOrder −20000 |
-| `events[].targets` `kind:node` | 底屏上按元素几何叠**全透明 UButton**(视觉 Widget 全部 HitTestInvisible,按钮独占命中;选它而非 `OnMouseButtonDown` 的理由:不动视觉树、不自管命中测试,见 `AddClickOverlay` 注释) |
-| `kind:any` | 该 modal 层全帧透明按钮(ZOrder 30000,最顶) |
-| `kind:panelOutside` | 全帧透明按钮(ZOrder 9000)+ **面板盾**(panel 几何上的吞点击按钮,ZOrder≈10000+z)→ 只有面板外点击触发 |
-| `guard` | `IsTruthy`:null/false/0/"" 为假(= assemble.js `guardOk`);失败回调 `OnGuardFail` |
-| `do: openModal/closeModal/toggleFlag` | 组件内置;`send`→`IFigmaAppHook::OnSend`;其余→`OnCustomAction` |
-| `list` | `PopulateList(Count)`:容器首子为模板行、第二行 top 差为步长,克隆 N 行(行内元素 id=`"<原id>#<行号>"`),行点击→`OnListRowClicked(i)`;行文案由 hook 用 `GetModalWidget(...)->SetElementText("3:23#0", ...)` 回填 |
-| `bindings.checkbox` | 双态:`SetElementBrushColor`(checked/unchecked rgba)+ 懒建居中勾号 `UTextBlock`(24px Bold,= assemble.js) |
-| `state` | `TMap<FString, FJsonValue>` 原样;`SetStateString/ToggleFlag` 变更后自动 `SyncBindings` + `OnStateChanged` |
+| `base` | `UFigmaUiWidget` permanently `AddToViewport(0)` |
+| `modals[*].roots` | `BuildFromSpec(cap, roots)` lifts the subtree (roots use absX/absY, = render.js `subtreeOf`), `AddToViewport(50+i)`, initially `Collapsed`; the backdrop is a full-frame `UBorder rgba(0,0,0,0.5)` at ZOrder −20000 |
+| `events[].targets` `kind:node` | A **fully transparent UButton** overlaid on the element's geometry on the base screen (all visual Widgets are HitTestInvisible so the button owns the hit; chosen over `OnMouseButtonDown` because it neither disturbs the visual tree nor hand-rolls hit testing — see the `AddClickOverlay` comment) |
+| `kind:in` (v1.1) | The same overlay, but inside that modal's widget, at ZOrder 40000 — it **must** sit above `kind:any`'s full-frame layer (30000), or the ✗ inside a popup is covered and unclickable |
+| `kind:any` | A full-frame transparent button on that modal layer (ZOrder 30000, topmost) |
+| `kind:panelOutside` | A full-frame transparent button (ZOrder 9000) plus a **panel shield** (a click-swallowing button over the panel's geometry, ZOrder≈10000+z) → only clicks outside the panel fire |
+| `guard` | `IsTruthy`: null/false/0/"" are falsy (= assemble.js `guardOk`); failure calls back into `OnGuardFail` |
+| `do: openModal/closeModal/toggleFlag` | Built into the component; `send`→`IFigmaAppHook::OnSend`; anything else→`OnCustomAction` |
+| `list` | `PopulateList(Count)`: the container's first child is the template row, the second row's top delta is the step, N rows are cloned (element ids inside a row become `"<originalId>#<rowIndex>"`), and a row click calls `OnListRowClicked(i)`; row copy is filled by the hook through `GetModalWidget(...)->SetElementText("3:23#0", ...)` |
+| `bindings.checkbox` | Two states: `SetElementBrushColor` (checked/unchecked rgba) plus a lazily created centred check-mark `UTextBlock` (24px Bold, = assemble.js) |
+| `state` | `TMap<FString, FJsonValue>` verbatim; `SetStateString/ToggleFlag` automatically runs `SyncBindings` + `OnStateChanged` after a change |
 
-## 4. known-loss 汇总
+## 4. known-loss summary
 
-| 项 | 现状 | 后续路线(未实现,勿在本版做) |
+| Item | Current state | Future route (not implemented — do not build it in this version) |
 |---|---|---|
-| 线性/径向渐变 | 首停靠色纯色回退 + `UE_LOG(Warning)` | 通用渐变材质(`M_FigmaGradient`:2-8 stop 参数化 `UMaterialInstanceDynamic`),`UImage::SetBrushFromMaterial`;angleDeg/stops uespec 里已备齐 |
-| box-shadow | 不渲染 + `UE_LOG(Verbose)` | 9-slice 阴影贴图或 RetainerBox 后处理 |
-| layer blur | 不渲染 + `UE_LOG(Verbose)` | `UBackgroundBlur`(语义是糊背板,仅部分场景可代) |
-| 字体族 | 统一 DefaultFontObject/Roboto;weight 只分 Regular/Bold | 项目字体表:family→UFont 资产映射 |
-| 文字描边 | FontOutline 近似(非 paint-order 语义) | — |
-| imgSize contain/tile | 拉伸回退 + `UE_LOG(Verbose)`(cover≈stretch,figma 导出图与元素同比) | Brush Tiling / 自定义 UV |
-| 椭圆角 `50%` | `min(w,h)/2` 标量近似(正圆精确,非正方形椭圆略差) | — |
-| `flow.events[].transition` | 烘成 `motion.json` 采样曲线,**FigmaFlowComponent 未接线 = 不播** | 见下面「转场缓动」 |
+| Linear / radial gradients | First-stop solid fallback + `UE_LOG(Warning)` | A general gradient material (`M_FigmaGradient`: a 2–8 stop parameterised `UMaterialInstanceDynamic`) with `UImage::SetBrushFromMaterial`; angleDeg/stops are already carried in the uespec |
+| box-shadow | Not rendered + `UE_LOG(Verbose)` | A nine-slice shadow sprite, or a RetainerBox post-process |
+| layer blur | Not rendered + `UE_LOG(Verbose)` | `UBackgroundBlur` (semantically it blurs the backdrop, so it substitutes only in some cases) |
+| Font family | Everything uses DefaultFontObject/Roboto; weight only splits Regular/Bold | A project font table: family→UFont asset mapping |
+| Text stroke | FontOutline approximation (not paint-order semantics) | — |
+| imgSize contain/tile | Stretch fallback + `UE_LOG(Verbose)` (cover≈stretch, since Figma's export matches the element's ratio) | Brush tiling or custom UVs |
+| Elliptical `50%` corners | `min(w,h)/2` scalar approximation (exact on circles, slightly off on non-squares) | — |
+| `flow.events[].transition` | Baked into `motion.json` sample points, **FigmaFlowComponent is not wired to them = not played** | See "Transition easing" below |
 
-### 转场缓动(motion.json)
+### Transition easing (motion.json)
 
-给了 `flow.json` 时,`ui_to_uespec.py` 会在 outdir 里多产一个 `motion.json`:
-每条带转场的事件一份 **17 点等距采样曲线**(x/y 都是 0..1 进度)。
+When given a `flow.json`, `ui_to_uespec.py` emits one extra file into outdir, `motion.json`: per
+event carrying a transition, a **17-point evenly spaced sampled curve** (x and y are both 0..1 progress).
 
-**为什么是采样点,不是 `EEasingFunc`。** figma 给的是一条具体曲线
-(`cubic-bezier(.32,.72,0,1)` 或弹簧三参),`EEasingFunc::EaseOut` 是**另一条同名不同形**的曲线。
-各后端各挑"最像的" = 同一份 IR 在六个引擎里六种手感,而每家测试都绿。
-量级参考:easeOutCubic 与 `cubic-bezier(.23,1,.32,1)` 最大差 **19.8 个百分点**,且差在起步段。
-`tools/conformance` 会拿这些点跟 godot/unity **逐点对账**。
+**Why sample points rather than an `EEasingFunc`.** Figma hands over a specific curve
+(`cubic-bezier(.32,.72,0,1)`, or a spring's three parameters); `EEasingFunc::EaseOut` is a
+**different curve sharing the name**. Every backend picking "the closest one" means one IR becomes
+six different feels across six engines while every test stays green. For scale: easeOutCubic differs
+from `cubic-bezier(.23,1,.32,1)` by up to **19.8 percentage points**, and the worst of it is in the
+opening moments. `tools/conformance` compares these points against godot and unity **one by one**.
 
-这也与本后端的**职责边界**一致:python 段做完全部数值解算,C++ 侧零解析 ——
-`FRichCurve::AddKey(x, y)` 逐点填进去即可,不需要在 C++ 里实现贝塞尔反解或弹簧微分方程。
+It also matches this backend's **responsibility boundary**: Python does all the numeric solving and
+C++ parses nothing — `FRichCurve::AddKey(x, y)` per point is enough, with no need to implement
+bézier inversion or a spring ODE in C++.
 
-| 处置 | 说明 |
+| Handling | Note |
 |---|---|
-| **known-loss:不播** | `FigmaFlowComponent` **尚未接线**;生成时打 `[known-loss]`,不是静默丢失 |
-| **known-loss:具名弹簧预设** | `GENTLE/QUICK/BOUNCY/SLOW`、`*_BACK` figma 没公开控制点 → 标 `unresolved` 不采样,**不编数** |
-| **approx:弹簧被 duration 截断** | 弹簧没有固定时长,窗口短于收敛时间就切一截,生成时打 `truncated:` |
-| **known-loss:`SMART_ANIMATE`** | 同名图层自动配对插值,跨引擎无对应物;曲线照采,配对逻辑不实现 |
+| **known-loss: not played** | `FigmaFlowComponent` is **not wired yet**; the generator stamps `[known-loss]`, so it is not a silent loss |
+| **known-loss: named spring presets** | Figma publishes no control points for `GENTLE/QUICK/BOUNCY/SLOW` or `*_BACK` → marked `unresolved` and not sampled. **No invented numbers** |
+| **approx: spring truncated by duration** | A spring has no fixed length, so a window shorter than its settling time cuts it off; the generator stamps `truncated:` |
+| **known-loss: `SMART_ANIMATE`** | Auto-pairing same-named layers has no cross-engine equivalent; the curve is sampled, the pairing logic is not implemented |
 
-⚠️ `motion.json` **不进 `flow.uespec.json`**,是并列的独立产物 —— 免得动到
-`uespec_contract.py` 守着的 python↔C++ 字段契约(那张表的每一项都要有 C++ 侧读取方)。
+⚠️ `motion.json` **does not go into `flow.uespec.json`**; it is a separate parallel artifact — so it
+cannot disturb the python↔C++ field contract that `uespec_contract.py` guards (every entry in that
+table must have a reader on the C++ side).
 
-## 5. 集成步骤
+## 5. Integration steps
 
-1. **模块依赖**:项目 `Source/<Game>/<Game>.Build.cs`:
+1. **Module dependencies**, in the project's `Source/<Game>/<Game>.Build.cs`:
 
    ```csharp
    PublicDependencyModuleNames.AddRange(new string[] {
@@ -117,27 +130,40 @@
    });
    ```
 
-2. **拷源码**:`runtime/FigmaUiWidget.h/.cpp`、`runtime/FigmaFlowComponent.h/.cpp` →
-   `Source/<Game>/FigmaUi/` 下,重新生成工程并编译(首次编译即本代码的验证时点)。
+2. **Copy the source**: `runtime/FigmaUiWidget.h/.cpp` and `runtime/FigmaFlowComponent.h/.cpp` into
+   `Source/<Game>/FigmaUi/`, then regenerate the project files and compile (that first compile is
+   this code's moment of verification).
 
-3. **uespec 放置**:`ui_to_uespec.py` 的产物(整套 `<屏>.uespec.json` + `flow.uespec.json`)
-   拷到 `Content/FigmaUi/Spec/`(**原始 json 文件**,不导入为 uasset;打包时把该目录加进
-   Project Settings → Packaging → *Additional Non-Asset Directories to Copy*)。
-   `FigmaFlowComponent.SpecDirectory` 默认即 `FigmaUi/Spec`。
+3. **uespec placement**: put `ui_to_uespec.py`'s output (the whole set of `<screen>.uespec.json`
+   plus `flow.uespec.json`) into `Content/FigmaUi/Spec/` (**as raw json files**, not imported as
+   uassets; when packaging, add that directory under Project Settings → Packaging → *Additional
+   Non-Asset Directories to Copy*). `FigmaFlowComponent.SpecDirectory` already defaults to
+   `FigmaUi/Spec`.
 
-4. **素材放置**:capture 的 `_assets/**.png` 导入到 `Content/FigmaUi/Assets/`(保持子目录),
-   贴图约定:`_assets/s17/bg.png` → 资产 `/Game/FigmaUi/Assets/s17/bg`(LoadObject 路径
-   `"/Game/FigmaUi/Assets/s17/bg.bg"`,即导入后**包名=文件名去扩展**,不要改名)。
-   建议贴图组 UI、关 mip、关 sRGB 勿动(保持默认 sRGB 开)。
+4. **Asset placement**: import capture's `_assets/**.png` into `Content/FigmaUi/Assets/` (keeping
+   subdirectories). Texture convention: `_assets/s17/bg.png` → the asset
+   `/Game/FigmaUi/Assets/s17/bg` (LoadObject path `"/Game/FigmaUi/Assets/s17/bg.bg"`, i.e. after
+   import the **package name is the filename without its extension** — do not rename). Suggested:
+   texture group UI, mips off, and leave sRGB alone (keep the default, on).
 
-5. **启动**:任意 Actor(常见 HUD/PlayerController 持有的管理 Actor)挂 `FigmaFlowComponent`,
-   设 `AppHook`(蓝图或 C++ 实现 `IFigmaAppHook`),BeginPlay 里 `InitFlow(PlayerController)`。
-   单屏预览可直接 `CreateWidget<UFigmaUiWidget>` + `BuildFromSpecFile("FigmaUi/Spec/screen-login.uespec.json")`。
+5. **Startup**: attach `FigmaFlowComponent` to any Actor (commonly a manager Actor held by the HUD
+   or PlayerController), set `AppHook` (a Blueprint or C++ implementation of `IFigmaAppHook`), and
+   call `InitFlow(PlayerController)` in BeginPlay. For a single-screen preview,
+   `CreateWidget<UFigmaUiWidget>` + `BuildFromSpecFile("FigmaUi/Spec/screen-login.uespec.json")`
+   works directly.
 
-6. **DPI 缩放**:uespec 几何是 `cap.w × cap.h`(如 1080×1920)的**像素真值**,Widget 树按 1:1 px 建。
-   Project Settings → User Interface → DPI Scaling:DPI Curve 用 **Shortest Side** 规则,
-   在设计短边(如 1080)处 Scale=1.0,让引擎对不同分辨率整体等比缩放(等价 render.js `mountStage`
-   的 `scale = min(vw/fw, vh/fh)`)。别在 Widget 里自己再乘缩放。
+6. **DPI scaling**: uespec geometry is the **true pixel** size of `cap.w × cap.h` (e.g. 1080×1920),
+   and the Widget tree is built 1:1 px. Project Settings → User Interface → DPI Scaling: use a
+   **Shortest Side** DPI curve with Scale=1.0 at the design short edge (1080, say), so the engine
+   scales everything proportionally across resolutions (the equivalent of render.js's `mountStage`
+   `scale = min(vw/fw, vh/fh)`). Do not multiply by a scale again inside the Widget.
 
-7. **CJK 字体**:给 `UFigmaUiWidget` 建蓝图子类设 `DefaultFontObject` 为含中文字形的字体资产,
-   或在 C++ 里赋值;不设会回退引擎 Roboto → 中文豆腐块。
+7. **CJK fonts**: create a Blueprint subclass of `UFigmaUiWidget` and set `DefaultFontObject` to a
+   font asset containing Chinese glyphs, or assign it in C++. Leaving it unset falls back to the
+   engine's Roboto and Chinese renders as tofu boxes.
+
+## 6. Robustness
+
+A `.uespec.json` that fails to parse produces one `UE_LOG(Error)` and a clean return —
+`FJsonSerializer::Deserialize` returns a bool and the result is checked. This is the repo-wide rule
+(malformed IR gets a sentence, not a traceback) and `tools/conformance` checks all four runtimes for it.

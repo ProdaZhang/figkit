@@ -19,7 +19,7 @@
   ],
   "features": {
     "radius-px": {
-      "el": "k:radius-px", "doc": "圆角",
+      "el": "k:radius-px", "doc": "radius",
       "godot": "render", "unity": "render", "unreal": "carry"
     },
     "radius-pct": {
