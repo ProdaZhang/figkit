@@ -81,6 +81,12 @@ def vec_asset(node, asset_dir, asset_rel, missing):
     return None
 
 
+# 下面三个判断各自**重扫整棵子树**,而 emit 对每个节点都要问一遍 —— 看着就是 O(n·depth),
+# 很像该加个缓存的地方。**加过,量过,退回来了**(2026-07-31):按节点身份记忆之后,
+# 29524 节点的合成树上,无矢量簇时 0.100s→0.084s(1.19x),而**矢量簇密集时 0.010s→0.024s,
+# 慢了 2.4 倍** —— 折叠一旦发生,emit 直接 return、根本不往下走,缓存于是只写不读,纯是开销。
+# 而真实 figma 文件恰恰满是会折叠的图标簇。绝对量级也不支持:3280 节点约 9ms,不是"秒级"。
+# 想再来一次的话,先量,别照着复杂度估。
 def scan(n):
     ht = (n.get('type') == 'TEXT' and (n.get('characters', '') or '').strip() != '')
     hv = n.get('type') in VEC
