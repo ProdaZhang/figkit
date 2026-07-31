@@ -53,7 +53,7 @@ scripts/    ui_check.py(离线校验:caps 可载入、el id 引用完整、列�
 
 - **坐标转换是本 skill 的命门**:IR 是 y 向下/左上原点的绝对 px,Creator 是 y 向上/锚点系。
   约定 = 每节点锚 (0,1),`child.position = (dx, -dy)`;旋转节点换锚 (0.5,0.5) 补偿。改动前必读 `references/mapping.md §2/§3`。
-- **TS 验证等级(2026-07-29 复跑)**:三件 runtime TS 已过 **严格类型编译门**(tsc --noEmit 对 Cocos 官方 `@cocos/creator-types` 3.8 engine 声明,含 @ccclass 装饰器路径;故意错用 API 会被抓=门有牙);**Creator 内实机运行仍未验证**,交付态 = 源码 + 集成说明(mapping.md 顶部有声明);python 侧
+- **TS 验证等级(2026-07-31 复跑)**:三件 runtime TS 已过 **严格类型编译门**(tsc --noEmit 对 Cocos 官方 `@cocos/creator-types` 3.8.3 engine 声明,含 @ccclass 装饰器路径;故意错用 API 会被抓=门有牙)。**这道门已经进仓、也进 CI**:`cd tools/cocos-typecheck && npm ci && python3 check.py`(它连"门有牙"那半句一起验:种一个必然的类型错误,tsc 必须报出来)。此前它只在作者本机存在 —— 声明是真的,但没人能复现。**Creator 内实机运行仍未验证**,交付态 = 源码 + 集成说明(mapping.md 顶部有声明);python 侧
   `python3 scripts/tests/run_all.py` 必须全绿才算校验器可用。
 - **动效不许在 TS 侧解曲线**:烘焙归 `scripts/bake_motion.py`,`flow-binder.ts` 只做**线性**插值。
   采样点一致只保证关键帧上一致,插值模式不对齐照样各算各的(godot/unity 都在这儿栽过)。

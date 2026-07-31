@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "noEmit": true,
+    "target": "ES2018",
+    "module": "ESNext",
+    "moduleResolution": "node",
+    "experimentalDecorators": true,
+    "forceConsistentCasingInFileNames": true,
+    "noFallthroughCasesInSwitch": true,
+    "skipLibCheck": true,
+    "lib": ["ES2018", "DOM"],
+    "types": []
+  },
+  "files": [
+    "node_modules/@cocos/creator-types/engine.d.ts",
+    "../../figma2cocos/runtime/parse-css.ts",
+    "../../figma2cocos/runtime/figma-ui.ts",
+    "../../figma2cocos/runtime/flow-binder.ts"
+  ]
+}

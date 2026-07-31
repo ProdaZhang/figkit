@@ -3,7 +3,7 @@
 输入 IR = figma2html 管线的 `.ui.json`(像素)+ `flow.json`(交互),字段语义见
 `../../figma2html/references/ui.json-schema.md` 与 `flow-events.md`。本表是 `runtime/*.ts` 的实现契约。
 
-> **交付态声明(2026-07-06 更新):runtime 下的 TS 已过严格类型编译门(tsc 对 `@cocos/creator-types` 官方 engine 声明,零错),但未在 Cocos Creator 内实机运行验证。交付物 = 源码 + 本集成说明,
+> **交付态声明(2026-07-31 更新):runtime 下的 TS 已过严格类型编译门(tsc `--noEmit` 对官方 `@cocos/creator-types` **3.8.3** engine 声明,零错),但未在 Cocos Creator 内实机运行验证。**这道门现在你也能跑**:`cd tools/cocos-typecheck && npm ci && python3 check.py` —— 此前它只存在于作者本机(仓库里没有 tsconfig/package.json,CI 也不跑),而不可复现的声明与假声明,读者是分不出来的。交付物 = 源码 + 本集成说明,
 > 逻辑对齐 figma2html 的 render.js / assemble.js(已实跑验证的参照实现),cc API 用法靠 review + 类型自洽。
 > 首次接入请按 §6 集成清单冒烟。**
 
@@ -166,7 +166,11 @@ Unity 的默认平滑切线在段内拱起来 —— 两家都栽过。`sampleCu
 ### 验证等级(诚实)
 
 - ✅ 采样点与 godot / unity / unreal **逐点一致**(`tools/conformance`,含贝塞尔与弹簧)。
-- ✅ TS 严格类型编译门(tsc `--noEmit` 对官方 `@cocos/creator-types`,零错)。
+- ✅ TS 严格类型编译门(tsc `--noEmit` 对官方 `@cocos/creator-types` 3.8.3,零错)。
+  可复现:`cd tools/cocos-typecheck && npm ci && python3 check.py`;它跑两条 ——
+  零错,**以及**往真源码里种一个必然的类型错误后 tsc 必须报出来(只跑前者证明不了"门有牙":
+  配置写歪时它同样是绿的)。`tools/conformance` 另有一条离线守卫,盯着 tsconfig 的 `files`
+  覆盖了每个 runtime `.ts`、且文档与配置说的是同一个版本。
 - ✅ 源码级守卫(`scripts/tests/test_runtime_source.py`):线性插值在、内置缓动没被导入、
   transform 没贴到层上、缩放补了锚点偏移。
 - ❌ **未在 Creator 内实机运行** —— 与本后端其余部分同一等级。曲线的值对了不等于画面对了

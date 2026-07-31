@@ -27,3 +27,28 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - run: python tools/run_all_tests.py
+
+  # cocos 的 TS 类型门。单开一个 job,因为它是全仓**唯一**要联网装依赖的检查 ——
+  # 上面那套是纯标准库、离线、跑在三个平台上,不该为它拖上一整套 node 工具链。
+  #
+  # 这道门此前只存在于作者本机:README / SKILL.md / mapping.md 三处都写着"已过严格类型门、
+  # 故意错用 API 会被抓",而仓库里没有 tsconfig、没有 package.json,CI 也不跑 ——
+  # clone 下来的人复现不了。**不可复现的声明,读者没法和假声明区分开。**
+  cocos-typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: tools/cocos-typecheck/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - run: npm ci
+        working-directory: tools/cocos-typecheck
+      # check.py 跑两条:零错,**以及**种一个必然的类型错误后 tsc 必须报出来。
+      # 只跑前者证明不了门有牙 —— tsconfig 写歪时它同样是绿的。
+      - run: python check.py
+        working-directory: tools/cocos-typecheck

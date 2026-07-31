@@ -708,6 +708,47 @@ def test_animation_progress_reads_the_clock_not_the_tick_count():
     assert not bad, "动画进度没读时钟:\n  " + "\n  ".join(bad)
 
 
+def test_the_cocos_type_gate_covers_every_runtime_file_and_matches_the_docs():
+    """★ 那道类型门本身也会悄悄失效 —— 而且失效时它是**绿的**。
+
+    `tools/cocos-typecheck` 需要 node,进不了这套离线测试;但它最容易出事的两种方式恰好
+    离线就能查:**新加的 runtime .ts 没进 tsconfig 的 `files`**(那个文件从此不被检查,
+    门照样零错),以及**文档声称的版本与配置钉的版本各说各话**(README / SKILL.md /
+    mapping.md 三处都写着"对 @cocos/creator-types 3.8")。
+
+    这两条正是当初的教训的延伸:那句"已过严格类型门"当时是真的,但仓库里没有任何东西
+    能复现它 —— 一句不可复现的话和一句假话,读者是分不出来的。
+    """
+    bad = []
+    tsconf = json.loads(io.open(os.path.join(ROOT, "tools", "cocos-typecheck", "tsconfig.json"),
+                                encoding="utf-8").read())
+    listed = set()
+    for f in tsconf.get("files", []):
+        if "figma2cocos" in f:
+            listed.add(os.path.basename(f))
+    rt = os.path.join(ROOT, "figma2cocos", "runtime")
+    actual = set(f for f in os.listdir(rt) if f.endswith(".ts"))
+    for missing in sorted(actual - listed):
+        bad.append("tools/cocos-typecheck/tsconfig.json 的 files 没列 runtime/%s(它从此不过门)" % missing)
+    for gone in sorted(listed - actual):
+        bad.append("tsconfig.json 列了不存在的 runtime/%s" % gone)
+    if tsconf.get("compilerOptions", {}).get("strict") is not True:
+        bad.append("tsconfig.json 的 strict 不是 true —— 文档声称的是严格档")
+
+    pkg = json.loads(io.open(os.path.join(ROOT, "tools", "cocos-typecheck", "package.json"),
+                             encoding="utf-8").read())
+    pin = pkg.get("devDependencies", {}).get("@cocos/creator-types", "")
+    if not re.match(r"^\d+\.\d+\.\d+$", pin):
+        bad.append("@cocos/creator-types 没钉死版本(现在是 %r)—— 装到什么全看运气" % pin)
+    else:
+        minor = ".".join(pin.split(".")[:2])
+        for rel in ("README.md", "figma2cocos/SKILL.md", "figma2cocos/references/mapping.md"):
+            text = io.open(os.path.join(ROOT, rel.replace("/", os.sep)), encoding="utf-8").read()
+            if "creator-types" in text and minor not in text:
+                bad.append("%s 说的版本与 package.json 钉的 %s 对不上" % (rel, pin))
+    assert not bad, "cocos 类型门的配置漂了:\n  " + "\n  ".join(bad)
+
+
 def _run():
     ok = True
     for name, fn in sorted(globals().items()):
