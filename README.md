@@ -23,7 +23,7 @@ figma REST ──► figma_capture ──►  IR: <screen>.ui.json (pixels) + fl
 
 | backend | offline tests | in-engine verification |
 |---|---|---|
-| figma2html | ✅ 70 | ✅ rendered + interactions (Edge headless screenshot) |
+| figma2html | ✅ 70 | ✅ rendered + interactions, and the runtime's **behaviour** is now asserted in a real browser rather than looked at — 4 checks in [`tools/html-smoke/`](tools/html-smoke/), in CI on windows. It reads numbers out of the page (offsets, row texts, guard outcome), not pixels |
 | figma2dsl | ✅ 19 | ✅ (same render pipeline) |
 | figma2godot | ✅ 21 | ✅ **Godot 4.3**: both examples render; GDScript compiles clean. The login and main-screen shots below are a **real pixel comparison** against HTML — mean 2.2–3.9/255, under 2.5% of pixels off by more than 24, all of it on glyph edges (the two shots used to be at different scales, which looked fine and compared to nothing; `shoot_stage.py` fixes that). Motion runs in-engine and was **screenshotted mid-transition** — curves agree with Python and Unity to 6 decimals at a non-key point, and the frames caught a backdrop bug no numeric check could see |
 | figma2unity | ✅ 13 | ✅ **Unity 6000.4.8f1**: C# compiles zero-warning; both examples' UXML/USS pass Unity's importer with CloneTree structure asserted (main screen: 37/29/13 elements, nesting and copy intact, 12-cell grid present); `motion.json` loads as `AnimationCurve`s agreeing with Python **and Godot** to 6 decimals (visual pass in Play Mode still pending) |

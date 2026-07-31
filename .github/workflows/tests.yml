@@ -52,3 +52,18 @@ jobs:
       # 只跑前者证明不了门有牙 —— tsconfig 写歪时它同样是绿的。
       - run: python check.py
         working-directory: tools/cocos-typecheck
+
+  # figma2html 的运行时在真浏览器里的行为冒烟。windows runner 自带 Edge,不装任何依赖
+  # (断言的是 driver 量回来的**数**,不是像素,所以连 Pillow 都不需要)。
+  #
+  # 它补的是一个真空:assemble.js / render.js 是六个后端里唯一实跑过的参照实现,另外五家
+  # 都照着它写 —— 而它自己一条自动化测试都没有。转场位移基准漂了、抖动波形与三个引擎
+  # 不同形,都是在这个洞里活下来的。
+  html-smoke:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - run: python tools/html-smoke/check.py
