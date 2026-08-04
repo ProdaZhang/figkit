@@ -7,7 +7,7 @@
  "els": [
   {
    "id": "2:34",
-   "name": "bg高斯模糊 1",
+   "name": "bg blur 1",
    "type": "RECTANGLE",
    "parent": "",
    "x": 0.0,
@@ -33,7 +33,7 @@
   },
   {
    "id": "4:9040",
-   "name": "mail-btm 原",
+   "name": "mail-btm src",
    "type": "COMPONENT",
    "parent": "",
    "x": 35.0,
@@ -312,7 +312,7 @@
   },
   {
    "id": "5:12824",
-   "name": "邮箱",
+   "name": "Mail",
    "type": "TEXT",
    "parent": "",
    "x": 211.0,
@@ -330,7 +330,7 @@
    "img": "",
    "imgSize": "",
    "text": {
-    "content": "邮箱",
+    "content": "Mail",
     "color": "rgba(170,122,0,1.0)",
     "size": 44.0,
     "family": "Source Han Sans SC",
@@ -351,7 +351,7 @@
   },
   {
    "id": "1:19",
-   "name": "仓库&魔导器",
+   "name": "Bag & Device",
    "type": "FRAME",
    "parent": "",
    "x": 327.0,
@@ -377,7 +377,7 @@
   },
   {
    "id": "1:20",
-   "name": "矩形 1431 拷贝 3",
+   "name": "Rectangle 1431 copy 3",
    "type": "VECTOR",
    "parent": "1:19",
    "x": 327.0,
@@ -416,7 +416,7 @@
   },
   {
    "id": "1:21",
-   "name": "魔导器",
+   "name": "Device",
    "type": "TEXT",
    "parent": "1:19",
    "x": 365.0,
@@ -434,7 +434,7 @@
    "img": "",
    "imgSize": "",
    "text": {
-    "content": "主角晋升",
+    "content": "Promotion",
     "color": "rgba(255,255,255,1.0)",
     "size": 42.0,
     "family": "Noto Sans SC",
@@ -455,7 +455,7 @@
   },
   {
    "id": "1:22",
-   "name": "魔导器",
+   "name": "Device",
    "type": "TEXT",
    "parent": "1:19",
    "x": 715.0,
@@ -473,7 +473,7 @@
    "img": "",
    "imgSize": "",
    "text": {
-    "content": "运营",
+    "content": "Events",
     "color": "rgba(255,255,255,1.0)",
     "size": 42.0,
     "family": "Noto Sans SC",
@@ -494,7 +494,7 @@
   },
   {
    "id": "1:26",
-   "name": "组 63",
+   "name": "Group 63",
    "type": "FRAME",
    "parent": "1:19",
    "x": 327.0,
@@ -520,7 +520,7 @@
   },
   {
    "id": "1:27",
-   "name": "矩形 1431 拷贝 4",
+   "name": "Rectangle 1431 copy 4",
    "type": "VECTOR",
    "parent": "1:26",
    "x": 329.0,
@@ -559,7 +559,7 @@
   },
   {
    "id": "1:28",
-   "name": "仓库",
+   "name": "Bag",
    "type": "TEXT",
    "parent": "1:26",
    "x": 376.0,
@@ -577,7 +577,7 @@
    "img": "",
    "imgSize": "",
    "text": {
-    "content": "系统",
+    "content": "System",
     "color": "rgba(255,255,255,1.0)",
     "size": 41.0,
     "family": "Noto Sans SC",
@@ -598,7 +598,7 @@
   },
   {
    "id": "1:29",
-   "name": "返回",
+   "name": "Back",
    "type": "FRAME",
    "parent": "",
    "x": 50.0,
@@ -624,7 +624,7 @@
   },
   {
    "id": "1:30",
-   "name": "矩形 1431 拷贝 2",
+   "name": "Rectangle 1431 copy 2",
    "type": "VECTOR",
    "parent": "1:29",
    "x": 51.0,
@@ -663,7 +663,7 @@
   },
   {
    "id": "1:31",
-   "name": "形状 55",
+   "name": "Shape 55",
    "type": "VECTOR",
    "parent": "1:29",
    "x": 122.3,
@@ -696,7 +696,7 @@
   },
   {
    "id": "1:32",
-   "name": "矩形 1434",
+   "name": "Rectangle 1434",
    "type": "VECTOR",
    "parent": "1:29",
    "x": 115.5,
@@ -729,7 +729,7 @@
   },
   {
    "id": "5:10079",
-   "name": "btn组",
+   "name": "btn group",
    "type": "FRAME",
    "parent": "",
    "x": 136.0,
@@ -951,7 +951,7 @@
   },
   {
    "id": "I2:902;135:12588",
-   "name": "四个字内",
+   "name": "short label",
    "type": "TEXT",
    "parent": "2:902",
    "x": 182.0,
@@ -969,7 +969,7 @@
    "img": "",
    "imgSize": "",
    "text": {
-    "content": "删除已读",
+    "content": "Delete Read",
     "color": "rgba(57,57,57,1.0)",
     "size": 36.0,
     "family": "Source Han Sans SC",
@@ -1186,7 +1186,7 @@
   },
   {
    "id": "I2:903;135:9984",
-   "name": "四个字内",
+   "name": "short label",
    "type": "TEXT",
    "parent": "2:903",
    "x": 639.3,
@@ -1204,7 +1204,7 @@
    "img": "",
    "imgSize": "",
    "text": {
-    "content": "一键已读",
+    "content": "Mark All Read",
     "color": "rgba(57,57,57,1.0)",
     "size": 36.0,
     "family": "Source Han Sans SC",
@@ -1225,7 +1225,7 @@
   },
   {
    "id": "2:107",
-   "name": "邮件数量",
+   "name": "mail count",
    "type": "GROUP",
    "parent": "",
    "x": 85.0,
@@ -1581,7 +1581,7 @@
   },
   {
    "id": "I25:1615;22:1344;4:1213~mask",
-   "name": "Rectangle 6 (遮罩裁剪)",
+   "name": "Rectangle 6 (mask clip)",
    "type": "GROUP",
    "parent": "I25:1615;22:1344",
    "x": 97.0,
@@ -1729,7 +1729,7 @@
   },
   {
    "id": "I25:1615;22:1381",
-   "name": "文本",
+   "name": "Text",
    "type": "FRAME",
    "parent": "25:1615",
    "x": 283.2,
@@ -1781,7 +1781,7 @@
   },
   {
    "id": "I25:1615;22:1383",
-   "name": "剩余30天",
+   "name": "30d left",
    "type": "TEXT",
    "parent": "I25:1615;22:1381",
    "x": 754.1,
@@ -1799,7 +1799,7 @@
    "img": "",
    "imgSize": "",
    "text": {
-    "content": "剩余30天",
+    "content": "30d left",
     "color": "rgba(218,189,125,1.0)",
     "size": 28.0,
     "family": "Source Han Sans SC",
@@ -1892,7 +1892,7 @@
   },
   {
    "id": "I25:1615;22:1386",
-   "name": "邮件标题描述最多十字",
+   "name": "Mail subject, up to 20 chars",
    "type": "TEXT",
    "parent": "I25:1615;22:1381",
    "x": 284.9,
@@ -1910,7 +1910,7 @@
    "img": "",
    "imgSize": "",
    "text": {
-    "content": "邮件标题描述最多十字",
+    "content": "Mail subject, up to 20 chars",
     "color": "rgba(57,57,57,1.0)",
     "size": 36.0,
     "family": "Source Han Sans SC",
@@ -2035,7 +2035,7 @@
   },
   {
    "id": "I25:1629;22:1344;4:1213~mask",
-   "name": "Rectangle 6 (遮罩裁剪)",
+   "name": "Rectangle 6 (mask clip)",
    "type": "GROUP",
    "parent": "I25:1629;22:1344",
    "x": 97.0,
@@ -2171,7 +2171,7 @@
   },
   {
    "id": "I25:1629;22:1381",
-   "name": "文本",
+   "name": "Text",
    "type": "FRAME",
    "parent": "25:1629",
    "x": 283.2,
@@ -2223,7 +2223,7 @@
   },
   {
    "id": "I25:1629;22:1383",
-   "name": "剩余30天",
+   "name": "30d left",
    "type": "TEXT",
    "parent": "I25:1629;22:1381",
    "x": 754.1,
@@ -2241,7 +2241,7 @@
    "img": "",
    "imgSize": "",
    "text": {
-    "content": "剩余30天",
+    "content": "30d left",
     "color": "rgba(218,189,125,1.0)",
     "size": 28.0,
     "family": "Source Han Sans SC",
@@ -2334,7 +2334,7 @@
   },
   {
    "id": "I25:1629;22:1386",
-   "name": "邮件标题描述最多十字",
+   "name": "Mail subject, up to 20 chars",
    "type": "TEXT",
    "parent": "I25:1629;22:1381",
    "x": 284.9,
@@ -2352,7 +2352,7 @@
    "img": "",
    "imgSize": "",
    "text": {
-    "content": "邮件标题描述最多十字",
+    "content": "Mail subject, up to 20 chars",
     "color": "rgba(57,57,57,1.0)",
     "size": 36.0,
     "family": "Source Han Sans SC",
@@ -2477,7 +2477,7 @@
   },
   {
    "id": "I25:2446;22:1344;4:1213~mask",
-   "name": "Rectangle 6 (遮罩裁剪)",
+   "name": "Rectangle 6 (mask clip)",
    "type": "GROUP",
    "parent": "I25:2446;22:1344",
    "x": 97.0,
@@ -2613,7 +2613,7 @@
   },
   {
    "id": "I25:2446;22:1381",
-   "name": "文本",
+   "name": "Text",
    "type": "FRAME",
    "parent": "25:2446",
    "x": 283.2,
@@ -2665,7 +2665,7 @@
   },
   {
    "id": "I25:2446;22:1383",
-   "name": "剩余30天",
+   "name": "30d left",
    "type": "TEXT",
    "parent": "I25:2446;22:1381",
    "x": 754.1,
@@ -2683,7 +2683,7 @@
    "img": "",
    "imgSize": "",
    "text": {
-    "content": "剩余30天",
+    "content": "30d left",
     "color": "rgba(218,189,125,1.0)",
     "size": 28.0,
     "family": "Source Han Sans SC",
@@ -2776,7 +2776,7 @@
   },
   {
    "id": "I25:2446;22:1386",
-   "name": "邮件标题描述最多十字",
+   "name": "Mail subject, up to 20 chars",
    "type": "TEXT",
    "parent": "I25:2446;22:1381",
    "x": 284.9,
@@ -2794,7 +2794,7 @@
    "img": "",
    "imgSize": "",
    "text": {
-    "content": "邮件标题描述最多十字",
+    "content": "Mail subject, up to 20 chars",
     "color": "rgba(57,57,57,1.0)",
     "size": 36.0,
     "family": "Source Han Sans SC",
@@ -2996,7 +2996,7 @@
   },
   {
    "id": "I25:2460;25:1602",
-   "name": "文本",
+   "name": "Text",
    "type": "FRAME",
    "parent": "25:2460",
    "x": 283.2,
@@ -3048,7 +3048,7 @@
   },
   {
    "id": "I25:2460;25:1604",
-   "name": "剩余30天",
+   "name": "30d left",
    "type": "TEXT",
    "parent": "I25:2460;25:1602",
    "x": 754.1,
@@ -3066,7 +3066,7 @@
    "img": "",
    "imgSize": "",
    "text": {
-    "content": "剩余30天",
+    "content": "30d left",
     "color": "rgba(218,189,125,1.0)",
     "size": 28.0,
     "family": "Source Han Sans SC",
@@ -3159,7 +3159,7 @@
   },
   {
    "id": "I25:2460;25:1607",
-   "name": "邮件标题描述最多十字",
+   "name": "Mail subject, up to 20 chars",
    "type": "TEXT",
    "parent": "I25:2460;25:1602",
    "x": 284.9,
@@ -3177,7 +3177,7 @@
    "img": "",
    "imgSize": "",
    "text": {
-    "content": "邮件标题描述最多十字",
+    "content": "Mail subject, up to 20 chars",
     "color": "rgba(57,57,57,1.0)",
     "size": 36.0,
     "family": "Source Han Sans SC",
@@ -3391,7 +3391,7 @@
   },
   {
    "id": "I25:2474;25:1602",
-   "name": "文本",
+   "name": "Text",
    "type": "FRAME",
    "parent": "25:2474",
    "x": 283.2,
@@ -3443,7 +3443,7 @@
   },
   {
    "id": "I25:2474;25:1604",
-   "name": "剩余30天",
+   "name": "30d left",
    "type": "TEXT",
    "parent": "I25:2474;25:1602",
    "x": 754.1,
@@ -3461,7 +3461,7 @@
    "img": "",
    "imgSize": "",
    "text": {
-    "content": "剩余30天",
+    "content": "30d left",
     "color": "rgba(218,189,125,1.0)",
     "size": 28.0,
     "family": "Source Han Sans SC",
@@ -3554,7 +3554,7 @@
   },
   {
    "id": "I25:2474;25:1607",
-   "name": "邮件标题描述最多十字",
+   "name": "Mail subject, up to 20 chars",
    "type": "TEXT",
    "parent": "I25:2474;25:1602",
    "x": 284.9,
@@ -3572,7 +3572,7 @@
    "img": "",
    "imgSize": "",
    "text": {
-    "content": "邮件标题描述最多十字",
+    "content": "Mail subject, up to 20 chars",
     "color": "rgba(57,57,57,1.0)",
     "size": 36.0,
     "family": "Source Han Sans SC",
@@ -3774,7 +3774,7 @@
   },
   {
    "id": "I25:2488;25:1602",
-   "name": "文本",
+   "name": "Text",
    "type": "FRAME",
    "parent": "25:2488",
    "x": 283.2,
@@ -3826,7 +3826,7 @@
   },
   {
    "id": "I25:2488;25:1604",
-   "name": "剩余30天",
+   "name": "30d left",
    "type": "TEXT",
    "parent": "I25:2488;25:1602",
    "x": 754.1,
@@ -3844,7 +3844,7 @@
    "img": "",
    "imgSize": "",
    "text": {
-    "content": "剩余30天",
+    "content": "30d left",
     "color": "rgba(218,189,125,1.0)",
     "size": 28.0,
     "family": "Source Han Sans SC",
@@ -3937,7 +3937,7 @@
   },
   {
    "id": "I25:2488;25:1607",
-   "name": "邮件标题描述最多十字",
+   "name": "Mail subject, up to 20 chars",
    "type": "TEXT",
    "parent": "I25:2488;25:1602",
    "x": 284.9,
@@ -3955,7 +3955,7 @@
    "img": "",
    "imgSize": "",
    "text": {
-    "content": "邮件标题描述最多十字",
+    "content": "Mail subject, up to 20 chars",
     "color": "rgba(57,57,57,1.0)",
     "size": 36.0,
     "family": "Source Han Sans SC",

@@ -7,7 +7,7 @@
  "els": [
   {
    "id": "4:8939",
-   "name": "邮箱-主界面 1",
+   "name": "Mail-main 1",
    "type": "RECTANGLE",
    "parent": "",
    "x": 0.0,
@@ -33,7 +33,7 @@
   },
   {
    "id": "25:4193",
-   "name": "mail-btm 原",
+   "name": "mail-btm src",
    "type": "FRAME",
    "parent": "",
    "x": 34.0,
@@ -285,7 +285,7 @@
   },
   {
    "id": "6:1335",
-   "name": "剩余30天",
+   "name": "30d left",
    "type": "TEXT",
    "parent": "6:1337",
    "x": 548.0,
@@ -303,7 +303,7 @@
    "img": "",
    "imgSize": "",
    "text": {
-    "content": "剩余30天",
+    "content": "30d left",
     "color": "rgba(255,251,242,1.0)",
     "size": 28.0,
     "family": "Source Han Sans SC",
@@ -553,7 +553,7 @@
   },
   {
    "id": "25:2567",
-   "name": "GM补偿·服务器维护",
+   "name": "GM Compensation",
    "type": "TEXT",
    "parent": "25:4193",
    "x": 211.0,
@@ -571,7 +571,7 @@
    "img": "",
    "imgSize": "",
    "text": {
-    "content": "GM补偿·服务器维护",
+    "content": "GM Compensation",
     "color": "rgba(170,122,0,1.0)",
     "size": 44.0,
     "family": "Source Han Sans SC",
@@ -788,7 +788,7 @@
   },
   {
    "id": "I25:2568;135:9984",
-   "name": "四个字内",
+   "name": "short label",
    "type": "TEXT",
    "parent": "25:2568",
    "x": 409.3,
@@ -806,7 +806,7 @@
    "img": "",
    "imgSize": "",
    "text": {
-    "content": "领取",
+    "content": "Claim",
     "color": "rgba(57,57,57,1.0)",
     "size": 36.0,
     "family": "Source Han Sans SC",
@@ -1035,7 +1035,7 @@
   },
   {
    "id": "I25:4109;206:12515",
-   "name": "矩形 1437",
+   "name": "Rectangle 1437",
    "type": "VECTOR",
    "parent": "25:4109",
    "x": 101.0,
@@ -1445,7 +1445,7 @@
   },
   {
    "id": "I25:4128;206:12515",
-   "name": "矩形 1437",
+   "name": "Rectangle 1437",
    "type": "VECTOR",
    "parent": "25:4128",
    "x": 289.0,
@@ -1855,7 +1855,7 @@
   },
   {
    "id": "I25:4144;206:12515",
-   "name": "矩形 1437",
+   "name": "Rectangle 1437",
    "type": "VECTOR",
    "parent": "25:4144",
    "x": 477.0,
@@ -2265,7 +2265,7 @@
   },
   {
    "id": "I25:4160;206:12515",
-   "name": "矩形 1437",
+   "name": "Rectangle 1437",
    "type": "VECTOR",
    "parent": "25:4160",
    "x": 665.0,
@@ -2675,7 +2675,7 @@
   },
   {
    "id": "I25:4176;206:12515",
-   "name": "矩形 1437",
+   "name": "Rectangle 1437",
    "type": "VECTOR",
    "parent": "25:4176",
    "x": 853.0,
@@ -2903,7 +2903,7 @@
   },
   {
    "id": "5:10848",
-   "name": "文字内容最多五十个字，文字内容最多五十个字文字内容最多五十个字文字内容最多五十个字，文字内容最多五十个字。文字内容最多五十个字，文字内容最多五十个字文字内容最多五十个字文字内容最多五十个字，文字内容最多五十个字。",
+   "name": "Body copy runs up to about fifty characters per line here, and this paragraph is long enough to wrap across several lines so that the fixed-width text box is actually exercised. It keeps going for a while, because one short line would not prove that wrapping works.",
    "type": "TEXT",
    "parent": "25:4193",
    "x": 124.0,
@@ -2921,7 +2921,7 @@
    "img": "",
    "imgSize": "",
    "text": {
-    "content": "文字内容最多五十个字，文字内容最多五十个字文字内容最多五十个字文字内容最多五十个字，文字内容最多五十个字。文字内容最多五十个字，文字内容最多五十个字文字内容最多五十个字文字内容最多五十个字，文字内容最多五十个字。",
+    "content": "Body copy runs up to about fifty characters per line here, and this paragraph is long enough to wrap across several lines so that the fixed-width text box is actually exercised. It keeps going for a while, because one short line would not prove that wrapping works.",
     "color": "rgba(57,57,57,1.0)",
     "size": 36.0,
     "family": "Source Han Sans SC",

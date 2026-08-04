@@ -51,7 +51,7 @@
     fill: 'rgba(6,192,150,1.0)',        // 底色矩形(对 31:1424 的 135:12219)
     edge: 'rgba(4,173,118,1.0)',        // 同一个矩形的 7px 内描边 —— 换底色不换它就剩一圈黄边
     dots: 'rgba(6,186,145,1.0)',        // 半调网点(对 135:12221)
-    btnW: 363, rectW: 363, texW: 349, textW: 269.8, textLeft: 46, label: '删除'
+    btnW: 363, rectW: 363, texW: 349, textW: 269.8, textLeft: 46, label: 'Delete'
   };
 
   function repaintVector(el, fill) {
