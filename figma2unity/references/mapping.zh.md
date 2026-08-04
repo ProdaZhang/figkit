@@ -30,14 +30,17 @@ IR 样式值是 **CSS 风格字符串**(`radius="45px"`、`border="2.0px solid r
 
 | IR | USS | 说明 |
 |---|---|---|
-| `radius`(1~4 值简写) | `border-top-left/top-right/bottom-right/bottom-left-radius` 四长写 | 按 CSS 简写展开规则(1→aaaa,2→abab,3→abcb) |
+| `radius`(1~4 值简写) | `border-top-left/top-right/bottom-right/bottom-left-radius` 四长写 | 按 CSS 简写展开规则(1→aaaa,2→abab,3→abcb),然后**按 CSS 的口径先夹紧**再交给 Unity:相邻半径之和超过边长时,CSS 把四角按同一比例缩,Unity 却是逐轴各夹各的 —— 235×42 的药丸配 57px 圆角在 Unity 手里成了 57×21 的椭圆角(一颗被拉长的橄榄),浏览器画的是胶囊。百分比不动(`50%` 在非正方形盒子上本来就该是椭圆角) |
 | `border`(`Wpx style color`) | `border-width` + `border-color` | USS 边框恒实线;style≠solid 记 known-loss |
 | `fill`(纯色) | `background-color` | rgba 字符串 USS 原生支持 |
-| `fill`(渐变) | `background-color` = **第一停靠色**回退 | USS 无渐变;记 known-loss |
+| `fill`(渐变) | `background-image` = **编译期烘的 PNG** | USS 没有渐变属性,转换器自己烘一张 64² 纹理:每个纹素按该元素**真实 w/h** 投影到渐变轴再插值,任意角度都准(不是只处理 0/90°)。放在编译期做,集成方不用多加运行时代码,产物也保持逐字节确定。解析不了的渐变仍退首色 |
 | `img` | `background-image: url("...")` + `background-size`(imgSize,默认 cover)+ `background-position: center` + `background-repeat: no-repeat` | background-size 等需 Unity 2022.2+ |
 | `stageBg` | 帧根 `.screen-root`:url→背景图,色→背景色,渐变→首停靠色 | — |
 | `shadow` | **丢弃** | USS 无 box-shadow;记 known-loss |
 | `blur` | **丢弃** | USS 无 filter;记 known-loss |
+| `paths` + `viewBox`(v1.2) | `<figkit:FigVector>` —— `runtime/FigVector.cs` 用 **Painter2D** 真画 | 货真价实的矢量绘制:不产任何图片资产,也不用额外的包(`com.unity.vectorgraphics` 是预览包)。元素自己解析 SVG 路径(M/L/H/V/C/S/Q/T/Z,贝塞尔按固定步数采样以保确定性),按 IR 要的 winding rule 填充。**UXML 只在这一屏真有矢量时才声明 `xmlns:figkit`** —— 声明了却没把 runtime 拷进工程,整份 UXML 会加载失败。描边带一般由捕获层直接发成可填的 evenodd 环(IR v1.3),这里照填即可。捕获层读不懂的带子会退回「原样 ±2w + `clip` 提示」,而 Painter2D 没有布尔裁剪:OUTSIDE 那半仍是精确的 —— 先画带子、再让不透明的填充盖住内侧那一半;退回来的 INSIDE 只能全宽画,粗一倍,逐元素记 known-loss。另有一条:**Painter2D 会把同一条路径的多个轮廓连成一个多边形**(实测把描边带整块绞成细长三角),所以包围盒互不相交的轮廓逐个填,相交的仍走一次填充 —— 形状上的洞正是靠那一次填充规则挖出来的 |
+| `clip`(v1.1) | `overflow: hidden` | UI Toolkit 的 `overflow` 本来就跟随 `border-radius`,所以圆角裁剪在这里不花额外力气就是精确的(Godot 得靠 `clip_children` 才到得了同一步) |
+| `borderAlign`(v1.2) | 垫在下面、四边各外扩 N 且圆角 +N 的兄弟盒子 | USS 没有 `box-shadow`,但描边往外那半**本来就是**"同形状、大 N 圈的另一个盒子" —— 所以是画出来的,不是丢掉的。与下面的硬阴影同一套机制 |
 
 ## 文字(text 子对象 → Label)
 
@@ -60,7 +63,7 @@ IR 样式值是 **CSS 风格字符串**(`radius="45px"`、`border="2.0px solid r
 |---|---|---|
 | `shadow` | 跳过 | 需要阴影可在 Unity 里加 9-slice 阴影图 |
 | `blur` | 跳过 | 无 filter |
-| 渐变 `fill`/`stageBg` | 第一停靠色纯色回退 | 需要真渐变可换渐变贴图 |
+| 解析不了的渐变 | 第一停靠色纯色回退 | 只有径向 / 非 `<角度>deg` 的写法会落到这里;线性渐变已经烘图 |
 | `text.stroke` | 跳过 | 可改用 TextMeshPro 组件承载 |
 | `text.lh`(行高) | 跳过 | USS 无 line-height |
 | `text.family` | 不映射 | 需手配 FontAsset(见上表) |
@@ -115,6 +118,22 @@ IR 样式值是 **CSS 风格字符串**(`radius="45px"`、`border="2.0px solid r
   Screen Match Mode 按产品取向(竖屏游戏常用 Match = 1/Height 或 Expand)。
   这等价于 render.js 的 `mountStage` 视口等比缩放。
 - `FlowBinder` 会建一个 `flow.stage.w × flow.stage.h` 的 stage 容器,底屏与弹窗层都铺满它。
+
+## 纹理导入设置(别用 Unity 的默认值)
+
+Unity 的默认导入器是给 3D 表面调的,那套默认值对 UI **条条都不对**。
+`runtime/Editor/FigkitTextureImport.cs` 是个 `AssetPostprocessor`,把 `Assets/Resources/UI/` 下的
+资源改成 UI 该有的样子。其中三条是拿实机像素比出来的(2026-08-05,已领取那屏的白色对勾):
+
+- **`mipmapEnabled`** —— UI 是 1:1 贴的,采样却可能落到更低一级 mip,边缘于是**向外渗**。
+  白勾比 HTML 每边胖 1px、底部那行被硬切平;同一格里的金色小星反而**向内缩** 1px ——
+  亮的外扩、暗的内缩,是同一件事。
+- **`textureCompression`** —— DXT/BC 块压缩,伪影恰好出在 UI 最多的高对比边缘上,颜色也偏。
+- **`alphaIsTransparency`** —— 关着时全透明像素保留原有 RGB,半透明边缘会渗出黑边。
+
+另外钉死 `wrapMode = Clamp`(UI 不平铺,Repeat 会采到对侧像素)和 `npotScale = None`。
+设好之后,对勾与 HTML **逐行相同**(下缘白像素 24/22/20/…/5/0,一个不差)。
+资源放在别处就改 `Root` 常量,改完对那个目录 Reimport 一次。
 
 ## 图片资源摆放
 

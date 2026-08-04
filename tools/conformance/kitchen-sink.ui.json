@@ -1,5 +1,5 @@
 {
- "spec": "1.0",
+ "spec": "1.3",
  "frame": "k:frame",
  "w": 800,
  "h": 940,
@@ -25,6 +25,10 @@
    "img": "",
    "imgSize": "",
    "text": null,
+   "clip": false,
+   "paths": [],
+   "viewBox": "",
+   "borderAlign": "",
    "vec": false
   },
   {
@@ -47,6 +51,10 @@
    "img": "",
    "imgSize": "",
    "text": null,
+   "clip": false,
+   "paths": [],
+   "viewBox": "",
+   "borderAlign": "",
    "vec": false
   },
   {
@@ -69,6 +77,10 @@
    "img": "",
    "imgSize": "",
    "text": null,
+   "clip": false,
+   "paths": [],
+   "viewBox": "",
+   "borderAlign": "",
    "vec": false
   },
   {
@@ -91,6 +103,10 @@
    "img": "",
    "imgSize": "",
    "text": null,
+   "clip": false,
+   "paths": [],
+   "viewBox": "",
+   "borderAlign": "inside",
    "vec": false
   },
   {
@@ -113,6 +129,10 @@
    "img": "",
    "imgSize": "",
    "text": null,
+   "clip": false,
+   "paths": [],
+   "viewBox": "",
+   "borderAlign": "",
    "vec": false
   },
   {
@@ -135,6 +155,10 @@
    "img": "",
    "imgSize": "",
    "text": null,
+   "clip": false,
+   "paths": [],
+   "viewBox": "",
+   "borderAlign": "",
    "vec": false
   },
   {
@@ -157,6 +181,10 @@
    "img": "",
    "imgSize": "",
    "text": null,
+   "clip": false,
+   "paths": [],
+   "viewBox": "",
+   "borderAlign": "",
    "vec": false
   },
   {
@@ -179,6 +207,10 @@
    "img": "",
    "imgSize": "",
    "text": null,
+   "clip": false,
+   "paths": [],
+   "viewBox": "",
+   "borderAlign": "",
    "vec": false
   },
   {
@@ -201,6 +233,10 @@
    "img": "",
    "imgSize": "",
    "text": null,
+   "clip": false,
+   "paths": [],
+   "viewBox": "",
+   "borderAlign": "",
    "vec": false
   },
   {
@@ -223,6 +259,10 @@
    "img": "",
    "imgSize": "",
    "text": null,
+   "clip": false,
+   "paths": [],
+   "viewBox": "",
+   "borderAlign": "",
    "vec": false
   },
   {
@@ -245,6 +285,10 @@
    "img": "assets/ks-a.png",
    "imgSize": "cover",
    "text": null,
+   "clip": false,
+   "paths": [],
+   "viewBox": "",
+   "borderAlign": "",
    "vec": false
   },
   {
@@ -267,6 +311,10 @@
    "img": "assets/ks-b.png",
    "imgSize": "contain",
    "text": null,
+   "clip": false,
+   "paths": [],
+   "viewBox": "",
+   "borderAlign": "",
    "vec": false
   },
   {
@@ -289,6 +337,10 @@
    "img": "assets/ks-c.png",
    "imgSize": "auto",
    "text": null,
+   "clip": false,
+   "paths": [],
+   "viewBox": "",
+   "borderAlign": "",
    "vec": false
   },
   {
@@ -321,8 +373,13 @@
     "alignH": "flex-start",
     "alignV": "center",
     "textAlign": "left",
+    "wrap": true,
     "stroke": ""
    },
+   "clip": false,
+   "paths": [],
+   "viewBox": "",
+   "borderAlign": "",
    "vec": false
   },
   {
@@ -355,8 +412,13 @@
     "alignH": "center",
     "alignV": "center",
     "textAlign": "center",
-    "stroke": "3.0px rgba(0,0,0,1)"
+    "wrap": true,
+    "stroke": "6.0px rgba(0,0,0,1)"
    },
+   "clip": false,
+   "paths": [],
+   "viewBox": "",
+   "borderAlign": "",
    "vec": false
   },
   {
@@ -389,8 +451,13 @@
     "alignH": "flex-start",
     "alignV": "flex-start",
     "textAlign": "left",
+    "wrap": true,
     "stroke": ""
    },
+   "clip": false,
+   "paths": [],
+   "viewBox": "",
+   "borderAlign": "",
    "vec": false
   },
   {
@@ -413,7 +480,128 @@
    "img": "assets/nk_vec.png",
    "imgSize": "contain",
    "text": null,
+   "clip": false,
+   "paths": [],
+   "viewBox": "",
+   "borderAlign": "",
    "vec": true
+  },
+  {
+   "id": "k:paths",
+   "name": "paths",
+   "type": "VECTOR",
+   "parent": "",
+   "x": 40,
+   "y": 920,
+   "w": 120,
+   "h": 120,
+   "z": 18,
+   "rot": 0,
+   "opacity": 1,
+   "radius": "",
+   "border": "",
+   "shadow": "",
+   "blur": "",
+   "fill": "",
+   "img": "",
+   "imgSize": "",
+   "text": null,
+   "clip": false,
+   "paths": [
+    {
+     "d": "M0 0L120 0L120 120L0 120Z",
+     "rule": "nonzero",
+     "fill": "rgba(242,76,51,1)",
+     "clip": ""
+    },
+    {
+     "d": "M-4 -4L124 -4L124 124L-4 124Z",
+     "rule": "nonzero",
+     "fill": "rgba(255,255,255,1)",
+     "clip": "inside"
+    }
+   ],
+   "viewBox": "0 0 120.00 120.00",
+   "borderAlign": "",
+   "vec": true
+  },
+  {
+   "id": "k:clip",
+   "name": "clip",
+   "type": "FRAME",
+   "parent": "",
+   "x": 200,
+   "y": 920,
+   "w": 120,
+   "h": 120,
+   "z": 19,
+   "rot": 0,
+   "opacity": 1,
+   "radius": "16px",
+   "border": "",
+   "shadow": "",
+   "blur": "",
+   "fill": "rgba(230,230,242,1)",
+   "img": "",
+   "imgSize": "",
+   "text": null,
+   "clip": true,
+   "paths": [],
+   "viewBox": "",
+   "borderAlign": "",
+   "vec": false
+  },
+  {
+   "id": "k:clip-child",
+   "name": "clip-child",
+   "type": "RECTANGLE",
+   "parent": "k:clip",
+   "x": 260,
+   "y": 980,
+   "w": 200,
+   "h": 200,
+   "z": 20,
+   "rot": 0,
+   "opacity": 1,
+   "radius": "",
+   "border": "",
+   "shadow": "",
+   "blur": "",
+   "fill": "rgba(51,102,230,1)",
+   "img": "",
+   "imgSize": "",
+   "text": null,
+   "clip": false,
+   "paths": [],
+   "viewBox": "",
+   "borderAlign": "",
+   "vec": false
+  },
+  {
+   "id": "k:border-outside",
+   "name": "border-outside",
+   "type": "RECTANGLE",
+   "parent": "",
+   "x": 380,
+   "y": 920,
+   "w": 120,
+   "h": 120,
+   "z": 21,
+   "rot": 0,
+   "opacity": 1,
+   "radius": "10px",
+   "border": "",
+   "shadow": "0 0 0 6.0px rgba(230,128,0,1)",
+   "blur": "",
+   "fill": "rgba(255,255,255,1)",
+   "img": "",
+   "imgSize": "",
+   "text": null,
+   "clip": false,
+   "paths": [],
+   "viewBox": "",
+   "borderAlign": "outside",
+   "vec": false
   },
   {
    "id": "k:nest",
@@ -424,7 +612,7 @@
    "y": 760,
    "w": 240,
    "h": 140,
-   "z": 18,
+   "z": 22,
    "rot": 0,
    "opacity": 1,
    "radius": "8px",
@@ -435,6 +623,10 @@
    "img": "",
    "imgSize": "",
    "text": null,
+   "clip": false,
+   "paths": [],
+   "viewBox": "",
+   "borderAlign": "",
    "vec": false
   },
   {
@@ -446,7 +638,7 @@
    "y": 800,
    "w": 100,
    "h": 60,
-   "z": 19,
+   "z": 23,
    "rot": 0,
    "opacity": 1,
    "radius": "6px",
@@ -457,6 +649,10 @@
    "img": "",
    "imgSize": "",
    "text": null,
+   "clip": false,
+   "paths": [],
+   "viewBox": "",
+   "borderAlign": "",
    "vec": false
   }
  ]

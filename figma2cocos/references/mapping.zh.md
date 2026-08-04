@@ -16,12 +16,12 @@
 | `z` | 兄弟顺序 | els 按 z 升序稳定排序后依次 `addChild` → 同父追加顺序即绘制顺序(等效 `setSiblingIndex`) |
 | `parent` | 节点树父子 | 空 = 挂层根;`buildSubtree` 抽子树时根的 parent 置空(对齐 `subtreeOf`) |
 | `rot` | `node.angle = -rot` | CSS 顺时针为正,Creator 逆时针为正 → 取负;旋转枢轴见 §3 |
-| `opacity` | `UIOpacity.opacity = round(opacity×255)` | 仅 `opacity !== 1` 时加组件 |
+| `opacity` | Sprite/Label 走 `UIOpacity`,Graphics **直接乘进颜色** | `UIOpacity` 对 Graphics **完全无效** —— 挂自己身上不行,挂祖先级联也不行(Graphics 自管 model,不进 UI 合批的顶点色)。实机量过:`fillColor` 的 alpha=51 压在 #333 底上读到 110,而自身 / 父级 `UIOpacity=51` 两种写法都读到纯 255。所以 Graphics 的颜色要乘上**整条祖先链**的 opacity;漏了这一步,`opacity: 0.38` 的白色装饰会画成不透明纯白,把整条顶栏糊掉 |
 | `fill`(纯色) | `Graphics.fillColor` + `roundRect` + `fill()` | rgba → `Color(r,g,b,a×255)` |
-| `fill`(linear-gradient) | **首色回退**(known-loss) | Graphics 无渐变填充;取首个 stop 纯色 + `console.warn` |
-| `radius` | `roundRect(..., r)` | 四角相等 → 直接用;**四角不等 → 统一取 tl**(known-loss,`Graphics.roundRect` 单半径 API,分段贝塞尔可做但命中率低不抵复杂度) |
+| `fill`(linear-gradient) | 运行时**烘一张纹理**,Sprite 套进圆角 Mask | Graphics 没有渐变填充,于是自己生成 64² 纹理:每个纹素按该元素**真实渐变轴**投影(任意角度都准),再用 `GRAPHICS_STENCIL` 的 Mask 套住,圆角照样跟上。**纹理必须走 `Texture2D.reset` + `uploadData`** —— 用 `ImageAsset({_data})` 再 `tex.image = img` 会走「图片元素」的上传重载,实机每帧抛 `texSubImage2D … Overload resolution failed`(一屏 4686 条) |
+| `radius` | 逐角路径(直线 + 三次贝塞尔) | 四角**各自**保留半径,`73px 73px 0 0` 照原样出;半径先按 CSS 规则夹紧(相邻两角之和 ≤ 边长)。**这里绝不能用 `Graphics.arc`** —— 见 §5 下的踩坑说明 |
 | `border` | `Graphics.lineWidth/strokeColor` + `stroke()` | CSS 是内描边(border-box)、Graphics 沿路径居中 → **路径内缩 width/2** 逼近 |
-| `shadow` | **不渲**(known-loss) | Creator 无逐节点 box-shadow 轻量手段 |
+| `shadow`(硬阴影) | 同形状的**垫层**兄弟节点 | Creator 没有 `box-shadow`,但 `2px 6px 0 c` 本来就是"同一个圆角盒子按 (2,6) 位移再填色" —— 画得出来就不记成丢失。**带模糊**的仍是真丢 |
 | `blur` | **不渲**(known-loss) | 同上(全屏后处理不适合逐节点) |
 | `img` | `Sprite`(`SizeMode.CUSTOM`) | `resources.load(assetRoot + stem(img) + '/spriteFrame', SpriteFrame)`;缺失 → 透明回退 + warn(不平涂占位,对齐 render.js) |
 | `imgSize`(cover/contain) | **一律拉伸铺满**(known-loss) | `SizeMode.CUSTOM` 铺满 contentSize;capture 的图多为 1:1 导出,失真有限 |
@@ -34,7 +34,7 @@
 | `text.family` | 系统默认字体 | 字体族不还原(known-loss);要还原需 TTFFont 资产 + hook 覆盖 |
 | `text.stroke` | `LabelOutline`(width + color) | |
 | `text.ls`(letterSpacing) | **不渲**(known-loss) | Label 3.x 无字距属性 |
-| 文本溢出 | `Overflow.CLAMP` + `enableWrapText=false` | 保住框内对齐、对齐 render.js nowrap;系统字体偏宽可能截字(known-loss);显式 `\n` 仍换行 |
+| 文本溢出 | `Overflow.CLAMP` + `enableWrapText` 取自 `text.wrap` | 跟随 IR,不再一律 nowrap(此前定宽正文会一行冲出面板);系统字体偏宽仍可能截字(known-loss) |
 | `cap.stageBg` | `stage-bg` 子节点(Sprite 或 Graphics) | `url(..)` → Sprite;纯色/渐变 → Graphics(渐变取首色);sibling 0 垫底 |
 
 flow.json 映射(`flow-binder.ts`,语义对齐 assemble.js):
@@ -106,9 +106,9 @@ Canvas (cc.Canvas, designResolution = cap.w × cap.h)
 | 项 | 损失 | 补救 |
 |---|---|---|
 | `blur` | 不渲 | 需要时用预烘焙贴图或后处理,hook 层做 |
-| `shadow` | 不渲 | 同上;或九宫格阴影贴图 |
-| 复杂/线性渐变 | 取首个 stop 纯色 | 需要时导出为贴图走 `img` |
-| 四角不等圆角 | 统一取 tl | 需要时导出贴图;或改 Graphics 分段路径(未实现) |
+| `shadow`(带模糊) | 不渲(硬阴影已用垫层还原) | 同上;或九宫格阴影贴图 |
+| 解析不了的渐变 | 取首个 stop 纯色 | 只有径向 / 非 `<角度>deg` 的写法会落到这里;线性渐变已经烘图 |
+| 字体族(设计字体) | 一律系统字体 | 挂 TTFFont 资产,hook 里覆盖 `label.font`(四端目前都没上设计字体) |
 | 字体族 / 精确字重 | 系统字体 + `isBold(≥600)` | 挂 TTFFont 资产,hook 覆盖 `label.font` |
 | `letterSpacing` | 不渲 | — |
 | `textAlign` vs `alignH` 冲突 | 取 alignH | 多行富对齐用 RichText 自行改造 |
@@ -116,6 +116,21 @@ Canvas (cc.Canvas, designResolution = cap.w × cap.h)
 | 文本 CLAMP 截字 | 系统字体偏宽时可能截 | 调小 fontSize 或 hook 放宽 contentSize |
 | 实例内部 `rot=0` | 上游 API 限制 | hook 手动 `node.angle` |
 | `motion.json` 里 `unresolved` 的曲线 | 该转场瞬时显隐 | figma 没公开 `BOUNCY` / `*_BACK` 的控制点;别编数,见下 |
+
+### 踩坑:`Graphics.arc` 不是 canvas 的 `arc`
+
+这里的圆角用三次贝塞尔而不是圆弧,是**故意的**。引擎的 `arc(cx, cy, r, a0, a1, ccw)` 与 canvas
+有两处不同,每一处单独都足以把形状画坏:
+
+1. 它的第一个点走的是 `ctx.moveTo(x, y)` —— 圆弧**永远另起一条子路径**,不从当前点接上。
+   于是"直边 `lineTo` + 四个角 `arc`"变成四段互不相连的子路径,`fill()` 把它们并成一个多边形:
+   所有圆角盒子都被撕成斜楔。
+2. 扫掠方向相反。`counterclockwise=false` 时它执行 `while (da > 0) da -= 2π`,按 canvas 语义写的
+   `(-90° → 0°, false)` 会被读成 **-270°**、绕大圈 —— 画出满屏的巨大圆环。
+
+`bezierCurveTo` 从当前点接着走,也没有方向歧义,两个坑一起绕开。
+`scripts/tests/test_runtime_source.py::test_corners_never_use_graphics_arc` 钉住这条。
+它和 Babel 那条一样:**所有静态门全绿,只有真像素才现形**。
 
 ## 5.5 转场缓动(`flow.events[].transition` + `flow.motion`)
 
@@ -174,8 +189,12 @@ Unity 的默认平滑切线在段内拱起来 —— 两家都栽过。`sampleCu
   覆盖了每个 runtime `.ts`、且文档与配置说的是同一个版本。
 - ✅ 源码级守卫(`scripts/tests/test_runtime_source.py`):线性插值在、内置缓动没被导入、
   transform 没贴到层上、缩放补了锚点偏移。
-- ❌ **未在 Creator 内实机运行** —— 与本后端其余部分同一等级。曲线的值对了不等于画面对了
-  (上面那个遮罩 bug 就是活证据)。
+- ✅ **已在 Creator 3.8.8 内实机运行**(2026-08-05):拿真实 Figma capture 构建 `web-desktop`、
+  截图 1080×1920 —— 同一帧对 HTML 构建的均差 **6.21–8.93/255**,与 Godot、Unity 同一量级。
+  正是这一跑才炸出三个静态门够不着的 bug:代码建的节点落在 `Layers.Enum.DEFAULT` 而 UI 相机
+  只照 `UI_2D`(整棵树建好、零像素、不报错)、Babel 那条会让**整份脚本**编不进包的三目崩溃、
+  以及上面那条 `Graphics.arc`。三条现在都有源码级守卫。
+- ⚠️ 动效**没在 Play 模式下看过** —— 曲线的值钉住了,画面没有。
 
 ## 6. 集成冒烟清单(首次接入必做)
 

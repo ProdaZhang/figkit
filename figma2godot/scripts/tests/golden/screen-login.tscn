@@ -1,4 +1,8 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=7 format=3]
+
+[ext_resource type="FontFile" path="res://fonts/FigCJK-Bold.ttf" id="tex_1"]
+
+[ext_resource type="FontFile" path="res://fonts/FigCJK-Regular.ttf" id="tex_2"]
 
 [sub_resource type="StyleBoxFlat" id="sb_1_10"]
 bg_color = Color(1, 0.9843, 0.949, 1)
@@ -49,10 +53,13 @@ offset_top = 260.0
 offset_right = 1080.0
 offset_bottom = 370.0
 text = "示例登录"
+autowrap_mode = 3
+clip_text = false
 horizontal_alignment = 1
 vertical_alignment = 1
 theme_override_colors/font_color = Color(1, 1, 1, 1)
 theme_override_font_sizes/font_size = 88
+theme_override_fonts/font = ExtResource("tex_1")
 
 [node name="1_40" type="Label" parent="."]
 offset_left = 900.0
@@ -60,10 +67,13 @@ offset_top = 80.0
 offset_right = 1040.0
 offset_bottom = 128.0
 text = "公告"
+autowrap_mode = 3
+clip_text = false
 horizontal_alignment = 1
 vertical_alignment = 1
 theme_override_colors/font_color = Color(1, 0.8431, 0.4157, 1)
 theme_override_font_sizes/font_size = 36
+theme_override_fonts/font = ExtResource("tex_2")
 
 [node name="1_10" type="Panel" parent="."]
 offset_left = 260.0
@@ -85,9 +95,12 @@ offset_top = 20.0
 offset_right = 430.0
 offset_bottom = 70.0
 text = "未选择"
+autowrap_mode = 3
+clip_text = false
 vertical_alignment = 1
 theme_override_colors/font_color = Color(0.2235, 0.2235, 0.2235, 1)
 theme_override_font_sizes/font_size = 40
+theme_override_fonts/font = ExtResource("tex_2")
 
 [node name="1_13" type="Label" parent="."]
 offset_left = 850.0
@@ -95,10 +108,13 @@ offset_top = 1300.0
 offset_right = 970.0
 offset_bottom = 1350.0
 text = "切换"
+autowrap_mode = 3
+clip_text = false
 horizontal_alignment = 1
 vertical_alignment = 1
 theme_override_colors/font_color = Color(1, 0.8431, 0.4157, 1)
 theme_override_font_sizes/font_size = 34
+theme_override_fonts/font = ExtResource("tex_2")
 
 [node name="1_20" type="Panel" parent="."]
 offset_left = 300.0
@@ -113,10 +129,13 @@ offset_top = 28.0
 offset_right = 480.0
 offset_bottom = 82.0
 text = "开始游戏"
+autowrap_mode = 3
+clip_text = false
 horizontal_alignment = 1
 vertical_alignment = 1
 theme_override_colors/font_color = Color(0.2275, 0.1647, 0, 1)
 theme_override_font_sizes/font_size = 48
+theme_override_fonts/font = ExtResource("tex_1")
 
 [node name="1_30" type="Panel" parent="."]
 offset_left = 300.0
@@ -131,6 +150,9 @@ offset_top = 1638.0
 offset_right = 972.0
 offset_bottom = 1678.0
 text = "已阅读并同意《示例用户协议》"
+autowrap_mode = 3
+clip_text = false
 vertical_alignment = 1
 theme_override_colors/font_color = Color(1, 1, 1, 0.85)
 theme_override_font_sizes/font_size = 28
+theme_override_fonts/font = ExtResource("tex_2")

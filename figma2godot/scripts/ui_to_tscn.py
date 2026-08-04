@@ -30,6 +30,13 @@ import motion
 
 # tscn 节点名不允许的字符(. : @ / " %)→ 统一换下划线;figma id "1:40" → 节点名 "1_40"
 _FORBID = re.compile(r'[.:@/"%]')
+# **sub_resource 的 id 规矩比节点名严得多**:Godot 只收 [A-Za-z0-9_](core/io/resource.cpp
+# set_scene_unique_id:"The scene unique ID must contain only letters, numbers, and underscores")。
+# 节点名那套黑名单漏掉的字符里,**分号是真会撞上的那个** —— figma 组件实例的 id 形如
+# `I25:4109;206:12513;202:12604`(实例链用 ; 连接),换完冒号仍带 ;,于是 StyleBoxFlat /
+# Gradient 全部注册失败,那些元素在引擎里**一律裸奔无样式**。
+# 合成夹具撞不出来:手搓节点树里的 id 都是干净的 "1:40",没有组件实例。
+_FORBID_ID = re.compile(r'[^A-Za-z0-9_]')
 
 ALIGN = {  # CSS flex 对齐 → Godot 对齐枚举(0=BEGIN 1=CENTER 2=END)
     'flex-start': 0, 'left': 0, 'start': 0,
@@ -40,6 +47,11 @@ ALIGN = {  # CSS flex 对齐 → Godot 对齐枚举(0=BEGIN 1=CENTER 2=END)
 
 def node_name(s):
     return _FORBID.sub('_', s)
+
+
+def sub_id(s):
+    """sub_resource 的 scene unique id。比 node_name 严:白名单,不是黑名单。"""
+    return _FORBID_ID.sub('_', s)
 
 
 def esc(s):
@@ -256,11 +268,29 @@ def fallback_avg_color(fill):
 class Emitter(object):
     """收集 ext_resource / sub_resource / node 三段,最后拼 tscn 文本。"""
 
-    def __init__(self):
+    def __init__(self, res_prefix='res://scenes'):
         self.exts = []          # (id, path)
         self.ext_by_path = {}
         self.subs = []          # 每项 = 一个 sub_resource 文本块
         self.nodes = []         # 每项 = 一个 node 文本块
+        self.svgs = {}          # v1.2 矢量:相对 outdir 的文件名 -> svg 文本
+        self.res_prefix = res_prefix.rstrip('/')
+
+    def add_svg(self, rel, text):
+        """收下一份 .svg(由 main 落盘),返回它的 res:// 路径。"""
+        self.svgs[rel] = text
+        return self.add_ext('%s/%s' % (self.res_prefix, rel.replace('\\', '/')))
+
+    def add_font(self, rel):
+        """设计字体(.ttf)→ ext_resource id。路径**固定在 `res://fonts/`**,不跟 `res_prefix` 走。
+
+        svg 是转换器自己产的、落在 outdir,所以跟 res_prefix;字体不是 —— 它是集成方
+        放进工程的资源,路径必须稳定。跟着 res_prefix 会把**输出目录名**写进 res:// 路径
+        (golden 用临时目录一跑就现形:`res://tmpvf57e9rc/fonts/...`),换个输出目录产物就变。
+        Godot 4 会自己给 .ttf 生成 `.import`(FontFile);文件不在时导入期报缺资源 ——
+        那正是要的,比静默退回系统字体强。
+        """
+        return self.add_ext('res://fonts/%s' % os.path.basename(rel.replace('\\', '/')))
 
     def add_ext(self, path):
         if path in self.ext_by_path:
@@ -284,10 +314,34 @@ class Emitter(object):
             head = '[gd_scene format=3]'
         blocks = [head]
         for eid, path in self.exts:
-            blocks.append('[ext_resource type="Texture2D" path="%s" id="%s"]' % (esc(path), eid))
+            kind = 'FontFile' if str(path).lower().endswith(('.ttf', '.otf')) else 'Texture2D'
+            blocks.append('[ext_resource type="%s" path="%s" id="%s"]' % (kind, esc(path), eid))
         blocks.extend(self.subs)
         blocks.extend(self.nodes)
         return '\n\n'.join(blocks) + '\n'
+
+
+_RING = re.compile(r'\s*0(?:px)?\s+0(?:px)?\s+0(?:px)?\s+([0-9.]+)px\s+(rgba?\([^)]*\))\s*$')
+
+
+def split_ring(shadow, align):
+    """v1.2:把「描边环」从 shadow 串里拆出来 → (ring | None, 剩下的 shadow 串)。
+
+    capture 对 OUTSIDE/CENTER 描边的做法是往 shadow 头部塞一条 `0 0 0 Npx <色>`
+    (CSS 里 box-shadow 跟随 border-radius,outline 不跟)。它**不是阴影**,
+    照阴影画会得到一圈模糊光晕;`borderAlign` 就是用来区分这两者的判据。
+    零值那三段 CSS 允许不带单位,所以 `px` 在这里是可选的 —— 别只认一种写法。
+    """
+    if not shadow or align not in ('outside', 'center'):
+        return None, shadow
+    parts = _split_top(shadow)
+    m = _RING.match(parts[0]) if parts else None
+    if not m:
+        return None, shadow
+    c = parse_rgba(m.group(2))
+    if c is None:
+        return None, shadow
+    return (float(m.group(1)), c), ', '.join(parts[1:])
 
 
 def _stylebox(sid, e, fill_c):
@@ -295,6 +349,11 @@ def _stylebox(sid, e, fill_c):
     L = ['[sub_resource type="StyleBoxFlat" id="%s"]' % sid]
     if fill_c is not None:
         L.append('bg_color = ' + color_str(fill_c))
+    elif e.get('clip') and (e.get('radius') or ''):
+        # 圆角裁剪容器:它**必须画出实心形状**才能当 clip_children 的模子。
+        # 颜色无所谓 —— CLIP_CHILDREN_ONLY 下它自己不显形,只贡献形状。
+        # 若沿用下面那条 draw_center=false,模子是空的,子节点会被裁得一干二净。
+        L.append('bg_color = Color(1, 1, 1, 1)')
     else:
         L.append('bg_color = Color(0, 0, 0, 0)')
         L.append('draw_center = false')
@@ -302,14 +361,24 @@ def _stylebox(sid, e, fill_c):
     if rad and any(rad):
         for key, v in zip(('top_left', 'top_right', 'bottom_right', 'bottom_left'), rad):
             L.append('corner_radius_%s = %d' % (key, v))
+    align = (e.get('borderAlign') or '').lower()
+    ring, rest = split_ring(e.get('shadow') or '', align)
     bd = parse_border(e.get('border') or '')
-    if bd:
-        w, c = bd
+    if bd or ring:
+        # **Godot 的 border 只往内画**(与 CSS 同病)。往外的那半靠 expand_margin:
+        # 它把 StyleBox 的绘制范围整体外扩,扩出来的那圈正好由 border 占掉,
+        # 原来的填充区一寸不让 —— 这才是 OUTSIDE;CENTER 则外扩一半。
+        out = ring[0] if ring else 0.0
+        w = (bd[0] if bd else 0) + int(round(out))
+        c = bd[1] if bd else ring[1]
         for key in ('left', 'top', 'right', 'bottom'):
-            L.append('border_width_%s = %d' % (key, w))
+            L.append('border_width_%s = %d' % (key, max(1, w)))
         L.append('border_color = ' + color_str(c))
-    sh = parse_shadow(e.get('shadow') or '')
-    if sh:
+        if out:
+            for key in ('left', 'top', 'right', 'bottom'):
+                L.append('expand_margin_%s = %s' % (key, cnum(out)))
+    sh = parse_shadow(rest)
+    if sh and not is_hard_shadow(rest):
         ox, oy, size, c = sh
         L.append('shadow_color = ' + color_str(c))
         L.append('shadow_size = %d' % size)
@@ -318,8 +387,28 @@ def _stylebox(sid, e, fill_c):
     return '\n'.join(L)
 
 
+def is_hard_shadow(shadow):
+    """blur=0 且有位移 = **硬阴影**(这套设计里到处都是:`2px 6px 0px rgba(0,0,0,1)`)。
+
+    StyleBoxFlat 的 `shadow_size` 是「往外扩多少像素」,不是「位移一个实心副本」:
+    硬阴影按它画,size 会被 `max(1, blur+spread)` 夹成 1,于是一圈 1px 的边 ——
+    设计稿上那块厚实的投影就没了。硬阴影的忠实画法是**在下面垫一个同形状的实心副本**,
+    见 _shadow_panel。
+    """
+    sh = parse_shadow(shadow)
+    if not sh:
+        return False
+    ox, oy, _size, _c = sh
+    return ('0px ' in shadow or ' 0 ' in shadow) and (ox or oy) and _blur_of(shadow) == 0
+
+
+def _blur_of(shadow):
+    m = re.match(r'\s*(-?[0-9.]+)px\s+(-?[0-9.]+)px\s+(-?[0-9.]+)px', shadow or '')
+    return float(m.group(3)) if m else None
+
+
 def _gradient_subs(name, angle, stops):
-    gid, tid = 'grad_' + name, 'gt_' + name
+    gid, tid = 'grad_' + sub_id(name), 'gt_' + sub_id(name)
     offs = ', '.join(cnum(p) for p, _ in stops)
     cols = ', '.join(', '.join(cnum(x) for x in c) for _, c in stops)
     g = ['[sub_resource type="Gradient" id="%s"]' % gid,
@@ -333,7 +422,71 @@ def _gradient_subs(name, angle, stops):
     return '\n'.join(g), '\n'.join(gt), tid
 
 
+def _xml_esc(s):
+    return (s.replace('&', '&amp;').replace('<', '&lt;')
+             .replace('>', '&gt;').replace('"', '&quot;'))
+
+
+def svg_fill_attr(css):
+    """CSS 颜色 → SVG 的 fill 属性串。
+
+    **SVG 1.1 的 `fill` 不认 `rgba()`** —— 那是 CSS Color 4。Godot 的 SVG 解析器
+    (ThorVG)解不动就退回默认值**黑色**:实机第一次跑出来整屏矢量全黑,就是这个。
+    合法写法是 `fill="#rrggbb" fill-opacity="a"`,两段分开给。
+    """
+    c = parse_rgba(css or '')
+    if c is None:
+        return 'fill="%s"' % _xml_esc(css or 'none')      # 解不动就原样交出去,别悄悄改成黑
+    r, g, b, a = c
+    out = 'fill="#%02x%02x%02x"' % (int(round(r * 255)), int(round(g * 255)), int(round(b * 255)))
+    if a < 0.999:
+        out += ' fill-opacity="%s"' % cnum(a)
+    return out
+
+
+def svg_doc(e):
+    """IR 的 paths → 一份独立 .svg 文本(v1.2)。
+
+    **为什么是 svg 文件而不是三角化成 Polygon2D。** Godot 没有原生的 SVG path 节点,
+    自己把贝塞尔采样+耳切三角化,既要重写 winding rule(NONZERO/EVENODD)又要处理
+    多子路径与洞,还得跟 html 侧逐像素对齐 —— 而 Godot **自带 SVG 导入**(ThorVG),
+    这些它全都已经做了。编译期吐 .svg、导入期由引擎栅格化:
+    确定性(同输入同字节)、可读、可版本控制、**不下载任何位图**。
+
+    与 figma_capture.svg_markup / render.js 的 buildSvg 是同一套写法,改一处必同步另两处。
+    差异只有一处**有意**:这里是独立文档,要 xmlns 与 width/height,不是内联片段。
+    """
+    vb = e.get('viewBox') or ('0 0 %.1f %.1f' % (e.get('w') or 1, e.get('h') or 1))
+    v = [float(x) for x in vb.split()]
+    uid = _FORBID_ID.sub('_', str(e.get('id', '')))
+    ps = e.get('paths') or []
+    shape = ' '.join(q['d'] for q in ps if not q.get('clip'))   # 填充形状 = 描边的裁剪依据
+    need = {q.get('clip') for q in ps} - {'', None}
+    defs = ''
+    if 'inside' in need:
+        defs += '<clipPath id="cin_%s"><path d="%s"/></clipPath>' % (uid, _xml_esc(shape))
+    if 'outside' in need:
+        # 「形状之外」用蒙版:整面涂白 → 可见,形状涂黑 → 挖掉
+        defs += ('<mask id="cout_%s"><rect x="%.2f" y="%.2f" width="%.2f" height="%.2f" fill="#fff"/>'
+                 '<path d="%s" fill="#000"/></mask>'
+                 % (uid, v[0] - 64, v[1] - 64, v[2] + 128, v[3] + 128, _xml_esc(shape)))
+    body = ''
+    for q in ps:
+        att = ''
+        if q.get('clip') == 'inside':
+            att = ' clip-path="url(#cin_%s)"' % uid
+        elif q.get('clip') == 'outside':
+            att = ' mask="url(#cout_%s)"' % uid
+        body += '<path d="%s" %s fill-rule="%s"%s/>' % (
+            _xml_esc(q['d']), svg_fill_attr(q.get('fill')), q['rule'], att)
+    return ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="%s" width="%.2f" height="%.2f">'
+            '%s%s</svg>\n' % (vb, max(v[2], 1.0), max(v[3], 1.0),
+                              ('<defs>%s</defs>' % defs) if defs else '', body))
+
+
 def _classify(e):
+    if e.get('paths'):
+        return 'VectorRect'               # v1.2:矢量按路径画,编译期落成 .svg
     if e.get('text'):
         return 'Label'
     if e.get('img'):
@@ -351,7 +504,42 @@ def _classify(e):
 _STRETCH = {'cover': 6, 'contain': 5}  # KEEP_ASPECT_COVERED / KEEP_ASPECT_CENTERED
 
 
-def _emit_el(em, e, parent_path, parent_rec, used):
+def pick_rounded_clips(els, kids):
+    """哪些「圆角裁剪」容器可以用 clip_children —— **每条链上最外层的那个**。
+
+    Godot 的 clip_children **不支持嵌套**:一条祖先链上只能有一个,多了里外都坏。
+    所以嵌套时必须挑一个,问题只是挑哪头。
+
+    挑**最外层**:外层裁的是这块 UI 压在背景上的**外轮廓**,圆角丢了就是四个方角
+    直接怼在底色上,一眼就看见(实测:邮件面板 1008×1614 的 80px 圆角退成矩形剪刀,
+    底部两个角变成硬直角)。内层裁的多半是纹理/渐变/装饰,而且它们本来就压在
+    一块同色的不透明父容器里 —— 退成矩形剪刀只是圆角处多出一点点同色方角,基本看不出。
+    换句话说:**外层的圆角是轮廓,内层的圆角是细节**,只能留一个就留轮廓。
+
+    (曾经挑最内层。那版之所以看着"外层不能用",是因为外层这类只负责裁的容器在 IR 里
+     没有填充、被判成不画东西的 Control —— 空模子会把子节点裁得一干二净,整条头栏消失。
+     真正的毛病是模子空,不是"外层不行";_stylebox 补上实心底之后外层就正常了。)
+    """
+    by = {e['id']: e for e in els}
+
+    def rounded(i):
+        e = by.get(i) or {}
+        return bool(e.get('clip')) and bool((e.get('radius') or '').strip())
+
+    def has_rounded_ancestor(i):
+        p = (by.get(i) or {}).get('parent') or ''
+        while p in by:
+            if rounded(p):
+                return True
+            p = by[p].get('parent') or ''
+        return False
+
+    del kids                    # 现在只看祖先链,子树不参与判定
+    return {e['id'] for e in els
+            if rounded(e['id']) and not has_rounded_ancestor(e['id'])}
+
+
+def _emit_el(em, e, parent_path, parent_rec, used, rounded_clips=frozenset()):
     name = node_name(e.get('id', ''))
     while name in used:                # 消毒后撞名兜底(极罕见)
         name += '_'
@@ -364,8 +552,34 @@ def _emit_el(em, e, parent_path, parent_rec, used):
     w, h = e.get('w', 0), e.get('h', 0)
 
     kind = _classify(e)
+    # 圆角裁剪的容器必须**自己画得出那个圆角形状**,才能拿它当子节点的模子(clip_children)。
+    # 这类容器在 IR 里通常没有填充(它只负责裁),`_classify` 会把它判成不画东西的 Control。
+    clip_rad = (parse_radius(e.get('radius') or '', w, h)
+                if (e.get('clip') and e.get('id') in rounded_clips) else None)
+    if clip_rad and any(clip_rad) and kind == 'Control':
+        kind = 'Panel'
     gtype = {'Label': 'Label', 'TextureRect': 'TextureRect', 'GradientRect': 'TextureRect',
+             'VectorRect': 'TextureRect',
              'Panel': 'Panel', 'FallbackPanel': 'Panel', 'Control': 'Control'}[kind]
+
+    # **硬阴影垫一层实心副本**:CSS 的 `2px 6px 0px` 是把整个形状按位移复制一份填成阴影色,
+    # 而 StyleBoxFlat 的 shadow_size 只是往外扩边。垫层排在本体之前 = 画在下面。
+    hard = parse_shadow(split_ring(e.get('shadow') or '', (e.get('borderAlign') or '').lower())[1])
+    if hard and is_hard_shadow(split_ring(e.get('shadow') or '',
+                                          (e.get('borderAlign') or '').lower())[1]):
+        ox, oy, _s, col = hard
+        sid = 'sh_' + sub_id(name)
+        rad = parse_radius(e.get('radius') or '', w, h)
+        blk = ['[sub_resource type="StyleBoxFlat" id="%s"]' % sid, 'bg_color = ' + color_str(col)]
+        if rad and any(rad):
+            for key, v in zip(('top_left', 'top_right', 'bottom_right', 'bottom_left'), rad):
+                blk.append('corner_radius_%s = %d' % (key, v))
+        em.add_sub('\n'.join(blk))
+        em.add_node(['[node name="%s_shadow" type="Panel" parent="%s"]' % (name, parent_path or '.'),
+                     'offset_left = ' + fnum(left + ox), 'offset_top = ' + fnum(top + oy),
+                     'offset_right = ' + fnum(left + ox + w), 'offset_bottom = ' + fnum(top + oy + h),
+                     'mouse_filter = 2',
+                     'theme_override_styles/panel = SubResource("%s")' % sid])
 
     L = ['[node name="%s" type="%s" parent="%s"]' % (name, gtype, parent_path or '.')]
     L.append('offset_left = ' + fnum(left))
@@ -379,13 +593,25 @@ def _emit_el(em, e, parent_path, parent_rec, used):
     op = e.get('opacity', 1)
     if op != 1:
         L.append('modulate = Color(1, 1, 1, %s)' % cnum(op))          # 连带子节点,对齐 CSS opacity
+    if e.get('clip'):
+        if clip_rad and any(clip_rad):
+            # **圆角裁剪不能用 clip_contents** —— 那是个矩形剪刀,不认 corner_radius。
+            # Godot 的正解是 CanvasItem.clip_children:拿本节点**画出来的形状**当子节点的
+            # 蒙版。所以把这类容器变成一个画着圆角 StyleBoxFlat 的 Panel:
+            #   1 = CLIP_CHILDREN_ONLY(自己不显形,只当模子);2 = 连自己一起画。
+            # 不这么做的后果实测两处:道具卡的品质渐变裁成方块;按钮里 275×170 的纹理
+            # 只被裁到矩形边,胶囊左边露出一块方形点阵。
+            L.append('clip_children = %d' % (2 if (e.get('fill') or e.get('img')) else 1))
+        else:
+            L.append('clip_contents = true')                          # v1.1:figma isMask / clipsContent
 
     if kind == 'Label':
         t = e.get('text') or {}
         content = t.get('content', '')
         L.append('text = "%s"' % esc(content))
-        if '\n' in content:
-            L.append('autowrap_mode = 3')                             # 多行→WORD_SMART,对齐 pre-wrap
+        if t.get('wrap') or '\n' in content:
+            L.append('autowrap_mode = 3')                             # WORD_SMART,对齐 CSS pre-wrap
+            L.append('clip_text = false')
         ah = ALIGN.get(t.get('alignH') or t.get('textAlign') or '', 0)
         if ah:
             L.append('horizontal_alignment = %d' % ah)
@@ -406,6 +632,17 @@ def _emit_el(em, e, parent_path, parent_rec, used):
             L.append('theme_override_constants/line_spacing = %d' % int(round(lh - size)))
         if size:
             L.append('theme_override_font_sizes/font_size = %d' % int(round(size)))
+        # 设计字体:四端共用同一份子集,否则各端各拿系统默认字体,连**换行位置**都对不上,
+        # 逐像素比出来的差异全是字形噪声。Godot 没有"合成粗体"这回事 ——
+        # 字重只能靠**两个字面文件**,所以按 weight 选 Bold/Regular。
+        face = 'Bold' if (t.get('weight') or 400) >= 600 else 'Regular'
+        L.append('theme_override_fonts/font = ExtResource("%s")'
+                 % em.add_font('fonts/FigCJK-%s.ttf' % face))
+    elif kind == 'VectorRect':
+        eid = em.add_svg('%s.svg' % sub_id(name), svg_doc(e))
+        L.append('texture = ExtResource("%s")' % eid)
+        L.append('expand_mode = 1')                                   # IGNORE_SIZE:贴满节点矩形
+        L.append('stretch_mode = 0')                                  # SCALE:非等比拉满,对齐 preserveAspectRatio="none"
     elif kind == 'TextureRect':
         eid = em.add_ext('res://' + e['img'])
         L.append('texture = ExtResource("%s")' % eid)
@@ -422,16 +659,16 @@ def _emit_el(em, e, parent_path, parent_rec, used):
         else:                                                          # 解析不动→平均色回退
             avg = fallback_avg_color(e['fill'])
             L[0] = L[0].replace('type="TextureRect"', 'type="Panel"')
-            sid = 'sb_' + name
+            sid = 'sb_' + sub_id(name)
             em.add_sub(_stylebox(sid, e, avg))
             L.append('theme_override_styles/panel = SubResource("%s")' % sid)
     elif kind == 'FallbackPanel':
         avg = fallback_avg_color(e.get('fill') or '')
-        sid = 'sb_' + name
+        sid = 'sb_' + sub_id(name)
         em.add_sub(_stylebox(sid, e, avg))
         L.append('theme_override_styles/panel = SubResource("%s")' % sid)
     elif kind == 'Panel':
-        sid = 'sb_' + name
+        sid = 'sb_' + sub_id(name)
         em.add_sub(_stylebox(sid, e, parse_rgba(e.get('fill') or '')))
         L.append('theme_override_styles/panel = SubResource("%s")' % sid)
 
@@ -448,8 +685,17 @@ def collect_losses(cap):
     文本资源解析器怎么吃它,弄坏场景比丢个模糊更糟),改为生成时写 stderr。
 
     与 mapping.md 的 known-loss 表一一对应,tools/conformance 会核对两边不脱节。"""
+    els = cap.get('els') or []
+    rec = {e['id']: e for e in els}
+    kids = {}
+    for i, e in enumerate(els):
+        pp = e.get('parent') or ''
+        if pp and pp in rec:
+            kids.setdefault(pp, []).append((e.get('z', 0), i, e))
+    rounded_ok = pick_rounded_clips(els, kids)
+
     out = []
-    for e in cap.get('els') or []:
+    for e in els:
         eid = e.get('id', '?')
         if e.get('blur'):
             out.append("%s: blur '%s' 丢弃(Godot 无逐控件模糊;需要的话自建 "
@@ -460,6 +706,10 @@ def collect_losses(cap):
         fill = e.get('fill') or ''
         if fill.startswith('radial-gradient'):
             out.append("%s: 径向渐变降级为色标平均色(Godot GradientTexture1D 只做线性)" % eid)
+        if e.get('clip') and (e.get('radius') or '') and e.get('id') not in rounded_ok:
+            out.append("%s: 圆角裁剪退回矩形 —— 祖先链上已经有一个圆角裁剪,而 Godot 的 "
+                       "clip_children 不能嵌套;外层留给轮廓(丢了就是方角怼底色),"
+                       "这一层只裁矩形,圆角处会露出同色方角" % eid)
         rad = e.get('radius') or ''
         if '%' in rad and e.get('w') != e.get('h'):
             out.append("%s: 百分比圆角在非正方形元素上取 min(w,h) 近似"
@@ -470,8 +720,17 @@ def collect_losses(cap):
     return out
 
 
-def convert(cap, stem):
-    """cap(.ui.json dict)→ tscn 文本(str)。stem = 场景/根节点名。"""
+def convert(cap, stem, res_prefix='res://scenes'):
+    """cap → tscn 文本。**矢量的 .svg 会被丢弃** —— 只要文本时用它。"""
+    return convert_all(cap, stem, res_prefix)[0]
+
+
+def convert_all(cap, stem, res_prefix='res://scenes'):
+    """cap(.ui.json dict)→ (tscn 文本, {svg 文件名: svg 文本})。stem = 场景/根节点名。
+
+    res_prefix = .tscn 所在目录的 res:// 路径;矢量的 .svg 与场景同目录,
+    ext_resource 按 `<res_prefix>/<name>.svg` 引用。
+    """
     els = cap.get('els') or []
     rec = {e['id']: e for e in els}
     kids, roots = {}, []
@@ -485,7 +744,7 @@ def convert(cap, stem):
         lst.sort(key=lambda t: (t[0], t[1]))          # 同级按 z(平局按原序)= 绘制序
     roots.sort(key=lambda t: (t[0], t[1]))
 
-    em = Emitter()
+    em = Emitter(res_prefix)
     w, h = cap.get('w', 1080), cap.get('h', 1920)
     root_name = node_name(stem)
     em.add_node(['[node name="%s" type="Control"]' % root_name,
@@ -497,9 +756,11 @@ def convert(cap, stem):
     if bg:
         _emit_stage_bg(em, bg, w, h)
 
+    rounded_clips = pick_rounded_clips(els, kids)
+
     def walk(entry, parent_path, parent_rec, sib_used):
         e = entry[2]
-        name = _emit_el(em, e, parent_path, parent_rec, sib_used)
+        name = _emit_el(em, e, parent_path, parent_rec, sib_used, rounded_clips)
         child_path = (parent_path + '/' + name) if parent_path else name
         cu = set()
         for c in kids.get(e['id'], []):
@@ -507,7 +768,7 @@ def convert(cap, stem):
 
     for r in roots:
         walk(r, '', None, used)
-    return em.text()
+    return em.text(), em.svgs
 
 
 def _emit_stage_bg(em, bg, w, h):
@@ -539,7 +800,42 @@ def _emit_stage_bg(em, bg, w, h):
                     ['color = ' + color_str(c)])
 
 
-IR_SPEC_SUPPORTED = '1.0'
+IR_SPEC_SUPPORTED = '1.3'
+
+# 本后端**认识**的 els 字段。少于输入文件里实际出现的键 = 有东西被静默跳过。
+IR_FIELDS_KNOWN = frozenset((
+    'id', 'name', 'type', 'parent', 'x', 'y', 'w', 'h', 'z', 'rot', 'opacity',
+    'radius', 'border', 'shadow', 'blur', 'fill', 'img', 'imgSize',
+    'clip', 'paths', 'viewBox', 'borderAlign', 'vec', 'text',
+))
+
+
+def spec_warnings(cap, supported, known):
+    """IR 版本闸门。**只比大版本是不够的** —— 冻结纪律说小版本是"只增字段",
+
+    于是 1.0 的编译器读 1.2 的文件照样放行,新字段被当不认识的键跳过,不报错不吭声:
+    v1.2 的 paths/clip/borderAlign 就是这么在四个后端里集体消失的,而所有测试全绿。
+    现在小版本落后也要说话,并且**把真正出现在数据里的陌生键逐个点名** ——
+    "我按旧规矩读的"必须是一句听得见的话。
+    """
+    out = []
+    got = str(cap.get('spec') or supported)             # 缺失 = 冻结前的老产物
+    gmaj, smaj = got.split('.')[0], supported.split('.')[0]
+    if gmaj != smaj:
+        # 前缀是**给机器看的 ASCII 标记**:测试拿中文当判据会在管道里栽 ——
+        # 子进程按 cp936 写中文、父进程按 utf-8 解,整句乱码,断言静默失配(踩过)。
+        out.append('[major] 输入声称 IR v%s,本后端按 v%s 实现 —— 主版本不同,'
+                   '新语义会被按旧规矩解释' % (got, supported))
+    seen = set()
+    for e in (cap.get('els') or []):
+        if isinstance(e, dict):
+            seen.update(e.keys())
+    unknown = sorted(seen - set(known))
+    if unknown:
+        out.append('[unknown-fields] %s | 输入(IR v%s)里有本后端不认识的字段,**会被静默跳过** ——'
+                   '本后端按 v%s 实现,该字段要么去实现、要么在 mapping.md 的 known-loss 表里表态'
+                   % (', '.join(unknown), got, supported))
+    return out
 
 
 def check_ir(cap):
@@ -553,10 +849,7 @@ def check_ir(cap):
     if not isinstance(cap, dict):
         return ['.ui.json 顶层不是对象(读到 %s)' % type(cap).__name__], warns
 
-    got = str(cap.get('spec') or IR_SPEC_SUPPORTED)     # 缺失 = 冻结前的老产物
-    if got.split('.')[0] != IR_SPEC_SUPPORTED.split('.')[0]:
-        warns.append('输入声称 IR v%s,本后端按 v%s 实现 —— 主版本不同,'
-                     '新语义会被按旧规矩解释' % (got, IR_SPEC_SUPPORTED))
+    warns.extend(spec_warnings(cap, IR_SPEC_SUPPORTED, IR_FIELDS_KNOWN))
 
     els = cap.get('els')
     if not isinstance(els, list):
@@ -633,6 +926,28 @@ def bake_motion(flow_path, outdir, sys_mod):
     return out
 
 
+def res_prefix_for(outdir, sys_mod):
+    """outdir 的 `res://` 路径 —— 往上找 project.godot 得到工程根,再取相对路径。
+
+    找不到工程根(比如编到临时目录里)不是错:退回 `res://<outdir 目录名>`
+    并**说一声**,让人知道这个前缀是猜的、拷进工程时要对一眼。
+    """
+    d = os.path.abspath(outdir)
+    cur = d
+    while True:
+        if os.path.exists(os.path.join(cur, 'project.godot')):
+            rel = os.path.relpath(d, cur).replace('\\', '/')
+            return 'res://' if rel == '.' else 'res://' + rel
+        up = os.path.dirname(cur)
+        if up == cur:
+            break
+        cur = up
+    guess = 'res://' + os.path.basename(d.rstrip('/\\'))
+    sys_mod.stderr.write('[vector] 往上没找到 project.godot,矢量 .svg 的 res:// 前缀'
+                         '按目录名猜成 %s —— 拷进工程后核一眼\n' % guess)
+    return guess
+
+
 def main(argv):
     if len(argv) not in (3, 4):
         sys.stderr.write('用法: python3 ui_to_tscn.py <cap.ui.json> <outdir> [flow.json]\n'
@@ -649,8 +964,15 @@ def main(argv):
         stem = os.path.splitext(base)[0]
     os.makedirs(outdir, exist_ok=True)
     out = os.path.join(outdir, stem + '.tscn')
+    text, svgs = convert_all(cap, stem, res_prefix_for(outdir, sys))
     with open(out, 'w', encoding='utf-8', newline='\n') as f:
-        f.write(convert(cap, stem))
+        f.write(text)
+    for rel, doc in sorted(svgs.items()):     # v1.2 矢量:与场景同目录的 .svg
+        with open(os.path.join(outdir, rel), 'w', encoding='utf-8', newline='\n') as f:
+            f.write(doc)
+    if svgs:
+        sys.stderr.write('[vector] 画出 %d 个矢量为 .svg(Godot 导入期栅格化,'
+                         '**没有下载任何位图**)\n' % len(svgs))
     for line in collect_losses(cap):          # 诚实降级:丢什么必须说,不许静默
         sys.stderr.write('[known-loss] ' + line + '\n')
     if len(argv) == 4:

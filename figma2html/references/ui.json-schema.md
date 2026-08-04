@@ -5,7 +5,7 @@ A full-fidelity structured snapshot of one Figma frame: every visible node plus 
 
 ```jsonc
 {
-  "spec": "1.0",                          // IR contract version this capture follows (see spec/)
+  "spec": "1.3",                          // IR contract version this capture follows (see spec/)
   "frame": "46:8241", "w": 1080, "h": 1920,
   "stageBg": "url(_assets/s17/bg.png) center/cover no-repeat",   // frame backdrop (solid colour / gradient also allowed)
   "els": [{
@@ -16,14 +16,18 @@ A full-fidelity structured snapshot of one Figma frame: every visible node plus 
     "radius": "37px", "border": "4.0px solid rgba(219,208,184,1)", "shadow": "0px 4px 0px rgba(0,0,0,0.6)", "blur": "",
     "fill": "rgba(255,251,242,1)",        // solid incl. alpha / linear or radial gradient css / empty
     "img": "", "imgSize": "",             // image fill (named after imageRef, shared across screens)
+    "clip": false,                         // v1.1: true = clip children to this box (a figma isMask sibling folded in; its radius lands in `radius`)
+    "paths": [], "viewBox": "",            // v1.2: vector drawn from figma geometry — [{d, rule, fill}] + the svg viewBox (sized by renderBounds)
+    "borderAlign": "",                     // v1.2: "inside" | "outside" | "center" — where the stroke sits; outside/centre also land in `shadow`
     "vec": false,                          // true = collapsed vector cluster (missing PNG degrades to transparent, never a flat black)
-    "text": null                           // TEXT only: {content,color,size,family,weight,lh,ls,alignH,alignV,textAlign,stroke}
+    "text": null                           // TEXT only: {content,color,size,family,weight,lh,ls,alignH,alignV,textAlign,wrap,stroke}
   }]
 }
 ```
 
 - `spec` names the IR contract version the file was captured against. It is **advisory**: consumers treat a missing field as `"1.0"` (files captured before the field existed), ignore a differing *minor* (the freeze discipline makes those additive, so an older backend simply doesn't see the new optional fields), and warn on a differing *major* rather than refuse — a loud "I am reading this by the old rules" beats silence.
 - Geometry is absolute px relative to the frame origin; `render.js` converts to parent-relative while nesting.
+- For **TEXT**, that box is the *line box* (v1.3): `y`/`h` are already resolved from Figma's text frame + `lh` + `textAlignVertical`, and `alignV` is `center`, so a backend without line-height still lands the glyphs where Figma draws them. Boxes tall enough for two or more lines are left as Figma reports them.
 - `subtreeOf(cap, rootId | [rootId, ...])` extracts a subtree (used for modal overlays).
 - Full per-field semantics live in figma2dsl's `references/界面DSL规范-figma2dsl扩展.md` §C/§0 (still zh-CN).
 

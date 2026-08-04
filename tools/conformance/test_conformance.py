@@ -31,6 +31,27 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 CAP = os.path.join(HERE, "kitchen-sink.ui.json")
 EXP = json.load(io.open(os.path.join(HERE, "expectations.json"), encoding="utf-8"))
+SPEC = EXP
+SINK = CAP
+
+
+def _read(p):
+    return io.open(p, encoding="utf-8").read()
+
+
+def _schema_fields():
+    """从 spec/ui.json-schema.md 那段 jsonc 里抽出 els[0] 的字段名 —— **schema 是真源**。
+
+    刻意不在这里另抄一份字段清单:抄一份就要人去同步,而"忘了同步"正是这套断言要防的。
+    """
+    md = _read(os.path.join(ROOT, "spec", "ui.json-schema.md"))
+    blk = re.search(r'"els":\s*\[\{(.*?)\n  \}\]', md, re.S)
+    assert blk, "spec/ui.json-schema.md 里找不到 els[0] 那段 jsonc —— 结构变了就得改这里"
+    body = re.sub(r'//[^\n]*', '', blk.group(1))          # 去掉行尾注释,免得注释里的引号混进来
+    return sorted(set(re.findall(r'"([A-Za-z][A-Za-z0-9_]*)"\s*:', body)))
+
+
+_SCHEMA_FIELDS = _schema_fields()
 
 BACKENDS = {
     "godot":  ("figma2godot",  "scripts/ui_to_tscn.py",   "kitchen-sink.tscn"),
@@ -53,7 +74,14 @@ def _run_all():
             name, r.returncode, r.stderr)
         p = os.path.join(tmp, artifact)
         assert os.path.exists(p), "%s 没产出 %s" % (name, artifact)
-        _ART[name] = (io.open(p, encoding="utf-8").read(), r.stderr or "")
+        art = io.open(p, encoding="utf-8").read()
+        if name == "unity":
+            # unity 的产物是一对:样式在 .uss,而矢量元素的证据(<figkit:FigVector>)
+            # 只在 .uxml 里。只看 .uss 就会把已实现的特性误判成没实现。
+            ux = p[:-4] + ".uxml"
+            if os.path.exists(ux):
+                art += "\n" + io.open(ux, encoding="utf-8").read()
+        _ART[name] = (art, r.stderr or "")
     return _ART
 
 
@@ -61,19 +89,49 @@ def _sane(eid):
     return eid.replace(":", "_")
 
 
+def _sane_subid(eid):
+    """godot 的 **sub_resource id** 规矩比节点名严:只收 [A-Za-z0-9_]。
+    kitchen-sink 的元素 id 带连字符(k:radius-pct),节点名留着它、sub id 换成下划线,
+    所以切片时两种写法都得试。"""
+    return re.sub(r"[^A-Za-z0-9_]", "_", eid)
+
+
 # ── 每个后端:从产物里切出某元素的片段 + 判断特性信号是否存在 ──────────────────
 
 def _godot_chunk(text, eid):
-    n = _sane(eid)
-    parts = [b for b in text.split("\n\n")
-             if ('id="sb_%s"' % n) in b or ('name="%s"' % n) in b
-             or ('id="tex_%s"' % n) in b or ('SubResource("sb_%s")' % n) in b]
+    n, s = _sane(eid), _sane_subid(eid)
+    blocks = text.split("\n\n")
+    parts = [b for b in blocks
+             if ('id="sb_%s"' % s) in b or ('name="%s"' % n) in b
+             or ('id="tex_%s"' % n) in b or ('SubResource("sb_%s")' % s) in b]
+    # ext_resource 声明在**文件头**,节点块里只留 ExtResource("tex_N") —— 不把被引用的
+    # 那一行捞回来,像 .svg 这种"证据在路径里"的信号就永远查无此人(踩过)。
+    body = "\n".join(parts)
+    for rid in set(re.findall(r'ExtResource\("([^"]+)"\)', body)):
+        parts += [b for b in blocks
+                  if b.startswith("[ext_resource") and ('id="%s"]' % rid) in b]
     return "\n".join(parts)
 
 
 def _unity_chunk(text, eid):
-    m = re.search(r"\.el-%s\s*\{(.*?)\}" % re.escape(_sane(eid)), text, re.S)
-    return m.group(1) if m else ""
+    """某元素在 unity 产物里的全部证据:USS 主规则 + 它的垫层规则 + UXML 里那一行。
+
+    只切 `.el-<name> { }` 是不够的 —— 硬阴影与 OUTSIDE 描边环是**另外的兄弟盒子**
+    (`.el-<name>-shadow` / `-ring`),矢量的证据(`<figkit:FigVector>`)干脆在 UXML 里。
+    只看主规则会把已经实现的特性判成没实现。
+    """
+    n = re.escape(_sane(eid))
+    # **切片里绝不能出现元素自己的名字**:元素就叫 k:blur / k:gradient-linear,
+    # 名字里带着特性词,一旦混进来每个信号都会在自己的类名上撞出假阳性(踩过两次)。
+    # 所以:只取规则**体**、UXML 行先剥掉 name=/class=、垫层用合成标记而不是它的选择器。
+    parts = re.findall(r"\.el-%s\s*\{(.*?)\}" % n, text, re.S)
+    for suf in ("ring", "shadow"):
+        if re.search(r"\.el-%s-%s\s*\{" % (n, suf), text):
+            parts.append("underlay:-" + suf)      # 垫层存在的证据,不带元素名
+    for ln in text.splitlines():
+        if re.search(r'name="%s"' % n, ln):
+            parts.append(re.sub(r'\s(?:name|class)="[^"]*"', "", ln))
+    return "\n".join(parts)
 
 
 def _unreal_el(text, eid):
@@ -93,6 +151,11 @@ GODOT_SIGNALS = {
     "opacity": "modulate", "img": "texture", "vec": "texture",
     "gradient-linear": "texture", "gradient-radial": "Gradient",
     "text": "text = ", "text-stroke": "font_outline_color",
+    # v1.2:矢量落成同目录的 .svg 由 ext_resource 引;裁剪 = clip_contents;
+    # OUTSIDE 描边 = StyleBoxFlat 往外扩(border 本身只往内画)
+    # clip 有两条路:无圆角走 clip_contents(矩形剪刀),有圆角走 clip_children
+    # (拿本节点画出来的形状当子节点的模子)。信号取两者的公共前缀。
+    "paths": ".svg", "clip": "clip_", "border-outside": "expand_margin",
 }
 UNITY_SIGNALS = {
     "radius-px": "radius", "radius-pct": "radius", "radius-pct-oblong": "radius",
@@ -100,12 +163,18 @@ UNITY_SIGNALS = {
     "rot": "rotate", "opacity": "opacity", "img": "background-image",
     "vec": "background-image", "gradient-linear": "gradient",
     "gradient-radial": "gradient", "text": "font-size", "text-stroke": "outline",
+    # v1.2 三件套本后端未实现 —— 这些信号**必须找不到**(known-loss)
+    # 矢量走 <figkit:FigVector>(Painter2D 真画,不产图片);裁剪 = overflow:hidden
+    # (UI Toolkit 的 overflow 跟随 border-radius,圆角裁剪天然就对);
+    # OUTSIDE 描边环 = 垫在本体下面、四边各外扩 N 的额外盒子(USS 无 box-shadow)
+    "paths": "FigVector", "clip": "overflow", "border-outside": "-ring",
 }
 UNREAL_FIELD = {
     "radius-px": "radius", "radius-pct": "radius", "radius-pct-oblong": "radius",
     "border": "border", "shadow": "shadow", "blur": "blur", "rot": "rot",
     "opacity": "opacity", "img": "img", "vec": "vec", "gradient-linear": "fill",
     "gradient-radial": "fill", "text": "text", "text-stroke": "text",
+    "paths": "paths", "clip": "clip", "border-outside": "borderAlign",
 }
 
 
@@ -158,6 +227,57 @@ def test_declarations_match_artifacts():
                 bad.append("%s/%s 声明 %s,产物里%s(元素 %s)"
                            % (backend, feat, status, "找到了信号" if got else "找不到信号", eid))
     assert not bad, "声明与产物不符:\n  " + "\n  ".join(bad)
+
+
+def test_every_ir_field_is_accounted_for():
+    """**IR 里的每个字段,要么是结构字段,要么必须逐后端表态。**
+
+    这是补票的一条。v1.2 加 `paths`/`viewBox`/`clip`/`borderAlign` 时,我把新字段写进了
+    schema、写进了 capture、html 那侧也做对了 —— 唯独没往这套一致性检查里喂:
+    `make_kitchen_sink.py` 重跑后新键**以默认值**出现(paths: [] / clip: false),
+    三个后端"都吃得下"、声明也"都对得上",于是 paths 与 clip 在 godot/unity/unreal 里
+    集体静默消失,而全套测试一路绿灯,直到有人把真稿丢进 Godot 才看见。
+
+    闸门本身是对的,漏的是**有人得往里喂料**。这条断言把"记得喂"从自觉变成硬约束:
+    schema 里冒出一个没人认领的字段,测试立刻红。
+    """
+    fields = set(_SCHEMA_FIELDS)
+    claimed = set(SPEC["_structural"])
+    for f in SPEC["features"].values():
+        fl = f["field"]
+        claimed.update([fl] if isinstance(fl, str) else fl)
+    orphan = sorted(fields - claimed)
+    assert not orphan, (
+        "IR schema 里这些字段没人认领:%s\n"
+        "  → 要么加进 expectations.json 的 _structural(纯结构、无处置余地),\n"
+        "  → 要么加进 features 并**配一个真用得上它的 kitchen-sink 元素**。" % orphan)
+    ghost = sorted(claimed - fields)
+    assert not ghost, "expectations.json 认领了 schema 里没有的字段:%s" % ghost
+
+
+def test_declared_features_are_actually_exercised_by_the_fixture():
+    """**光有声明不算数,夹具得真的把那个字段填上非默认值。**
+
+    与上一条是同一个教训的另一半:`paths: []` 和 `clip: false` 也算"字段存在",
+    可它们让检测器无事可做 —— 声明与产物"对得上"只是因为两边都是空的。
+    所以这里要求每个特性的承载元素在它声明的字段上**有真值**。
+    """
+    els = {e["id"]: e for e in json.loads(_read(SINK))["els"]}
+    empty = ("", None, False, [], {}, 0)
+    bad = []
+    for name, f in SPEC["features"].items():
+        e = els.get(f["el"])
+        if e is None:
+            bad.append("%s: kitchen-sink 里没有元素 %s" % (name, f["el"]))
+            continue
+        fl = f["field"]
+        for key in ([fl] if isinstance(fl, str) else fl):
+            if key in ("imgSize", "viewBox"):
+                continue                      # 附属字段,跟主字段一起走
+            if e.get(key) in empty:
+                bad.append("%s: 元素 %s 的 %r 是空值 %r —— 这条声明在空跑"
+                           % (name, f["el"], key, e.get(key)))
+    assert not bad, "夹具没真正压到这些特性:\n  " + "\n  ".join(bad)
 
 
 def test_degradations_leave_a_trace():
@@ -282,16 +402,55 @@ def test_spec_version_is_advisory():
         for backend, (rc, text) in sorted(_feed(obj, "ver").items()):
             if rc != 0:
                 bad.append("%s 因 spec=%r 直接失败了(版本应是参考,不是门禁)" % (backend, ver))
-            got_warn = "[ir-spec]" in text
+            # 只看**版本**那条告警。同一个 [ir-spec] 标签下还有一条"本后端不认识
+            # 这些字段"的告警,那是另一回事(见下一条测试),混在一起判会误报。
+            got_warn = "[major]" in text
             if got_warn != want_warn:
                 bad.append("%s 对 spec=%r %s告警" % (backend, ver, "不该" if got_warn else "该"))
     assert not bad, "版本处置不一致:\n  " + "\n  ".join(bad)
 
 
+def test_backends_name_the_ir_fields_they_do_not_understand():
+    """**读不懂的字段要点名报出来,不能默默跳过。**
+
+    冻结纪律说小版本是"只增字段",于是旧后端读新文件"安全" —— 安全的前提是
+    它**知道自己没读**。v1.2 的 paths/clip/borderAlign 就是在这个前提失效时丢的:
+    闸门只比大版本,新键当不存在,四个后端集体静默降级而全套测试一路绿灯。
+
+    godot 与 unity 三个都实现了 → 不该有话说;unreal 还没实现 → 必须逐个点名。
+    等哪天它实现了,这条会红,提醒把字段加进它的 IR_FIELDS_KNOWN。
+    """
+    obj = json.loads(io.open(CAP, encoding="utf-8").read())
+    bad = []
+    for backend, (rc, text) in sorted(_feed(obj, "unknown").items()):
+        assert rc == 0, "%s 因陌生字段直接失败了(该告警,不该拒收)" % backend
+        # 只在那条告警的**字段名段**里找(| 之前),别在整份 stderr 里找:
+        # godot 的 known-loss 文案提到 `clip_contents`,整篇搜 "clip" 会误判(踩过)。
+        # 判据也必须是 ASCII —— 中文在管道里会因 cp936/utf-8 错配变乱码(也踩过)。
+        line = "".join(ln.split("|")[0] for ln in text.splitlines()
+                       if "[unknown-fields]" in ln)
+        named = sorted(f for f in ("paths", "clip", "borderAlign") if f in line)
+        if backend in ("godot", "unity"):
+            if named:
+                bad.append("%s 已实现 v1.2 却仍报不认识:%s" % (backend, named))
+        elif named != ["borderAlign", "clip", "paths"]:
+            bad.append("%s 没点名全部未实现字段,只报了 %s" % (backend, named))
+    assert not bad, "陌生字段处置不一致:\n  " + "\n  ".join(bad)
+
+
 def test_capture_stamps_the_spec_version():
-    """夹具必须带版本 —— 不带的话上面那条测试测的是空气。"""
+    """夹具必须带版本 —— 不带的话上面那条测试测的是空气。
+
+    盯的是 capture 当下的 IR_SPEC,不是写死的字符串:写死的话每次 additive 升版
+    都要人手改这一行,而漏改的表现是"测试红了,改个数字就绿" —— 于是没人再想
+    "夹具真的重生成过吗"。跟着源头走,升版只需重跑 make_kitchen_sink.py。
+    """
+    sys.path.insert(0, os.path.join(ROOT, "figma2html", "scripts"))
+    import figma_capture
     cap = json.loads(io.open(CAP, encoding="utf-8").read())
-    assert cap.get("spec") == "1.0", "kitchen-sink 没带 spec 字段: %r" % cap.get("spec")
+    assert cap.get("spec") == figma_capture.IR_SPEC, (
+        "kitchen-sink 的 spec 是 %r,capture 现在产 %r —— 重跑 "
+        "tools/conformance/make_kitchen_sink.py" % (cap.get("spec"), figma_capture.IR_SPEC))
 
 
 # ── flow 引用:三个消费 flow 的后端必须给出同样的判定 ─────────────────────────

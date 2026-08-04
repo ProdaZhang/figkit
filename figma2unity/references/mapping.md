@@ -34,14 +34,17 @@ IR style values are **CSS-flavoured strings** (`radius="45px"`, `border="2.0px s
 
 | IR | USS | Notes |
 |---|---|---|
-| `radius` (1–4 value shorthand) | the four longhand `border-top-left/top-right/bottom-right/bottom-left-radius` | Expanded by the CSS shorthand rules (1→aaaa, 2→abab, 3→abcb) |
+| `radius` (1–4 value shorthand) | the four longhand `border-top-left/top-right/bottom-right/bottom-left-radius` | Expanded by the CSS shorthand rules (1→aaaa, 2→abab, 3→abcb), then **clamped the CSS way** before Unity sees it: when adjacent radii exceed an edge, CSS scales all four by one factor while Unity clamps each axis on its own. A 57px radius on a 235×42 pill therefore renders in Unity as a 57×21 elliptical corner — a stretched olive — where the browser draws a capsule. Percentages are left alone (`50%` on a non-square box is *meant* to be elliptical) |
 | `border` (`Wpx style color`) | `border-width` + `border-color` | USS borders are always solid; a non-solid style is recorded as known-loss |
 | `fill` (solid) | `background-color` | USS takes rgba strings natively |
-| `fill` (gradient) | `background-color` = **first stop colour** fallback | USS has no gradients; recorded as known-loss |
+| `fill` (gradient) | `background-image` = a **PNG baked at compile time** | USS has no gradient property, so the converter bakes a 64² texture, projecting every texel onto the real gradient axis of that element (any angle, not just 0/90°). Compile-time, so the integrator gets no extra runtime code and the output stays byte-deterministic. Unparseable gradients still fall back to the first stop |
 | `img` | `background-image: url("...")` + `background-size` (imgSize, default cover) + `background-position: center` + `background-repeat: no-repeat` | background-size and friends need Unity 2022.2+ |
 | `stageBg` | On the frame root `.screen-root`: url→background image, colour→background colour, gradient→first stop | — |
 | `shadow` | **dropped** | USS has no box-shadow; recorded as known-loss |
 | `blur` | **dropped** | USS has no filter; recorded as known-loss |
+| `paths` + `viewBox` (v1.2) | `<figkit:FigVector>` — `runtime/FigVector.cs` drawing through **Painter2D** | Real vector drawing: no bitmap asset is produced and no extra package is needed (`com.unity.vectorgraphics` is a preview package). The element parses the SVG path (M/L/H/V/C/S/Q/T/Z, béziers flattened at a fixed step count so output stays deterministic) and fills it with the winding rule the IR asked for. **The UXML declares `xmlns:figkit` only when a screen actually has vectors** — declaring it without shipping the runtime makes the whole UXML fail to load. Stroke bands normally arrive from capture as a ready-to-fill even-odd ring (IR v1.3), so nothing special is needed. When capture cannot read a band it falls back to the raw ±2w band plus a `clip` hint, and Painter2D has no boolean clip: the OUTSIDE half is still exact — draw the band first, then let the opaque fill cover the inner half — but an INSIDE fallback draws at full width and comes out twice as thick, logged as known-loss per element. Separately, **Painter2D joins the contours of a multi-contour path into one polygon** (it shredded every stroke band into thin triangles), so contours whose bounding boxes do not overlap are filled one at a time; overlapping ones keep a single fill, because that is what carves holes out of a shape |
+| `clip` (v1.1) | `overflow: hidden` | UI Toolkit's `overflow` already follows `border-radius`, so rounded clipping is exact here with no extra work (Godot needs `clip_children` to reach the same place) |
+| `borderAlign` (v1.2) | a sibling box laid underneath, inflated by N with radius + N | USS has no `box-shadow`, but the outward half of a stroke *is* "another box of the same shape, N bigger" — so it is drawn rather than dropped. Same mechanism as hard shadows below |
 
 ## Text (the `text` sub-object → Label)
 
@@ -64,7 +67,7 @@ IR style values are **CSS-flavoured strings** (`radius="45px"`, `border="2.0px s
 |---|---|---|
 | `shadow` | skipped | Add a 9-slice shadow sprite in Unity if you need one |
 | `blur` | skipped | No filter |
-| gradient `fill`/`stageBg` | falls back to the first stop as a solid | Swap in a gradient texture if you need a real one |
+| gradient that will not parse | falls back to the first stop as a solid | Only radial / non-`<angle>deg` forms land here; linear ones are baked |
 | `text.stroke` | skipped | Carry the text on a TextMeshPro component instead |
 | `text.lh` (line height) | skipped | USS has no line-height |
 | `text.family` | not mapped | Needs a FontAsset configured by hand (see the table above) |
@@ -131,6 +134,26 @@ follow real time. `tools/conformance` guards this at source level.
   Screen Match Mode per product orientation (portrait games commonly use Match = 1/Height, or Expand).
   This is the equivalent of render.js's `mountStage` scaling the stage to the viewport.
 - `FlowBinder` creates a `flow.stage.w × flow.stage.h` stage container; the base screen and every modal layer fill it.
+
+## Texture import settings (do not leave these at Unity's defaults)
+
+Unity's default importer is tuned for 3D surfaces, and every one of those defaults is wrong for UI.
+`runtime/Editor/FigkitTextureImport.cs` is an `AssetPostprocessor` that fixes them for anything under
+`Assets/Resources/UI/`. Three of them were caught by comparing real pixels (2026-08-05, the white
+tick on the claimed-reward screen):
+
+- **`mipmapEnabled`** — UI art is blitted 1:1, but the sampler can still drop to a lower mip, so edges
+  bleed outward. The white tick came out a pixel fatter on every side than HTML with its bottom row
+  sheared flat, while the gold stars in the same cell came out a pixel *thinner* — bright things
+  spread, dark things shrink; same cause.
+- **`textureCompression`** — DXT/BC block artefacts on exactly the high-contrast edges UI is made of.
+- **`alphaIsTransparency`** — with it off, fully transparent texels keep whatever RGB they were
+  authored with, and semi-transparent edges bleed dark.
+
+Also pinned: `wrapMode = Clamp` (UI never tiles; Repeat samples the opposite edge) and
+`npotScale = None`. With those set, the tick matches HTML **row for row** (24/22/20/…/5/0 white
+pixels down its lower edge, identical). Point the `Root` constant somewhere else if your project
+puts figkit's art elsewhere, and reimport that folder once after changing it.
 
 ## Where image assets go
 

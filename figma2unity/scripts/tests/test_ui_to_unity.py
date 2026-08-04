@@ -90,8 +90,75 @@ def _run():
         "text": None, "vec": False}]}
     luxml, luss, llosses = mod.convert(lcap, "lossy")
     head = luss.split("*/")[0]
-    check("shadow/blur 跳过并记录",
-          "box-shadow:" not in luss and "filter:" not in luss
-          and "shadow" in head and "blur" in head)
+    # **硬阴影(blur=0)现在画得出来** —— USS 没有 box-shadow,但"同形状同圆角、按位移
+    # 垫一个盒子在下面"正是硬阴影的定义,USS 完全表达得了。只有带模糊的才是真丢。
+    check("硬阴影 → 垫层(不再是 known-loss)",
+          "box-shadow:" not in luss and 'name="8_2-shadow"' in luxml
+          and ".el-8_2-shadow" in luss and "top: 4px;" in _rule(luss, "el-8_2-shadow"))
+    lblur = mod.convert({"frame": "X", "w": 100, "h": 50, "stageBg": "", "els": [
+        dict(lcap["els"][0], id="l:2", shadow="0px 4px 9px rgba(0,0,0,0.6)")]}, "lossy2")[1]
+    check("带模糊的阴影仍记 known-loss", "带模糊的阴影" in lblur.split("*/")[0])
+    check("blur 跳过并记录", "filter:" not in luss and "blur" in head)
+
+    # USS 选择器 = CSS 类名,合法字符只有 [A-Za-z0-9_-]。figma 有两类 id 会带别的字符:
+    #   · 组件实例 `I25:4109;206:12513` —— 分号在 CSS 里是语句终止符
+    #   · 遮罩包裹层 `25:1615~mask`     —— 波浪线是兄弟选择符
+    # 后者 Unity 的导入器会报 "Invalid complex selector delimiter",**而且一条错就废掉
+    # 整张样式表**:实测三条 `~mask` 让 129 条规则一条都没生效,播放器里每个元素都是
+    # 1080×0 的透明盒子、整屏全黑(2026-08-05 于 Unity 2022.3.62f3 真播放器)。
+    # 只换冒号的黑名单挡不住这些,必须白名单。
+    scap = {"frame": "X", "w": 100, "h": 50, "stageBg": "", "els": [
+        {"id": "I25:4109;206:12513", "name": "inst", "type": "RECTANGLE", "parent": "",
+         "x": 0, "y": 0, "w": 10, "h": 10, "z": 1, "rot": 0, "opacity": 1,
+         "radius": "2px", "border": "", "shadow": "", "blur": "", "fill": "rgba(1,2,3,1)",
+         "img": "", "imgSize": "", "text": None, "vec": False},
+        {"id": "25:1615~mask", "name": "mask", "type": "FRAME", "parent": "",
+         "x": 0, "y": 0, "w": 10, "h": 10, "z": 2, "rot": 0, "opacity": 1,
+         "radius": "2px", "border": "", "shadow": "", "blur": "", "fill": "rgba(4,5,6,1)",
+         "img": "", "imgSize": "", "text": None, "vec": False}]}
+    sx, su, _sl = mod.convert(scap, "sanitize")
+    sels = [ln.strip() for ln in su.splitlines() if ln.strip().startswith(".el-")]
+    check("USS 选择器只含 [A-Za-z0-9_-](分号与波浪线都得换掉)",
+          bool(sels) and all(re.fullmatch(r"\.el-[A-Za-z0-9_-]+ \{", s) for s in sels))
+    check("UXML 的 name/class 与选择器一致",
+          all(('name="%s"' % s[4:-2]) in sx for s in sels))
+
+    # 圆角要按 **CSS 的等比收缩**先夹好。Unity 是逐轴夹的(水平 w/2、垂直 h/2 各夹各的),
+    # 235×42 配 57px 圆角在它手里变成 57×21 的椭圆角 —— 一颗被拉长的橄榄,
+    # 而 CSS 会把四角同比缩到 21px = 标准胶囊。「剩余30天」那颗药丸就是这么变形的。
+    pill = {"frame": "P", "w": 300, "h": 60, "stageBg": "", "els": [dict(
+        lcap["els"][0], id="p:1", w=235.3, h=42.0, radius="57px", shadow="", blur="",
+        fill="rgba(242,230,190,1.0)")]}
+    puss = mod.convert(pill, "pill")[1]
+    r = _rule(puss, "el-p_1")
+    check("圆角按 CSS 等比夹紧(57px 于 235×42 → 21px 胶囊)",
+          all(("border-%s-radius: 21px;" % k) in r
+              for k in ("top-left", "top-right", "bottom-right", "bottom-left")))
+    check("装得下就不夹", mod.clamp_radius(["8px"] * 4, 100, 50) == ["8px"] * 4)
+    check("百分比不动(50% 在非正方形上本来就该是椭圆角)",
+          mod.clamp_radius(["50%"] * 4, 300, 80) == ["50%"] * 4)
+
+    # 折不折行看 IR 的 `text.wrap`(v1.3 读的 figma textAutoResize),不是"内容里有没有 \n"。
+    # 只看 \n 的话定宽正文一行冲出面板 —— 而 html 与 godot 都已按 wrap 走,同一份 IR 三端三个样。
+    def wrapped(**t):
+        base = dict(content="文字内容最多五十个字", color="rgba(0,0,0,1)", size=36, family="X",
+                    weight=400, lh=52, ls=0, alignH="flex-start", alignV="center",
+                    textAlign="left", stroke="")
+        base.update(t)
+        cap = {"frame": "W", "w": 900, "h": 300, "stageBg": "", "els": [dict(
+            lcap["els"][0], id="w:1", w=833.0, h=52.0, shadow="", blur="", fill="", text=base)]}
+        return _rule(mod.convert(cap, "wrap")[1], "el-w_1")
+
+    check("定宽正文(wrap=True)折行", "white-space: normal;" in wrapped(wrap=True))
+    check("随字撑宽(wrap=False)不折行", "white-space: nowrap;" in wrapped(wrap=False))
+    check("老产物无 wrap 字段时退回旧口径(看 \\n)",
+          "white-space: nowrap;" in wrapped() and "white-space: normal;" in wrapped(content="a\nb"))
+    # 单行盒已在捕获层归一成行盒(h == lh),行距无处可丢,不该再报 known-loss
+    check("单行不再谎报丢了 line-height", not any("line-height" in x for x in mod.convert(
+        {"frame": "W", "w": 900, "h": 300, "stageBg": "", "els": [dict(
+            lcap["els"][0], id="w:2", w=200.0, h=48.0, shadow="", blur="", fill="",
+            text=dict(content="一行", color="rgba(0,0,0,1)", size=36, family="X", weight=400,
+                      lh=48, ls=0, alignH="center", alignV="center", textAlign="center",
+                      wrap=False, stroke=""))]}, "one")[2]))
 
     return ok

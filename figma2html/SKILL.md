@@ -29,9 +29,13 @@ examples/login/ 自足可跑示例:make_fixture.py(合成三屏,走真 capture �
 
 ## 用法(管线)
 
-1. **拉节点树**:figma REST `/v1/files/<key>/nodes?ids=…` → `nodes.json`(token 只进单子进程、用完即删)
+1. **拉节点树**:figma REST `/v1/files/<key>/nodes?ids=…&geometry=paths` → `nodes.json`(token 只进单子进程、用完即删)
+   **`geometry=paths` 别漏**:带上它 figma 才给每个矢量的 SVG 路径,矢量于是**画出来**而不是下成图 ——
+   不吃 `/v1/images` 的渲染配额(真会被打爆)、分辨率无关、改色不用重导、下游引擎拿到的是几何不是位图。
 2. **捕获**:`python3 scripts/figma_capture.py nodes.json <frameId> <sNN> <assetDir> <assetRel> <out>` → `.ui.json` + `.tree.html`
-3. **导素材**:位图填充走 `/v1/files/<key>/images`(按 imageRef,**不卡配额**);矢量图标走 `/v1/images`(**有配额**)。缺图:`vec` 回退透明、`img` 回退无背景。
+3. **导素材**:只有**真图片填充**才需要素材,走 `/v1/files/<key>/images`(按 imageRef,**不卡配额**)。
+   矢量默认走 §2 的路径、不下图;只有拿不到几何的才回退 `/v1/images`(**有配额,能打爆**)。
+   素材 PNG **必须与 `absoluteBoundingBox` 同尺寸**:figma 出图按渲染边界(含阴影外溢),直接用会被缩放居中、系统性错半格。
 4. **字体**:`python3 scripts/subset_font.py <font.ttf> fonts/cjk.woff2 <ui.json...>` → 几十 KB,@font-face 离线可移植
 5. **flow.json —— 先导后补,别从零手写**
    - 导:`python3 scripts/flow_from_figma.py nodes.json flow.json base=<a>.ui.json <name>=<b>.ui.json …`
@@ -47,7 +51,8 @@ examples/login/ 自足可跑示例:make_fixture.py(合成三屏,走真 capture �
 
 ## 关键规则(都在 figma_capture / assemble 里)
 
-- **资产感知折叠**:矢量簇有 PNG 才折叠成图;缺 PNG 不折叠、渲可渲染形状子(治"勾选框/图标因缺图整体消失");`vector_leaf_count≤4` 防爆。
+- **只有纯矢量簇才折叠成图**:簇内但凡有能直接写出来的形状(带填充的矩形/椭圆/文字)就**下沉递归**,把圆角、实色、渐变写成真节点;只有纯矢量簇(且有导出 PNG)才整块折成一张图,缺 PNG 则留透明占位。**figma 里不是图片的东西,不该在任何后端变成图片** —— 否则产物退化成"截图+热区":改色要重导、位置只能靠位图对齐、下游引擎拿到的全是位图。
+- **素材 PNG 必须与 `absoluteBoundingBox` 同尺寸**:capture 按 boundingBox 定位、`contain` 贴图,而 figma `/v1/images` 是按**渲染边界**出图(含阴影/描边外溢),直接拿来用会被缩放居中 → 系统性错半格。导出时按 boundingBox 裁/补齐再落盘。
 - **图片填充按 imageRef 命名** → 跨屏复用、可直接喂 figma 导出。
 - **阴影圆角修正**:无圆角但带 DROP_SHADOW → 继承铺满圆角子的圆角。
 - **架构 = 底屏 + 弹窗叠加**(非一屏屏 swap):底部 UI 只一份,弹窗 `subtreeOf` 抽子树叠加 + 遮罩 → 状态不跨屏串。

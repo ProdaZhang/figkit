@@ -7,7 +7,14 @@
 //   text.stroke = "2px rgba(0,0,0,1)"(webkitTextStroke 值)
 
 export interface RGBA { r: number; g: number; b: number; a: number } // r/g/b 0~255,a 0~1
-export interface Corners { tl: number; tr: number; br: number; bl: number }
+/**
+ * 一个角的两个半径。CSS 的 border-radius **每个角都是椭圆**:水平半径按宽算、垂直半径按高算,
+ * 百分比更是分轴计算的。曾经把 `50%` 折成 `min(w,h)×50%` 的单一圆半径,
+ * 于是一个 2143×680、`radius:50%` 的真椭圆(邮件面板底部那条弧)被画成胶囊,
+ * 顶弧被削平 38px —— 所以这里必须留两个数。
+ */
+export interface Corner { x: number; y: number }
+export interface Corners { tl: Corner; tr: Corner; br: Corner; bl: Corner }
 export interface BorderSpec { width: number; color: RGBA }
 export interface ShadowSpec { x: number; y: number; blur: number; spread: number; color: RGBA }
 export interface GradientStop { color: RGBA; pos: number }            // pos 0~1
@@ -45,13 +52,14 @@ export function parseColor(s: string): RGBA | null {
  * 口径与 figma2unreal / figma2godot 对齐:百分比取 min(w,h) 的比例。
  */
 export function parseRadius(s: string, w = 0, h = 0): Corners {
-  const zero: Corners = { tl: 0, tr: 0, br: 0, bl: 0 };
+  const zero: Corners = { tl: { x: 0, y: 0 }, tr: { x: 0, y: 0 }, br: { x: 0, y: 0 }, bl: { x: 0, y: 0 } };
   if (!s) return zero;
-  const base = w && h ? Math.min(w, h) : 0;
+  // 百分比分轴算(CSS Backgrounds §5.1):水平半径按宽、垂直半径按高。
   const v = s.trim().split(/\s+/).map(p => {
     const n = parseFloat(p);
-    if (!isFinite(n)) return 0;
-    return p.trim().endsWith('%') ? (base * n) / 100 : n;
+    if (!isFinite(n)) return { x: 0, y: 0 };
+    if (!p.trim().endsWith('%')) return { x: n, y: n };
+    return { x: (w * n) / 100, y: (h * n) / 100 };
   });
   if (v.length === 1) return { tl: v[0], tr: v[0], br: v[0], bl: v[0] };
   if (v.length === 2) return { tl: v[0], tr: v[1], br: v[0], bl: v[1] };
@@ -77,7 +85,9 @@ export function parseShadow(s: string): ShadowSpec | null {
   if (!cm) return null;
   const color = parseColor(cm[1]);
   if (!color) return null;
-  const nums = (s.slice(0, cm.index).match(new RegExp(`${NUM}(?=px)`, 'g')) || []).map(Number);
+  const raw = s.slice(0, cm.index).match(new RegExp(`${NUM}(?=px)`, 'g'));
+  const nums: number[] = [];  // 数组字面量不能当三目/逻辑的一支:Cocos 构建器里的 Babel 推断会崩(见 mapping.md)
+  if (raw) for (const x of raw) nums.push(Number(x));
   if (nums.length < 2) return null;
   return { x: nums[0], y: nums[1], blur: nums[2] || 0, spread: nums[3] || 0, color };
 }
@@ -133,6 +143,114 @@ export function fillFirstColor(fill: string): RGBA | null {
   const g = parseLinearGradient(fill);
   if (g) return g.stops[0].color;
   return null;
+}
+
+// ── v1.2 矢量路径 ────────────────────────────────────────────────────────
+// Graphics 有 moveTo / lineTo / bezierCurveTo / quadraticCurveTo / close,
+// 所以矢量可以**照着画**,不必退成位图。这里只做解析(纯函数),replay 在 figma-ui.ts。
+
+export type PathCmd =
+  | { op: 'M'; x: number; y: number }
+  | { op: 'L'; x: number; y: number }
+  | { op: 'C'; x1: number; y1: number; x2: number; y2: number; x: number; y: number }
+  | { op: 'Q'; op1x: number; op1y: number; x: number; y: number }
+  | { op: 'Z' };
+
+const PATH_TOK = /[A-Za-z]|-?\d*\.?\d+(?:[eE][-+]?\d+)?/g;
+const PATH_NARG: Record<string, number> = { M: 2, L: 2, H: 1, V: 1, C: 6, S: 4, Q: 4, T: 2, Z: 0 };
+
+/**
+ * SVG path `d` → **绝对坐标**的命令序列(H/V 展成 L,S/T 展成 C/Q)。
+ *
+ * 认不出的命令(圆弧 A 等)返回 **null**,让调用方吭一声并整条跳过 ——
+ * 比"跳过这一段照画其余"强:少一段的形状看着像画对了,其实是错的。
+ */
+export function parsePathCmds(d: string): PathCmd[] | null {
+  if (!d) return null;
+  const toks = d.match(PATH_TOK);
+  if (!toks) return null;
+  const out: PathCmd[] = [];
+  let i = 0, cmd = '', px = 0, py = 0, sx = 0, sy = 0;
+  let lastC: [number, number] | null = null, lastQ: [number, number] | null = null;
+  const n = (k: number): number => +toks[i + k];
+  while (i < toks.length) {
+    if (/^[A-Za-z]$/.test(toks[i])) {
+      cmd = toks[i]; i++;
+      if (cmd.toUpperCase() === 'Z') { out.push({ op: 'Z' }); px = sx; py = sy; cmd = ''; continue; }
+    }
+    if (!cmd) return null;
+    const up = cmd.toUpperCase();
+    const rel = cmd !== up;
+    const need = PATH_NARG[up];
+    if (need === undefined || i + need > toks.length) return null;
+    const bx = rel ? px : 0, by = rel ? py : 0;
+    switch (up) {
+      case 'M': {
+        px = bx + n(0); py = by + n(1); sx = px; sy = py;
+        out.push({ op: 'M', x: px, y: py }); i += 2;
+        cmd = rel ? 'l' : 'L';                       // M 之后重复的数值组按 L 解释
+        lastC = lastQ = null; break;
+      }
+      case 'L': { px = bx + n(0); py = by + n(1); out.push({ op: 'L', x: px, y: py }); i += 2; lastC = lastQ = null; break; }
+      case 'H': { px = bx + n(0); out.push({ op: 'L', x: px, y: py }); i += 1; lastC = lastQ = null; break; }
+      case 'V': { py = by + n(0); out.push({ op: 'L', x: px, y: py }); i += 1; lastC = lastQ = null; break; }
+      case 'C': {
+        const c1: [number, number] = [bx + n(0), by + n(1)];
+        const c2: [number, number] = [bx + n(2), by + n(3)];
+        px = bx + n(4); py = by + n(5);
+        out.push({ op: 'C', x1: c1[0], y1: c1[1], x2: c2[0], y2: c2[1], x: px, y: py });
+        i += 6; lastC = c2; lastQ = null; break;
+      }
+      case 'S': {
+        const c1: [number, number] = [px, py];      // 不写三目:Babel 推断会崩(见上)
+        if (lastC) { c1[0] = 2 * px - lastC[0]; c1[1] = 2 * py - lastC[1]; }
+        const c2: [number, number] = [bx + n(0), by + n(1)];
+        px = bx + n(2); py = by + n(3);
+        out.push({ op: 'C', x1: c1[0], y1: c1[1], x2: c2[0], y2: c2[1], x: px, y: py });
+        i += 4; lastC = c2; lastQ = null; break;
+      }
+      case 'Q': {
+        const q: [number, number] = [bx + n(0), by + n(1)];
+        px = bx + n(2); py = by + n(3);
+        out.push({ op: 'Q', op1x: q[0], op1y: q[1], x: px, y: py });
+        i += 4; lastQ = q; lastC = null; break;
+      }
+      case 'T': {
+        const q: [number, number] = [px, py];      // 不写三目:Babel 推断会崩(见上)
+        if (lastQ) { q[0] = 2 * px - lastQ[0]; q[1] = 2 * py - lastQ[1]; }
+        px = bx + n(0); py = by + n(1);
+        out.push({ op: 'Q', op1x: q[0], op1y: q[1], x: px, y: py });
+        i += 2; lastQ = q; lastC = null; break;
+      }
+      default: return null;
+    }
+  }
+  return out.length ? out : null;
+}
+
+/** "0 0 W H" → [minX, minY, w, h];解析不了返回 null。 */
+export function parseViewBox(s: string): [number, number, number, number] | null {
+  if (!s) return null;
+  const v = s.trim().split(/[\s,]+/).map(Number);
+  if (v.length !== 4 || v.some(x => !isFinite(x)) || v[2] <= 0 || v[3] <= 0) return null;
+  return [v[0], v[1], v[2], v[3]];
+}
+
+/**
+ * shadow 串里 `borderAlign: outside/center` 塞在**头部**的描边环 → [{width,color}, 剩下的 shadow]。
+ * 捕获层把外扩描边写成 `0 0 0 Npx <color>`(box-shadow 跟随圆角,outline 不跟),
+ * 与真投影同挂 shadow 字段,靠这个位置区分。
+ */
+export function splitRing(shadow: string, align: string): [BorderSpec | null, string] {
+  if (!shadow || (align !== 'outside' && align !== 'center')) return [null, shadow];
+  const parts = splitTop(shadow);
+  const m = parts.length
+    ? parts[0].match(new RegExp(`^0(?:px)?\\s+0(?:px)?\\s+0(?:px)?\\s+(${NUM})px\\s+(rgba?\\([^)]*\\))$`))
+    : null;
+  if (!m) return [null, shadow];
+  const color = parseColor(m[2]);
+  if (!color) return [null, shadow];
+  return [{ width: +m[1], color }, parts.slice(1).join(',')];
 }
 
 /** text.stroke "2px rgba(...)" → { width, color };解析不了返回 null。 */

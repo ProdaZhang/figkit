@@ -27,12 +27,12 @@ is the implementation contract for `runtime/*.ts`.
 | `z` | Sibling order | els are stably sorted by ascending z and then `addChild`ed in turn → append order under the same parent is draw order (equivalent to `setSiblingIndex`) |
 | `parent` | Node tree parent/child | Empty = mounted on the layer root; `buildSubtree` clears the root's parent when lifting a subtree (matching `subtreeOf`) |
 | `rot` | `node.angle = -rot` | CSS is positive clockwise, Creator positive counter-clockwise → negate; rotation pivot in §3 |
-| `opacity` | `UIOpacity.opacity = round(opacity×255)` | The component is only added when `opacity !== 1` |
+| `opacity` | `UIOpacity` for Sprite/Label, **multiplied into the colour** for Graphics | `UIOpacity` does **not** affect Graphics at all — not on the node itself, not cascaded from an ancestor (Graphics owns its model and never enters the UI batcher's vertex colour). Measured in-engine: a `fillColor` alpha of 51 reads back as 110 over a #333 backdrop, while both `UIOpacity = 51` spellings read pure 255. So Graphics colours get the **whole ancestor chain's** opacity folded in; leaving it out painted a `opacity: 0.38` white decoration as opaque white and smeared the entire title bar |
 | `fill` (solid) | `Graphics.fillColor` + `roundRect` + `fill()` | rgba → `Color(r,g,b,a×255)` |
-| `fill` (linear-gradient) | **first-colour fallback** (known-loss) | Graphics has no gradient fill; takes the first stop as a solid plus a `console.warn` |
-| `radius` | `roundRect(..., r)` | Four equal corners are used directly; **unequal corners all take tl** (known-loss — `Graphics.roundRect` takes a single radius, and piecewise béziers are possible but not worth the complexity at this hit rate) |
+| `fill` (linear-gradient) | A **runtime-baked texture** on a Sprite inside a rounded Mask | Graphics has no gradient fill, so a 64² texture is generated with every texel projected onto that element's real gradient axis (any angle), then shown through a `GRAPHICS_STENCIL` Mask so the corners still round. **The texture must be uploaded via `Texture2D.reset` + `uploadData`** — building an `ImageAsset` from `_data` and assigning `tex.image` takes the image-element upload path and throws `texSubImage2D … Overload resolution failed` on every frame (4686 of them in one screen) |
+| `radius` | Per-corner path (line + cubic Bézier) | Each corner keeps its own radius, so `73px 73px 0 0` renders as it should; radii are clamped by the CSS rule (adjacent pair ≤ edge) first. **Do not use `Graphics.arc` here** — see the pitfall note under §5 |
 | `border` | `Graphics.lineWidth/strokeColor` + `stroke()` | CSS strokes inward (border-box) while Graphics centres on the path → the path is **inset by width/2** to approximate it |
-| `shadow` | **not rendered** (known-loss) | Creator has no lightweight per-node box-shadow |
+| `shadow` (hard) | A sibling **underlay** node of the same shape | Creator has no `box-shadow`, but `2px 6px 0 c` is just the same rounded box offset by (2,6) and filled — drawn, not declared away. **Blurred** shadows are still lost |
 | `blur` | **not rendered** (known-loss) | Same (a full-screen post-process does not suit per-node use) |
 | `img` | `Sprite` (`SizeMode.CUSTOM`) | `resources.load(assetRoot + stem(img) + '/spriteFrame', SpriteFrame)`; missing → transparent fallback plus a warning (never a filled placeholder, matching render.js) |
 | `imgSize` (cover/contain) | **always stretched to fill** (known-loss) | `SizeMode.CUSTOM` fills contentSize; capture's images are mostly 1:1 exports, so distortion is limited |
@@ -45,7 +45,7 @@ is the implementation contract for `runtime/*.ts`.
 | `text.family` | System default font | The family is not reproduced (known-loss); reproducing it needs a TTFFont asset plus a hook override |
 | `text.stroke` | `LabelOutline` (width + color) | |
 | `text.ls` (letterSpacing) | **not rendered** (known-loss) | Label 3.x has no letter-spacing property |
-| Text overflow | `Overflow.CLAMP` + `enableWrapText=false` | Preserves in-box alignment, matching render.js's nowrap; a wider system font may clip (known-loss); an explicit `\n` still breaks |
+| Text overflow | `Overflow.CLAMP` + `enableWrapText` from `text.wrap` | Follows the IR instead of forcing nowrap (a fixed-width body used to run off its panel on one line); a wider system font may still clip (known-loss) |
 | `cap.stageBg` | A `stage-bg` child (Sprite or Graphics) | `url(..)` → Sprite; solid or gradient → Graphics (gradient takes the first colour); sibling 0, underneath |
 
 flow.json mapping (`flow-binder.ts`, semantics aligned with assemble.js):
@@ -132,8 +132,8 @@ Canvas (cc.Canvas, designResolution = cap.w × cap.h)
 |---|---|---|
 | `blur` | Not rendered | Use a pre-baked texture or a post-process, in the hook layer |
 | `shadow` | Not rendered | Same, or a nine-slice shadow sprite |
-| Complex / linear gradients | Takes the first stop as a solid | Export as a texture and go through `img` |
-| Unequal corner radii | All corners take tl | Export a texture, or rewrite Graphics with a piecewise path (not implemented) |
+| Gradients that will not parse | Takes the first stop as a solid | Only radial / non-`<angle>deg` forms land here; linear ones are baked |
+| Blurred shadows | Not rendered (hard ones are, as underlays) | A nine-slice shadow sprite in the hook layer |
 | Font family / exact weight | System font + `isBold(≥600)` | Attach a TTFFont asset and override `label.font` in the hook |
 | `letterSpacing` | Not rendered | — |
 | `textAlign` vs `alignH` conflict | alignH wins | For rich multi-line alignment, rework it with RichText |
@@ -141,6 +141,24 @@ Canvas (cc.Canvas, designResolution = cap.w × cap.h)
 | Text clipped by CLAMP | A wider system font may clip | Reduce fontSize, or widen contentSize in the hook |
 | `rot=0` inside instances | An upstream API limitation | Set `node.angle` by hand in the hook |
 | `unresolved` curves in `motion.json` | That transition shows/hides instantly | Figma publishes no control points for `BOUNCY` / `*_BACK`; do not invent numbers, see below |
+
+### Pitfall: `Graphics.arc` is not canvas's `arc`
+
+Rounded corners here are cubic Béziers, not arcs, and that is deliberate. The engine's
+`arc(cx, cy, r, a0, a1, ccw)` differs from the canvas API in two ways, each of which corrupts the
+shape on its own:
+
+1. Its first point is emitted as `ctx.moveTo(x, y)` — an arc **always starts a new sub-path**
+   instead of continuing from the current point. "Straight edge `lineTo` + four corner `arc`s"
+   therefore produces four disjoint sub-paths, and `fill()` merges them into one polygon: every
+   rounded box came out shredded into diagonal wedges.
+2. The sweep direction is inverted. With `counterclockwise=false` it runs `while (da > 0) da -= 2π`,
+   so a canvas-style `(-90° → 0°, false)` is read as **-270°** and takes the long way round — drawn
+   as giant loops across the screen.
+
+`bezierCurveTo` continues from the current point and has no direction ambiguity, so it sidesteps
+both. `scripts/tests/test_runtime_source.py::test_corners_never_use_graphics_arc` keeps it that way.
+This one, like the Babel constraint, passes every static gate and only shows up on real pixels.
 
 ## 5.5 Transition easing (`flow.events[].transition` + `flow.motion`)
 
@@ -212,8 +230,13 @@ curve values are identical either way and only the distance differs.
   `.ts` and that the docs and the config name the same version.
 - ✅ Source-level guards (`scripts/tests/test_runtime_source.py`): linear interpolation present,
   built-in easings not imported, transform not applied to the layer, scaling compensating the anchor.
-- ❌ **Not run inside Creator** — the same level as the rest of this backend. Correct curve values
-  do not mean a correct picture; the backdrop bug above is the living proof.
+- ✅ **Run inside Creator 3.8.8** (2026-08-05): built for `web-desktop` from a real Figma capture
+  and screenshotted at 1080×1920 — mean **6.21–8.93/255** against the HTML build on the same frame,
+  the same order as Godot and Unity. That run is what found the three bugs no static gate can reach:
+  runtime-created nodes landing on `Layers.Enum.DEFAULT` while the UI camera only draws `UI_2D`
+  (whole tree built, zero pixels, no error), the Babel conditional-expression crash that fails an
+  entire script, and the `Graphics.arc` behaviour above. All three now carry source-level guards.
+- ⚠️ Motion has **not** been watched in Play mode — the curve values are pinned, the picture is not.
 
 ## 6. Integration smoke checklist (do this on first integration)
 

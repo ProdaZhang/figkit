@@ -30,14 +30,23 @@ def test_parse_radius_takes_element_size():
     assert "w" in args and "h" in args, "parseRadius 没有接收元素尺寸: %r" % args
 
 
-def test_parse_radius_handles_percent():
-    """必须有显式的百分比分支;只靠 parseFloat 会把 '50%' 静默读成 50。"""
+def test_parse_radius_handles_percent_per_axis():
+    """百分比必须**分轴**折算:水平半径按 w、垂直半径按 h(CSS Backgrounds §5.1)。
+
+    只靠 parseFloat 会把 '50%' 静默读成 50px;而折成 `min(w,h)×50%` 的**单一圆半径**
+    同样是错的 —— 邮件面板底部那条弧是个 2143×680、`radius:50%` 的真椭圆,
+    按 min 折算会画成胶囊,顶弧被削平 38px(实机比对量出来的)。
+    这条曾经写成"与 godot/unreal 同口径",但那个口径与 HTML 基准不一致:HTML 走 CSS,
+    Unity 的 UI Toolkit 也按轴算,所以对齐对象应该是 CSS,不是另外两个后端的将就实现。
+    """
     body = _src("parse-css.ts")
     m = re.search(r"export function parseRadius\(.*?\n\}", body, re.S)
     assert m, "抓不到 parseRadius 函数体"
     fn = m.group(0)
     assert "%" in fn and "endsWith" in fn, "parseRadius 没有处理百分比的分支"
-    assert "Math.min" in fn, "百分比应按 min(w,h) 折算(与 godot/unreal 同口径)"
+    assert "Math.min" not in fn, "百分比不能折成 min(w,h) 的单一圆半径,CSS 是分轴的椭圆角"
+    assert re.search(r"w\s*\*\s*n", fn) and re.search(r"h\s*\*\s*n", fn), \
+        "百分比分支没有分别按 w 和 h 折算"
 
 
 def test_call_site_passes_size():
@@ -98,6 +107,53 @@ def test_known_loss_paths_still_log():
     """known-loss 必须留痕,不许静默丢失(仓库通用原则)。"""
     body = _src("figma-ui.ts")
     assert "console.warn" in body, "figma-ui.ts 里一条 known-loss 告警都没有"
+
+
+def test_no_array_literal_inside_a_conditional():
+    """**数组字面量不能当三目/逻辑表达式的一支** —— Cocos 的构建器编不过。
+
+    Creator 3.8.8 的 buildScriptCommand 走 Babel。`x ? a : [b]` / `f() || [b]` 这类写法,
+    @babel/traverse 给数组字面量那一支推出 **Flow 的 GenericTypeAnnotation**,
+    再拿去建 TSUnionType 就抛
+    `Property types[1] of TSUnionType expected node to be of a type ["TSType"]`,
+    **整份脚本编译失败**(不是这一行失败,是这个文件一行都进不去包)。
+
+    tsc 那道类型门看不见它 —— 它根本不走 Babel。这条是 2026-08-05 第一次把 runtime
+    真喂进 Cocos 构建器时才炸出来的,和 godot 的 sub_resource id、unity 的 USS 选择器
+    同一类:静态检查全绿、真管线一跑就废。写成 if 就没事。
+    """
+    bad = []
+    for name in ("figma-ui.ts", "flow-binder.ts", "parse-css.ts"):
+        for i, line in enumerate(_src(name).splitlines(), 1):
+            # 先剥注释和字符串/模板/正则字面量 —— 里头的 `?[` 是正则语法,不是三目
+            code = re.sub(r"//.*$", "", line)
+            code = re.sub(r"'[^']*'|\"[^\"]*\"|`[^`]*`", "S", code)
+            code = re.sub(r"/(?:[^/\\\n]|\\.)+/[gimsuy]*", "S", code)
+            if re.search(r"(\?\?|\?|\|\|)\s*\[\s*[\]\w'\"-]", code):
+                bad.append("%s:%d %s" % (name, i, line.strip()))
+    assert not bad, "三目/逻辑表达式里出现数组字面量(Cocos 构建器的 Babel 会崩):\n  " + "\n  ".join(bad)
+
+
+def test_corners_never_use_graphics_arc():
+    """**圆角不许用 `Graphics.arc`** —— 引擎那个 arc 有两处会咬人,画出来是撕碎的形状。
+
+    引擎实现(`cocos/2d/utils/graphics.ts` 的 `arc`)里:
+      ① 第一个点走 `ctx.moveTo(x, y)` —— **永远另起一条子路径**,不从当前点接上。
+         于是"直边 lineTo + 四个角 arc"变成四段互不相连的子路径,fill 把它们并成
+         一坨 → 圆角矩形被撕成斜楔(实机第一次跑出来的就是这个)。
+      ② 方向约定与 canvas **相反**:`counterclockwise=false` 时它 `while (da > 0) da -= 2π`,
+         按 canvas 语义传的 (-90°→0°, false) 被理解成 -270°,绕大圈 → 画出巨大的环。
+
+    改用 `bezierCurveTo` + KAPPA:从当前点接着走,也没有方向歧义。
+    这条和上面那条 Babel 一样,是**静态检查全绿、真引擎一跑才现形**的坑,所以钉在源码层。
+    """
+    bad = []
+    for name in ("figma-ui.ts", "flow-binder.ts"):
+        for i, line in enumerate(_src(name).splitlines(), 1):
+            code = re.sub(r"//.*$", "", line)
+            if re.search(r"\bg\w*\.arc\s*\(", code):
+                bad.append("%s:%d %s" % (name, i, line.strip()))
+    assert not bad, "用了 Graphics.arc(会另起子路径 + 方向相反,形状会碎):\n  " + "\n  ".join(bad)
 
 
 def _run():

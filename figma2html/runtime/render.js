@@ -15,6 +15,7 @@ function applyRecStyle(el, div) {
   if (el.rot)            { s.transform = 'rotate(' + el.rot + 'deg)'; s.transformOrigin = 'center center'; }
   if (el.opacity !== 1)  s.opacity = el.opacity;
   if (el.radius)         s.borderRadius = el.radius;
+  if (el.clip)           s.overflow = 'hidden';   // figma 遮罩:capture 已把遮罩形状折进 radius,这里只管裁
   if (el.border)         s.border = el.border;
   if (el.shadow)         s.boxShadow = el.shadow;
   if (el.blur)           s.filter = el.blur;
@@ -33,9 +34,57 @@ function applyRecStyle(el, div) {
     s.lineHeight     = t.lh ? (t.lh + 'px') : 'normal';
     if (t.ls)     s.letterSpacing = t.ls + 'px';
     if (t.stroke) { s.webkitTextStroke = t.stroke; s.paintOrder = 'stroke fill'; }
-    // 多行(含 \n)保留换行;单行用 nowrap,避免字体回退偏宽撑出文本框被迫折行
-    s.whiteSpace = (t.content.indexOf('\n') >= 0) ? 'pre-wrap' : 'nowrap';
+    // figma 说这段定宽(textAutoResize ≠ WIDTH_AND_HEIGHT)就折行;随字撑宽的不折,
+    // 免得字体回退偏宽逼出假换行。t.wrap 缺失 = v1.3 之前的老产物,退回旧口径。
+    s.whiteSpace = (t.wrap || t.content.indexOf('\n') >= 0) ? 'pre-wrap' : 'nowrap';
     s.overflow   = 'visible';
+  } else if (el.paths && el.paths.length) {
+    // 矢量按路径画,不是位图。与 figma_capture.py 的 svg_markup 同一套写法,改一处必同步。
+    // preserveAspectRatio='none':路径坐标就是节点自身包围盒,不许 SVG 再等比缩放居中。
+    const NS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('viewBox', el.viewBox || ('0 0 ' + (el.w || 1) + ' ' + (el.h || 1)));
+    svg.setAttribute('preserveAspectRatio', 'none');
+    svg.style.cssText = 'width:100%;height:100%;display:block;overflow:visible';
+    // figma 的 strokeGeometry 是「预裁带」(骑在边线上、总宽 2w),要按 strokeAlign 裁:
+    // inside 裁进形状内,outside 裁到形状外,裁完各剩 w。不裁就两边各多一倍。
+    const uid = String(el.id).replace(/[^A-Za-z0-9_-]/g, '_');
+    const shape = el.paths.filter(function (q) { return !q.clip; })
+                          .map(function (q) { return q.d; }).join(' ');
+    const need = {};
+    el.paths.forEach(function (q) { if (q.clip) need[q.clip] = 1; });
+    if (need.inside || need.outside) {
+      const defs = document.createElementNS(NS, 'defs');
+      if (need.inside) {
+        const cp = document.createElementNS(NS, 'clipPath');
+        cp.setAttribute('id', 'cin_' + uid);
+        const p = document.createElementNS(NS, 'path'); p.setAttribute('d', shape);
+        cp.appendChild(p); defs.appendChild(cp);
+      }
+      if (need.outside) {
+        const vb = (el.viewBox || ('0 0 ' + (el.w || 1) + ' ' + (el.h || 1))).split(/\s+/).map(Number);
+        const mk = document.createElementNS(NS, 'mask');
+        mk.setAttribute('id', 'cout_' + uid);
+        const r = document.createElementNS(NS, 'rect');
+        r.setAttribute('x', vb[0] - 64); r.setAttribute('y', vb[1] - 64);
+        r.setAttribute('width', vb[2] + 128); r.setAttribute('height', vb[3] + 128);
+        r.setAttribute('fill', '#fff');
+        const p = document.createElementNS(NS, 'path');
+        p.setAttribute('d', shape); p.setAttribute('fill', '#000');
+        mk.appendChild(r); mk.appendChild(p); defs.appendChild(mk);
+      }
+      svg.appendChild(defs);
+    }
+    el.paths.forEach(function (q) {
+      const path = document.createElementNS(NS, 'path');
+      path.setAttribute('d', q.d);
+      path.setAttribute('fill', q.fill);
+      path.setAttribute('fill-rule', q.rule);
+      if (q.clip === 'inside')       path.setAttribute('clip-path', 'url(#cin_' + uid + ')');
+      else if (q.clip === 'outside') path.setAttribute('mask', 'url(#cout_' + uid + ')');
+      svg.appendChild(path);
+    });
+    div.appendChild(svg);
   } else if (el.img) {
     s.backgroundImage    = "url('../../" + el.img + "')";   // 有意:app.html 深两层,补 ../../(rec_to_css 用裸路径)
     s.backgroundSize     = el.imgSize || 'cover';

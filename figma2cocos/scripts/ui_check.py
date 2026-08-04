@@ -2,7 +2,7 @@
 """ui_check.py — figma2cocos 离线校验器(纯标准库)。
 
 用法:
-    python3 ui_check.py <flow.json> <capDir>
+    python3 ui_check.py <flow.json> [capDir]     # capDir 缺省 = flow.json 所在目录
 
 做什么(本机可测的部分,不需要 Cocos):
   1. flow.caps 里每个 .ui.json 文件存在且能 json 载入;
@@ -174,10 +174,16 @@ def collect_assets(caps):
 # ── CLI ─────────────────────────────────────────────────────────────────
 
 def main(argv):
-    if len(argv) != 3:
+    if len(argv) not in (2, 3):
         print(__doc__)
         return 2
-    flow_path, cap_dir = argv[1], argv[2]
+    flow_path = argv[1]
+    # capDir 缺省 = **flow.json 所在目录**,和 flow.caps 里的相对路径同一个基准 ——
+    # html 运行时(assemble.js 相对 flow.json 加载)和 figma2html/flow_check.py 都这么解。
+    # 以前这里强制从命令行收 capDir,于是同一份 flow:flow_check 全绿、ui_check 却报一堆
+    # 坏引用(真实邮件工程里 caps 写的是 `../../screen-*.ui.json`,拿工程根去 join 就全找不到)。
+    # 一个校验器和它要守的运行时对不上基准,报的错就是噪音。
+    cap_dir = argv[2] if len(argv) == 3 else os.path.dirname(os.path.abspath(flow_path))
     try:
         flow = load_flow(flow_path)
     except Exception as e:

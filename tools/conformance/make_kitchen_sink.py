@@ -121,6 +121,31 @@ def build_tree():
             _n("k:vec-leaf", "vec-leaf", "VECTOR", 610, 530, 120, 100,
                fills=solid(C(.9, .9, .2)))]),
 
+        # ── v1.2 三件套。**这三个元素是补票的**:IR 从 1.0 涨到 1.2 时它们没被加进来,
+        # 于是夹具里 paths 全是 []、clip 全是 false,三个后端"都吃得下"、声明也"都对得上",
+        # 而 paths/clip/borderAlign 在四个后端里集体静默消失,全套测试照样绿。
+        # 教训:**新字段不进 kitchen-sink,这套一致性检查就是空转**(元断言现在会咬这条)。
+
+        # paths:带 fillGeometry 的矢量 —— capture 拿 geometry=paths 后不再下 PNG,直接给路径
+        _n("k:paths", "paths", "VECTOR", 40, 920, 120, 120,
+           fills=solid(C(.95, .3, .2)),
+           fillGeometry=[{"path": "M0 0L120 0L120 120L0 120Z", "windingRule": "NONZERO"}],
+           # 带一条 INSIDE 描边:figma 给的 strokeGeometry 是**预裁带**(骑边线、总宽 2w),
+           # 各后端怎么裁掉一半正是这条特性的难点,不带它就测不到。
+           strokes=[{"type": "SOLID", "visible": True, "color": C(1, 1, 1)}],
+           strokeWeight=4, strokeAlign="INSIDE",
+           strokeGeometry=[{"path": "M-4 -4L124 -4L124 124L-4 124Z", "windingRule": "NONZERO"}]),
+        # clip:figma 的 clipsContent —— 子元素故意画到父盒之外,不裁就露出来
+        _n("k:clip", "clip", "FRAME", 200, 920, 120, 120, clipsContent=True,
+           fills=solid(C(.9, .9, .95)), cornerRadius=16, children=[
+               _n("k:clip-child", "clip-child", "RECTANGLE", 260, 980, 200, 200,
+                  fills=solid(C(.2, .4, .9)))]),
+        # borderAlign:OUTSIDE 描边 —— CSS/Godot 的 border 都只往内画,方向天生反的
+        _n("k:border-outside", "border-outside", "RECTANGLE", 380, 920, 120, 120,
+           fills=solid(C(1, 1, 1)), cornerRadius=10,
+           strokes=[{"type": "SOLID", "visible": True, "color": C(.9, .5, 0)}],
+           strokeWeight=6, strokeAlign="OUTSIDE"),
+
         # 嵌套容器:父子几何换算(render.js pass2 的相对坐标)
         _n("k:nest", "nest", "FRAME", 500, 760, 240, 140, fills=solid(C(.95, .95, .9)),
            cornerRadius=8, children=[

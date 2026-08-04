@@ -162,6 +162,7 @@ export class FlowBinder extends Component {
       const m = flow.modals![name];
       const layer = this.makeLayer(name, w, h, false);
       const bd = new Node('backdrop');
+      bd.layer = layer.layer;                 // UI 相机只照 UI_2D,代码建的节点默认不在
       const but = bd.addComponent(UITransform);
       but.setAnchorPoint(0, 1);
       but.setContentSize(w, h);
@@ -197,6 +198,7 @@ export class FlowBinder extends Component {
 
   private makeLayer(name: string, w: number, h: number, visible: boolean): Node {
     const layer = new Node('layer-' + name);
+    layer.layer = this.node.layer;            // 同上:继承挂载点的 layer
     const ut = layer.addComponent(UITransform);
     ut.setAnchorPoint(0, 1);
     ut.setContentSize(w, h);
@@ -227,7 +229,9 @@ export class FlowBinder extends Component {
     const root = this.motionAsset?.json as { curves?: Record<string, Record<string, unknown>> } | null;
     for (const key of Object.keys(root?.curves || {})) {
       const c = root!.curves![key];
-      const pts = (c['points'] as number[][] | undefined) || [];
+      const pts: number[][] = [];  // 数组字面量不能当三目/逻辑的一支:Cocos 构建器里的 Babel 推断会崩(见 mapping.md)
+      const rawPts = c['points'] as number[][] | undefined;
+      if (rawPts) pts.push(...rawPts);
       if (pts.length < 2) continue;                    // unresolved 的曲线没有点
       this.curves[key] = {
         points: pts,
@@ -242,7 +246,8 @@ export class FlowBinder extends Component {
 
   private curveForEvent(ev: FlowEvent): CurveDef | null {
     // motion.json 的 key 是 flow.events 的下标(ev<i>)—— 与 bake_flow 同一约定。
-    const events = this.flow?.events || [];
+    const events: FlowEvent[] = [];  // 数组字面量不能当三目/逻辑的一支:Cocos 构建器里的 Babel 推断会崩(见 mapping.md)
+    if (this.flow && this.flow.events) events.push(...this.flow.events);
     const i = events.indexOf(ev);
     return i < 0 ? null : (this.curves['ev' + i] || null);
   }
@@ -413,7 +418,8 @@ export class FlowBinder extends Component {
   setValue(name: string, val: unknown): void { this.state[name] = val; this.syncBindings(); }
 
   guardOk(guards?: string[]): boolean {
-    return (guards || []).every(gn => {
+    if (!guards) return true;  // 数组字面量不能当三目/逻辑的一支:Cocos 构建器里的 Babel 推断会崩(见 mapping.md)
+    return guards.every(gn => {
       const v = this.state[gn];
       return v !== null && v !== undefined && v !== false && v !== 0 && v !== '';
     });
@@ -422,8 +428,12 @@ export class FlowBinder extends Component {
   // ── 事件接线(click → TOUCH_END)────────────────────────────────────
 
   private wireEvents(): void {
-    for (const ev of this.flow?.events || []) {
-      const sels = Array.isArray(ev.el) ? ev.el : [ev.el];
+    const evs: FlowEvent[] = [];  // 数组字面量不能当三目/逻辑的一支:Cocos 构建器里的 Babel 推断会崩(见 mapping.md)
+    if (this.flow && this.flow.events) evs.push(...this.flow.events);
+    for (const ev of evs) {
+      const sels: string[] = [];  // 数组字面量不能当三目/逻辑的一支:Cocos 构建器里的 Babel 推断会崩(见 mapping.md)
+      if (Array.isArray(ev.el)) sels.push(...ev.el);
+      else sels.push(ev.el);
       for (const sel of sels) {
         // @in:<modal>:<nodeId> —— 弹窗**内部**的元素(v1.1),比如那个 ✗。
         // 节点 id 自带冒号("4:99"),所以 @in: 之后只有第一段是弹窗名,其余整段都是 id。
@@ -510,6 +520,7 @@ export class FlowBinder extends Component {
         let mark = node.getChildByName('check-mark');
         if (!mark) {
           mark = new Node('check-mark');
+          mark.layer = node.layer;            // 同上
           const ut = node.getComponent(UITransform)!;
           const mut = mark.addComponent(UITransform);
           mut.setAnchorPoint(0.5, 0.5);

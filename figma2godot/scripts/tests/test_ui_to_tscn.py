@@ -105,9 +105,27 @@ def _run():
     check('corner_radius_top_left = 1' in t5 and 'corner_radius_top_right = 2' in t5
           and 'corner_radius_bottom_right = 3' in t5 and 'corner_radius_bottom_left = 4' in t5,
           '圆角简写 a b c d → TL/TR/BR/BL = 1/2/3/4')
-    check('shadow_color = Color(0, 0, 0, 0.6)' in t5 and 'shadow_size = 1' in t5
-          and 'shadow_offset = Vector2(0, 4)' in t5,
-          '阴影 → shadow_color/shadow_size(硬阴影兜底 1)/shadow_offset(0,4)')
+    # **硬阴影(blur=0)不走 shadow_size。** StyleBoxFlat 的 shadow_size 是"往外扩多少像素",
+    # 而 `0px 4px 0px` 的语义是"把整个形状按位移复制一份填成阴影色"。按 shadow_size 画,
+    # size 会被 max(1, blur+spread) 夹成 1 —— 设计稿上那块厚实的投影只剩一圈 1px 描边。
+    # 现在改为在本体**之前**垫一个同形状同圆角的 Panel(排在前面 = 画在下面)。
+    check('shadow_size' not in t5 and 'sh_5_1' in t5
+          and t5.index('name="5_1_shadow"') < t5.index('name="5_1" '),
+          '硬阴影 → 垫一层同圆角实心 Panel(不是 shadow_size),且排在本体之前')
+    sh = t5[t5.index('id="sh_5_1"'):]
+    check('bg_color = Color(0, 0, 0, 0.6)' in sh.split('\n\n')[0]
+          and 'corner_radius_top_left = 1' in sh.split('\n\n')[0],
+          '垫层用阴影色 + 与本体同一套四角圆角')
+    blk = t5[t5.index('name="5_1_shadow"'):].split('\n\n')[0]
+    check('offset_top = 4.0' in blk and 'offset_left = 0.0' in blk,
+          '垫层按 (0,4) 位移')
+
+    # 带模糊的阴影仍走 StyleBoxFlat 原生 shadow —— 那才是 shadow_size 表达得了的东西
+    t5b = M.convert({'frame': 'X', 'w': 200, 'h': 200, 'stageBg': '', 'els': [
+        _el('5:2', fill='rgba(0,0,0,1)', shadow='0px 4px 8px rgba(0,0,0,0.6)')]}, 'sb-blur')
+    check('shadow_size = 8' in t5b and 'shadow_offset = Vector2(0, 4)' in t5b
+          and '5_2_shadow' not in t5b,
+          '带模糊的阴影仍走原生 shadow_size,不垫层')
 
     # 10. rot/opacity:弧度 + 中心 pivot + modulate
     cap6 = {'frame': 'X', 'w': 200, 'h': 200, 'stageBg': '', 'els': [
@@ -130,6 +148,42 @@ def _run():
           '缺尺寸时百分比退化为 0/None,不瞎猜')
     check(M.parse_radius('bogus', 100, 100) is None,
           '真正解析不了的仍返回 None')
+
+    # sub_resource 的 id 规矩比节点名严:Godot 只收 [A-Za-z0-9_]。figma **组件实例**的
+    # id 形如 `I25:4109;206:12513;202:12604`(实例链用分号连),节点名那套黑名单换掉冒号
+    # 却留下分号 —— 引擎侧报 "The scene unique ID must contain only letters, numbers,
+    # and underscores",StyleBoxFlat/Gradient 注册失败,这些元素**裸奔无样式**。
+    # 合成夹具里的 id 都是干净的 "1:40",撞不出来;真稿一跑就是几十条(2026-08-04 于 4.7.1)。
+    inst = [_el('I25:4109;206:12513;202:12604', fill='rgba(255,0,0,1.0)', radius='8px'),
+            _el('I25:2568;135:9615', fill='linear-gradient(0.0deg, rgba(1,2,3,1.0) 0.0%, '
+                                          'rgba(4,5,6,1.0) 100.0%)')]
+    ti = M.convert(dict(frame='f', w=100, h=50, stageBg='', els=inst), 'screen-inst')
+    bad = re.findall(r'\[sub_resource type="[^"]+" id="([^"]*)"\]', ti)
+    check(bad and all(re.fullmatch(r'[A-Za-z0-9_]+', s) for s in bad),
+          'sub_resource id 只含 [A-Za-z0-9_](组件实例 id 的分号不能漏)')
+    # 引用侧必须跟着改名,否则 SubResource("...") 指向一个不存在的 id
+    check(all(('SubResource("%s")' % s) in ti for s in bad),
+          'SubResource() 引用与 sub_resource id 一致')
+
+    # 圆角裁剪嵌套时,clip_children 该给**最外层**。Godot 不支持嵌套,一条链只能留一个:
+    # 外层裁的是压在背景上的外轮廓,丢了就是四个方角怼底色(实测:邮件面板 80px 圆角
+    # 退成矩形剪刀,底部两角变硬直角);内层裁的是纹理/装饰,退成矩形只多出一点同色方角。
+    nest = [_el('n:1', radius='80px', clip=True, w=400, h=300),
+            _el('n:2', parent='n:1', radius='40px', clip=True, w=200, h=100),
+            _el('n:3', parent='n:2', fill='rgba(1,2,3,1.0)', w=300, h=200)]
+    tn = M.convert(dict(frame='f', w=400, h=300, stageBg='', els=nest), 'screen-nest')
+    check('clip_children' in _node_block(tn, 'n_1'),
+          '外层圆角裁剪拿 clip_children(轮廓优先)')
+    check('clip_contents = true' in _node_block(tn, 'n_2')
+          and 'clip_children' not in _node_block(tn, 'n_2'),
+          '内层退化成矩形 clip_contents(Godot 的 clip_children 不能嵌套)')
+    # 空模子会把子节点裁得一干二净 —— 只负责裁的容器在 IR 里没填充,必须自己画出实心形状
+    check('bg_color = Color(1, 1, 1, 1)' in _node_block(tn, 'n_1')
+          or 'bg_color = Color(1, 1, 1, 1)' in tn.split('[node ')[0],
+          '当模子的容器要有实心底,否则子节点全被裁没')
+    check(any('n:2' in s and '圆角裁剪退回矩形' in s
+              for s in M.collect_losses(dict(frame='f', w=400, h=300, stageBg='', els=nest))),
+          '退化的那一层要留痕(honest degradation)')
 
     ok = all(results)
     print('  %d/%d 通过' % (sum(results), len(results)))

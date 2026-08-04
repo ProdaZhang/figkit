@@ -40,6 +40,9 @@ Division of labour (mirroring figma2html's two layers):
 | `fill: rgba(...)` | `{type:"solid",rgba:[r,g,b,a]}` | `UBorder` + `FSlateBrush` (RoundedBox) `TintColor` | Exact (sRGB→linear via `FromSRGBColor`) |
 | `fill: linear-gradient(...)` | `{type:"linear",angleDeg,stops:[{rgba,pos}]}` | **First-stop solid fallback + UE_LOG** (known-loss; the material route is in §4) | Fallback |
 | `fill: radial-gradient(...)` | `{type:"radial",stops:[...]}` | Same fallback | Fallback |
+| `paths` + `viewBox` (v1.2) | **absent** | — | known-loss. This backend's whole stance is *carry* — the Python stage preprocesses and the C++ runtime decides — but `convert_cap` maps field by field, so a key that is not listed never reaches the uespec at all. For these three that is not carrying, it is dropping, and it is written down here as such |
+| `clip` (v1.1) | **absent** | — | known-loss; children overflow their parent's box |
+| `borderAlign` (v1.2) | **absent** | — | known-loss; the outward half of a stroke (the `0 0 0 Npx` ring at the head of `shadow`) is indistinguishable from a real shadow once the field is gone |
 | `radius: "37px"` / four values / `50%` | `[tl,tr,br,bl]` px floats (`50%`→`min(w,h)/2`) | `FSlateBrush::OutlineSettings.CornerRadii` (UE5 RoundedBox has native per-corner radii) | Exact (the `50%` elliptical corner is a scalar approximation) |
 | `border: "4px solid rgba(..)"` | `{width,rgba}` | `OutlineSettings.Width/Color` (RoundedBox outline) | High (sub-pixel difference between CSS's inward border and Slate's centred outline) |
 | `shadow: "0px 4px 0px rgba(..)"` | `[{dx,dy,blur,rgba}]` | **Not rendered + UE_LOG(Verbose)** (known-loss) | Lost |

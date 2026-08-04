@@ -31,6 +31,9 @@
 | `fill: rgba(...)` | `{type:"solid",rgba:[r,g,b,a]}` | `UBorder` + `FSlateBrush`(RoundedBox)`TintColor` | 精确(sRGB→线性由 `FromSRGBColor`) |
 | `fill: linear-gradient(...)` | `{type:"linear",angleDeg,stops:[{rgba,pos}]}` | **首停靠色纯色回退 + UE_LOG**(known-loss,材质路线见 §4) | 回退 |
 | `fill: radial-gradient(...)` | `{type:"radial",stops:[...]}` | 同上回退 | 回退 |
+| `paths` + `viewBox`(v1.2) | **没有** | — | known-loss。本后端一贯的立场是 *carry*(python 段只预处理,取舍留给 C++ 运行时),但 `convert_cap` 是逐字段映射的,没列进去的键根本不进 uespec。对这三个字段而言那不是 carry,是丢,如实记在这里 |
+| `clip`(v1.1) | **没有** | — | known-loss;子元素会溢出父盒 |
+| `borderAlign`(v1.2) | **没有** | — | known-loss;字段没了之后,往外那半描边(`shadow` 头部的 `0 0 0 Npx` 环)与真阴影再也分不开 |
 | `radius: "37px"` / 四值 / `50%` | `[tl,tr,br,bl]` px 浮点(`50%`→`min(w,h)/2`) | `FSlateBrush::OutlineSettings.CornerRadii`(UE5 RoundedBox 原生四角) | 精确(椭圆角 50% 为标量近似) |
 | `border: "4px solid rgba(..)"` | `{width,rgba}` | `OutlineSettings.Width/Color`(RoundedBox 描边) | 高(CSS border 内收 vs Slate outline 居线的亚像素差) |
 | `shadow: "0px 4px 0px rgba(..)"` | `[{dx,dy,blur,rgba}]` | **不渲染 + UE_LOG(Verbose)**(known-loss) | 丢失 |

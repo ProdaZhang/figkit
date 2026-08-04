@@ -154,14 +154,21 @@ def parse_border(s):
 
 def parse_shadow(s):
     """'0px 4px 0px rgba(..)[, ...]' → [{'dx','dy','blur','rgba'}, ...](无阴影 → [])。
-    capture 产 3 长度(dx dy blur、无 spread);防御性接受 2-4 长度,spread 丢弃。"""
+    capture 产 3 长度(dx dy blur、无 spread);防御性接受 2-4 长度,spread 丢弃。
+
+    **零值可以不带单位。** CSS 里 `0` 与 `0px` 等价,v1.2 的 OUTSIDE 描边环就写作
+    `0 0 0 6.0px rgba(...)`。旧正则硬要求前两段带 px,碰上它直接抛 ValueError ——
+    不是降级、是**崩**,而 docstring 还写着"防御性接受"。实测:真稿里 2 处、
+    kitchen-sink 补票后 1 处,都是这么炸的。
+    """
     if not s:
         return []
     out = []
+    num = r'(-?[\d.]+)(?:px)?'
     for part in _split_top(s):
         m = re.match(
-            r'(-?[\d.]+)px\s+(-?[\d.]+)px(?:\s+(-?[\d.]+)px)?(?:\s+(-?[\d.]+)px)?\s+'
-            r'(rgba?\([^)]*\)|#[0-9a-fA-F]+)\s*$', part)
+            r'%s\s+%s(?:\s+%s)?(?:\s+%s)?\s+'
+            r'(rgba?\([^)]*\)|#[0-9a-fA-F]+)\s*$' % (num, num, num, num), part)
         if not m:
             raise ValueError('无法解析 shadow: %r' % part)
         out.append({'dx': _num(m.group(1)), 'dy': _num(m.group(2)),
@@ -440,7 +447,45 @@ def _stem(p):
     return b
 
 
-IR_SPEC_SUPPORTED = '1.0'
+IR_SPEC_SUPPORTED = '1.3'
+
+# 本后端**认识**的 els 字段。少于输入文件里实际出现的键 = 有东西被静默跳过。
+IR_FIELDS_KNOWN = frozenset((
+    'id', 'name', 'type', 'parent', 'x', 'y', 'w', 'h', 'z', 'rot', 'opacity',
+    'radius', 'border', 'shadow', 'blur', 'fill', 'img', 'imgSize',
+    'vec', 'text',
+    # v1.2 的 clip / paths / viewBox / borderAlign **本后端还没实现** —— 故意不列进来,
+    # 让闸门在真数据里碰上它们时点名报出来,而不是当成"读懂了"。
+))
+
+
+def spec_warnings(cap, supported, known):
+    """IR 版本闸门。**只比大版本是不够的** —— 冻结纪律说小版本是"只增字段",
+
+    于是 1.0 的编译器读 1.2 的文件照样放行,新字段被当不认识的键跳过,不报错不吭声:
+    v1.2 的 paths/clip/borderAlign 就是这么在四个后端里集体消失的,而所有测试全绿。
+    现在小版本落后也要说话,并且**把真正出现在数据里的陌生键逐个点名** ——
+    "我按旧规矩读的"必须是一句听得见的话。
+    """
+    out = []
+    got = str(cap.get('spec') or supported)             # 缺失 = 冻结前的老产物
+    gmaj, smaj = got.split('.')[0], supported.split('.')[0]
+    if gmaj != smaj:
+        # 前缀是**给机器看的 ASCII 标记**:测试拿中文当判据会在管道里栽 ——
+        # 子进程按 cp936 写中文、父进程按 utf-8 解,整句乱码,断言静默失配(踩过)。
+        out.append('[major] 输入声称 IR v%s,本后端按 v%s 实现 —— 主版本不同,'
+                   '新语义会被按旧规矩解释' % (got, supported))
+    seen = set()
+    for e in (cap.get('els') or []):
+        if isinstance(e, dict):
+            seen.update(e.keys())
+    unknown = sorted(seen - set(known))
+    if unknown:
+        out.append('[unknown-fields] %s | 输入(IR v%s)里有本后端不认识的字段,**会被静默跳过** ——'
+                   '本后端按 v%s 实现,该字段要么去实现、要么在 mapping.md 的 known-loss 表里表态'
+                   % (', '.join(unknown), got, supported))
+    return out
+
 
 
 def check_ir(cap):
@@ -454,10 +499,7 @@ def check_ir(cap):
     if not isinstance(cap, dict):
         return ['.ui.json 顶层不是对象(读到 %s)' % type(cap).__name__], warns
 
-    got = str(cap.get('spec') or IR_SPEC_SUPPORTED)     # 缺失 = 冻结前的老产物
-    if got.split('.')[0] != IR_SPEC_SUPPORTED.split('.')[0]:
-        warns.append('输入声称 IR v%s,本后端按 v%s 实现 —— 主版本不同,'
-                     '新语义会被按旧规矩解释' % (got, IR_SPEC_SUPPORTED))
+    warns.extend(spec_warnings(cap, IR_SPEC_SUPPORTED, IR_FIELDS_KNOWN))
 
     els = cap.get('els')
     if not isinstance(els, list):
@@ -490,6 +532,30 @@ def check_ir(cap):
     return errors, warns
 
 
+def collect_losses(cap):
+    """本后端表达不了的项 → ["<元素id>: 说明", ...]。
+
+    uespec 的立场一贯是「carry」:python 段只做预处理,取舍留给 C++ 运行时。
+    但 **v1.2 那三个字段连 carry 都没做到** —— convert_cap 逐字段映射,
+    没列进去的键根本不进 uespec,到不了运行时。那就不是 carry,是丢,得说出来。
+    """
+    out = []
+    for e in cap.get('els') or []:
+        eid = e.get('id', '?')
+        if e.get('paths'):
+            out.append('%s: paths(%d 条矢量路径)没有进 uespec —— 本后端未实现 v1.2 的'
+                       '矢量绘制,连 carry 都没做到,运行时拿不到这个形状'
+                       % (eid, len(e['paths'])))
+        if e.get('clip'):
+            out.append('%s: clip 没有进 uespec —— 本后端未实现 v1.2 的裁剪,'
+                       '子元素会溢出父盒' % eid)
+        if (e.get('borderAlign') or '') in ('outside', 'center'):
+            out.append('%s: borderAlign=%r 没有进 uespec —— 往外那半描边'
+                       "(shadow 头部的 '0 0 0 Npx' 环)运行时无从分辨"
+                       % (eid, e['borderAlign']))
+    return out
+
+
 def guard_or_die(cap, sys_mod, src=''):
     """守门 + 打印 + 退出码。errors → 写 stderr 并 SystemExit(2)。"""
     errors, warns = check_ir(cap)
@@ -520,6 +586,8 @@ def main(argv):
     guard_or_die(cap_raw, sys, cap_path)  # 畸形 IR → 说清哪儿不对再退,别抛 traceback
     cap_spec = convert_cap(cap_raw)
     _dump(cap_spec, os.path.join(outdir, _stem(cap_path) + '.uespec.json'))
+    for line in collect_losses(cap_raw):  # 诚实降级:丢什么必须说,不许静默
+        sys.stderr.write('[known-loss] ' + line + '\n')
 
     if not flow_path:
         return 0

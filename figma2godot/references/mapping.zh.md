@@ -41,7 +41,7 @@ tscn 节点名不允许 `. : @ / " %` —— **统一换 `_`**:figma id `1:40` �
 | `fill: rgba(r,g,b,a)` | `bg_color` | 0-255 → 0-1,4 位小数 |
 | `fill` 为空但有描边/阴影 | `bg_color = Color(0,0,0,0)` + `draw_center = false` | 只画边/影 |
 | `radius: "45px"` / `"a b c d"`(CSS 简写 1/2/3/4 值) | `corner_radius_top_left/top_right/bottom_right/bottom_left`(四角独立) | CSS 序 TL TR BR BL |
-| `radius: "50%"`(capture 对**每个 ELLIPSE** 都产) | 四角同取 `min(w,h) × 50%` | **正方形精确、非正方形近似**:Godot 的 corner_radius 是标量,画不出椭圆角。口径与 figma2unreal 一致。曾因 `float('50%')` 抛异常而**整个丢掉**(椭圆渲染成方块且无告警),现由 tools/conformance 守着 |
+| `radius: "50%"`(capture 对**每个 ELLIPSE** 都产) | 四角同取 `min(w,h) × 50%` | **正方形精确、非正方形近似**:Godot 的 corner_radius 是标量,画不出椭圆角。实测代价(2026-08-05):邮件面板底部那条弧是个 2143×680 的椭圆,标量口径把它画成胶囊,顶弧**比 HTML 平 38px** —— 面板下沿的黄色带在 y=1176 就断了,而不是 y=1214。**这条已经不能再说"与其它后端同口径"**:Unity 的 UI Toolkit 原生按轴解析百分比,figma2cocos 现在也自己按 CSS 分轴算,两边画的都是真椭圆。对齐对象是 CSS,不是别的后端的将就实现;这里要补齐得改用烘出来的贴图而不是 StyleBoxFlat。此行曾因 `float('50%')` 抛异常而**整个丢掉**(椭圆渲染成方块且无告警),现由 tools/conformance 守着 |
 | `border: "2.0px solid rgba(...)"` | `border_width_left/top/right/bottom` + `border_color` | 宽度取整、最小 1;Godot 边框向内画,CSS `box-sizing: border-box` 同语义 |
 | `shadow: "ox oy blur [spread] rgba(...)"` | `shadow_color` + `shadow_offset = Vector2(ox, oy)` + `shadow_size` | **Godot 原生支持,别丢**。`shadow_size ≈ blur + spread`、最小 1(size=0 时 Godot 不绘制,CSS 的 0-blur 硬阴影会消失,故兜底 1) |
 | `fill: linear-gradient(角度, 色标…)` | 节点改为 `TextureRect` + `GradientTexture2D`(`Gradient` 存 offsets/colors;角度 → `fill_from/fill_to` UV:CSS 0deg=向上、90deg=向右) | 真渐变;色标缺位置按 CSS 规则插值 |
@@ -75,12 +75,15 @@ tscn 节点名不允许 `. : @ / " %` —— **统一换 `_`**:figma id `1:40` �
 | IR 特性 | 处理 | 损失说明 |
 |---|---|---|
 | `blur`(filter 模糊) | **丢弃** | Control 无逐节点 filter;真要 → 引擎内加 BackBufferCopy/shader,属手工后处理 |
+| `clip`(v1.1) | 无圆角走 `clip_contents`,**有圆角走 `clip_children`** | 两套机制,选错不是精度问题是 bug。`clip_contents` 是**矩形剪刀**,不认 `corner_radius`;而 figma 的常见写法正是「带圆角的裁剪容器 + 溢出的内容」,照 `clip_contents` 译出来就是方角:道具卡的品质渐变成了红方块,41px 圆角胶囊里 275×170 的纹理在左端漏出一块方形点阵。`clip_children` 拿**本节点画出来的形状**当子节点的模子,所以这类容器改发成一个带圆角 StyleBoxFlat 的 Panel(必须实心 —— 空模子会把子节点裁得一干二净)+ `clip_children = 1`;自身还有填充要画时用 `2`。**`clip_children` 不能嵌套** —— 一条祖先链只能有一个 —— 所以圆角裁剪嵌套时给**最外层**,内层退化成矩形 `clip_contents`(留痕)。顺序不能反:外层裁的是压在背景上的外轮廓(丢了就是 80px 圆角面板的底部两角变方角),内层裁的东西本来就压在一块不透明的同色父容器里,矩形剪刀只多出一点同色方角 |
+| `paths` + `viewBox`(v1.2) | 与场景同目录的 `.svg`,按 `Texture2D` 引用 | Godot 没有 SVG path 节点,但**自带 SVG 导入器**(ThorVG),winding rule / 洞 / 多子路径它都已经做了 —— 所以几何是写成真 `.svg`,而不是自己三角化、更不是退回下位图。注意 ThorVG 按 SVG 1.1 解析:`fill="rgba(...)"` 是 CSS Color 4,解不动会**静默变黑**,故填充写成 `#rrggbb` + `fill-opacity` |
+| `borderAlign`(v1.2) | `border_width_*` + `expand_margin_*` | Godot 的 border 和 CSS 一样只往内画。往外那半以 `0 0 0 Npx` 环的形式待在 `shadow` 头部,这里把它拆出来换算成等量 `expand_margin`,让 StyleBox 整体外扩,描边落在盒子之外而不是吃掉填充 |
 | `radial-/conic-gradient` | 平均色回退 | StyleBoxFlat/GradientTexture2D(本管线用法)不覆盖;GradientTexture2D 其实有 radial fill,但径向中心/半径与 CSS 语义不齐,宁可显式降级 |
 | `linear-gradient` + 圆角/描边/阴影同体 | 渐变保真,圆角/描边/阴影**丢** | 节点变 TextureRect 后无 StyleBox;真要 → 手工套 Panel 父 + clip |
 | `text.ls`(字距) | 丢弃 | 需 FontVariation `spacing_glyph`,依赖字体资源 |
 | `text.weight` / `family` | 不落盘 | 见 §6 字体;不配主题时用引擎默认字体渲染 |
 | `text.stroke` 宽度 | `outline_size = round(w/2)` 近似 | 骑线 vs 外描的差,±1px 级 |
-| CSS 阴影 `blur=0` 硬阴影 | `shadow_size = 1` 兜底 | Godot size=0 不画;1px 轻微软化 |
+| CSS 阴影 `blur=0` 硬阴影 | **在下面垫一层实心副本**,不走 `shadow_size` | `shadow_size` 的语义是「往外扩多少像素」,而 `0px 6px 0px` 的语义是「整个形状按位移复制一份、填成阴影色」。按 `shadow_size` 走会被 `max(1, blur+spread)` 夹成 1,设计稿上那块厚投影只剩一圈 1px 边。改为在本体**之前**发一个同四角圆角的 Panel(排在前面 = 画在下面)。带模糊的阴影仍走原生 `shadow_size` —— 那才是它表达得了的东西 |
 | `shadow` 挂在 TEXT/img 元素上 | 丢弃 | box-shadow ≠ 字体阴影;Label 只有 font shadow,语义不同不硬凑 |
 | 全局 `z` 跨父交叉 | 同级排序近似 | 兄弟内正确;跨父穿插(罕见)会平化 |
 | 列表滚动(overflow-y auto) | `clip_contents = true` 只裁不滚 | 要滚 → 手工把容器包进 ScrollContainer |
