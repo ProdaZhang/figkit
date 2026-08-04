@@ -4,7 +4,7 @@
 > CSS 帮你算的地方。用 CSS / WAAPI 的话浏览器已经算完了,直接看 `catalog.md` 的配方。
 >
 > **figkit 自己用了其中两条**:§1 贝塞尔求解器与 §2 弹簧解析解就是
-> `figma2html/scripts/motion.py` 里的 `bezier_solver` / `spring_solver`(六个后端各带一份
+> `figma2html/scripts/motion.py` 里的 `bezier_solver` / `spring_solver`(各后端各带一份
 > **逐字节镜像**)。它把曲线解成 17 个采样点烘进 `motion.json`,引擎侧只做线性插值 ——
 > **所以用 figkit 的转场时,这两条你不用自己实现**。其余四条(动量投射 / 橡皮筋 / 速度采样 /
 > FLIP)figkit 不管,要用就照这儿写。

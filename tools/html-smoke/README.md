@@ -13,7 +13,7 @@ PASS checkbox_binding_toggles_both_ways
 
 ## 它补的是哪个洞
 
-`assemble.js` / `render.js` 是六个后端里**唯一实跑过**的参照实现,另外五家的 binder 都照着它写。
+`assemble.js` / `render.js` 是各后端里**唯一实跑过**的参照实现,其余几家的 binder 都照着它写。
 而它自己**一条自动化测试都没有** —— figma2html 那 70 条全在 python 侧(capture / flow_check /
 flow_from_figma / motion / 夹具新鲜度),README 状态矩阵里它那一栏写的是"Edge headless
 screenshot",也就是**人眼看过**。

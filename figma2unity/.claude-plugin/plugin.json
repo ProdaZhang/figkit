@@ -1,6 +1,6 @@
 {
   "name": "figma2unity",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "FigKit IR -> Unity UI Toolkit (UXML/USS + FlowBinder)",
   "author": {
     "name": "ProdaZhang",

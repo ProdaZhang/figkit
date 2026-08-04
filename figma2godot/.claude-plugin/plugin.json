@@ -1,6 +1,6 @@
 {
   "name": "figma2godot",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "FigKit IR -> Godot .tscn + GDScript flow binder",
   "author": {
     "name": "ProdaZhang",

@@ -10,7 +10,7 @@
       "name": "figma2html",
       "source": "./figma2html",
       "description": "Capture a Figma frame into the FigKit IR and assemble a runnable HTML client: pixel-faithful screens plus declared interactions (modals, guards, list binding). Start here — the other backends consume this capture.",
-      "version": "0.3.0",
+      "version": "0.4.0",
       "author": { "name": "ProdaZhang" },
       "keywords": ["figma", "figma-to-code", "html", "ui", "design-to-code"]
     },
@@ -18,7 +18,7 @@
       "name": "figma2dsl",
       "source": "./figma2dsl",
       "description": "Turn a captured Figma frame into a semantic UI-DSL markdown document — a readable, diffable description of the screen for design/knowledge layers rather than a runtime.",
-      "version": "0.3.0",
+      "version": "0.4.0",
       "author": { "name": "ProdaZhang" },
       "keywords": ["figma", "ui-dsl", "documentation", "design-to-code"]
     },
@@ -26,7 +26,7 @@
       "name": "figma2unity",
       "source": "./figma2unity",
       "description": "Compile the FigKit IR into Unity UI Toolkit assets: UXML + USS plus a FlowBinder that implements the shared flow semantics. Verified against Unity 6000.4.8f1.",
-      "version": "0.3.0",
+      "version": "0.4.0",
       "author": { "name": "ProdaZhang" },
       "keywords": ["figma", "unity", "ui-toolkit", "uxml", "design-to-code"]
     },
@@ -34,7 +34,7 @@
       "name": "figma2godot",
       "source": "./figma2godot",
       "description": "Compile the FigKit IR into Godot scenes: .tscn plus GDScript flow binder. Verified in Godot 4.3 by pixel-comparing the rendered scene against the HTML backend.",
-      "version": "0.3.0",
+      "version": "0.4.0",
       "author": { "name": "ProdaZhang" },
       "keywords": ["figma", "godot", "gdscript", "design-to-code"]
     },
@@ -42,15 +42,15 @@
       "name": "figma2cocos",
       "source": "./figma2cocos",
       "description": "Compile the FigKit IR for Cocos Creator: a TypeScript interpreter that rebuilds the screen and its declared flow. Runtime type-checks against the official @cocos/creator-types declarations.",
-      "version": "0.3.0",
+      "version": "0.4.0",
       "author": { "name": "ProdaZhang" },
       "keywords": ["figma", "cocos-creator", "typescript", "design-to-code"]
     },
     {
       "name": "figkit-motion",
       "source": "./figkit-motion",
-      "description": "The motion catalog the six backends share: 59 effects (when to use one, when not to), 63 parameter tokens with their calibration status, and 6 algorithms (bezier inversion, analytic spring, momentum projection, rubber-banding, velocity sampling, FLIP). Method and parameters, not a runtime library.",
-      "version": "0.3.0",
+      "description": "The motion catalog the five backends share: 59 effects (when to use one, when not to), 63 parameter tokens with their calibration status, and 6 algorithms (bezier inversion, analytic spring, momentum projection, rubber-banding, velocity sampling, FLIP). Method and parameters, not a runtime library.",
+      "version": "0.4.0",
       "author": { "name": "ProdaZhang" },
       "keywords": ["motion", "animation", "design-tokens", "easing", "ui"]
     }
