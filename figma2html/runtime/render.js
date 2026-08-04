@@ -6,9 +6,13 @@
 
 // 注意:本函数(出运行时 DOM)与 scripts/figma_capture.py 的 rec_to_css(出 .tree.html 静态预览)
 // 是**同一套贴样式映射**。改任一处样式逻辑务必同步另一处,否则"预览 ≠ 运行时"会悄悄漂移。
-// 已知**有意**差异(别对齐):图片 url 这里补 '../../'(app.html 在 client 目录、深两层),
-// rec_to_css 用裸路径(tree.html 与素材同级)。
-function applyRecStyle(el, div) {
+//
+// 素材路径:IR 里的 `img` 是**相对 .ui.json 自己**的(capture 就是这么发的),所以页面在哪、
+// 深几层,取决于 flow.caps 把 .ui.json 指到了哪里 —— `assetBase` 由调用方从那条路径推出来
+// (见 assemble.js 的 assetBaseOf)。这里曾经写死过 '../../',那是**某一个工程**的目录深度
+// 被固化进了共享运行时:换个布局(比如 app.html 与素材同级)整屏图片就 404,而且不报错、
+// 只是"图没了",看着像设计如此。tree.html 那侧不用这套:它与素材同级,裸路径即可。
+function applyRecStyle(el, div, assetBase) {
   const s = div.style;
   s.position  = 'absolute';
   s.boxSizing = 'border-box';
@@ -86,7 +90,7 @@ function applyRecStyle(el, div) {
     });
     div.appendChild(svg);
   } else if (el.img) {
-    s.backgroundImage    = "url('../../" + el.img + "')";   // 有意:app.html 深两层,补 ../../(rec_to_css 用裸路径)
+    s.backgroundImage    = "url('" + (assetBase || '') + el.img + "')";
     s.backgroundSize     = el.imgSize || 'cover';
     s.backgroundPosition = 'center';
     s.backgroundRepeat   = 'no-repeat';
@@ -100,7 +104,8 @@ function applyRecStyle(el, div) {
  * @param {Object} cap     - { frame, w, h, stageBg, els:[...] }
  * @param {Element} mountEl - 目标层
  */
-function renderScreen(cap, mountEl) {
+function renderScreen(cap, mountEl, assetBase) {
+  const base = assetBase || '';
   const els = cap.els || [];
   const recById = new Map();
   const divById = new Map();
@@ -113,7 +118,7 @@ function renderScreen(cap, mountEl) {
     div.dataset.parent = el.parent || '';
     div.dataset.type   = el.type;
     div.dataset.name   = el.name || '';
-    applyRecStyle(el, div);
+    applyRecStyle(el, div, base);
     divById.set(el.id, div);
   }
 
@@ -131,8 +136,12 @@ function renderScreen(cap, mountEl) {
     (pdiv || mountEl).appendChild(div);
   }
 
-  // 层背景（帧自身的图片/纯色/渐变）；图片 url 相对项目根 → 补 ../../ 对齐 client 目录
-  if (cap.stageBg) mountEl.style.background = cap.stageBg.replace(/url\(/g, 'url(../../');
+  // 层背景(帧自身的图片/纯色/渐变);里面的 url 同样相对 .ui.json,按 assetBase 改写
+  if (cap.stageBg) {
+    mountEl.style.background = base
+      ? cap.stageBg.replace(/url\(/g, 'url(' + base)
+      : cap.stageBg;
+  }
 }
 
 /**

@@ -2,15 +2,16 @@
 
 ```bash
 python3 tools/docs-assets/shoot_gif.py figma2html/examples/login docs/shots/demo.gif
-python3 tools/docs-assets/shoot_gif.py figma2html/examples/main  docs/shots/demo-main.gif
+python3 tools/docs-assets/shoot_gif.py figma2html/examples/mail  docs/shots/demo-mail.gif
 ```
 
 第三个参数是分镜名(默认取示例目录名),对应 `gif_driver_<名>.js` 与 `shoot_gif.py` 里的 `FRAMES[<名>]`。
 
-还有一支拍**静态对照图**的:
+还有一支拍**静态对照图**的(`--topbar` 见脚本头:自带 `fit()` 的页面传 0):
 
 ```bash
-python3 tools/docs-assets/shoot_stage.py figma2html/examples/main docs/shots/main-html.png
+python3 tools/docs-assets/shoot_stage.py figma2html/examples/login docs/shots/login-html.png
+python3 tools/docs-assets/shoot_stage.py figma2html/examples/mail  docs/shots/mail-html.png --topbar 0
 ```
 
 它解决的是一个一直没人发现的问题:README 那对「HTML vs Godot」**从来不是同一个尺度**。
@@ -46,13 +47,12 @@ python3 tools/docs-assets/shoot_stage.py figma2html/examples/main docs/shots/mai
 | CSS 过渡 / WAAPI 关键帧 | ✅ 能 `pause()` 钉在任意毫秒 |
 | 逐帧 JS 循环(rAF / 定时器里自己算位置) | ❌ 录出来是**静止**的 |
 
-这不只是录制器的怪癖,它**反过来影响了示例该怎么写**:`examples/main` 的金币飞行因此是
-"先把整条轨迹采成 24 个关键帧、再交给浏览器播",而不是每帧用 JS 算一个位置 ——
+这不只是录制器的怪癖,它**反过来影响了示例该怎么写**:hook 侧要演的东西必须
+"先把整条轨迹采成关键帧、再交给浏览器播",而不是每帧用 JS 算一个位置 ——
 后者不但录不到,在真浏览器里也跑不上合成线程。
 
-**录不到的那部分要如实说**:主界面示例里的数字滚动是逐帧改文本的(catalog 里就该这么做),
-GIF 里因此只看得到**滚完之后**的数,看不到滚的过程。示例代码给它加了一条定时器兜底,
-保证"到账"这个事实不依赖有没有人在看那一帧。
+**录不到的那部分要如实说**:凡是逐帧改文本/改样式的效果(数字滚动这类,catalog 里就该这么做),
+GIF 里只看得到**跑完之后**的结果,看不到过程。
 
 ## 改动它
 

@@ -28,7 +28,7 @@ import tempfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 EXAMPLES = {"login": os.path.join(ROOT, "figma2html", "examples", "login"),
-            "main":  os.path.join(ROOT, "figma2html", "examples", "main")}
+            "mail":  os.path.join(ROOT, "figma2html", "examples", "mail")}
 
 EDGE_CANDIDATES = [
     r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
@@ -172,33 +172,38 @@ def _c4(m):
     return bad
 
 
-@check("close_button_inside_a_modal_works_and_only_it_does", example="main")
+@check("buttons_inside_a_modal_work_and_only_they_do", example="mail")
 def _m0(m):
-    """★ v1.1 的 `@in:<modal>:<nodeId>`:弹窗里的 ✗。
+    """★ v1.1 的 `@in:<modal>:<nodeId>`:住在弹窗里的按钮。
 
-    这个 ✗ 是 figma 原稿画的线(nodes.json 里 4:12 上的 CLOSE),`flow_from_figma.py`
-    把它落成 `@in:bag:4:12`。v1.0 根本表达不了 —— 只能拿"点哪都关 / 点面板外关"近似。
+    mail 里有两个:详情的「领取」(`@in:read:25:2568`)和已领取态的「删除」
+    (`@in:claimed:31:1424`)。v1.0 根本表达不了 —— 只能拿"点哪都关 / 点面板外关"近似。
+    这条一口气把两个都按了:领取要**换态**,删除要**关掉**。
     """
     bad = []
     if not m["opened"]:
-        bad.append("背包压根没打开,这条用例没意义")
+        bad.append("详情压根没打开,这条用例没意义")
     if not m["closeButtonFound"]:
-        bad.append("弹窗层里找不到 4:12 —— @in: 引用的节点没被抬进这一层")
+        bad.append("弹窗层里找不到那两个按钮 —— @in: 引用的节点没被抬进这一层")
+    if not m["swapped"]:
+        bad.append("按了「领取」却没换成已领取态")
     if m["stillOpen"]:
-        bad.append("按了 ✗ 却没关上")
+        bad.append("按了「删除」却没关上")
     if m["current"] is not None:
         bad.append("关掉之后 current 还是 %r" % m["current"])
     return bad
 
 
-@check("clicking_inside_the_panel_does_not_close_it", example="main")
+@check("clicking_inside_the_panel_does_not_close_it", example="mail")
 def _m1(m):
-    """反向锚:同一层上还挂着 @panelOutside:bag。点面板**里**别处若也关掉了,
-    上面那条就证明不了"是 ✗ 关的"。"""
+    """反向锚:同一层上还挂着 @panelOutside:read。点面板**里**别处若也关掉了,
+    上面那条就证明不了"是那个按钮关的"。"""
     bad = []
+    if not m["anchorFound"]:
+        bad.append("面板里找不到那个标题 —— 锚点没了,这条就成了摆设")
     if not m["stillOpen"]:
         bad.append("点了面板里的标题就把弹窗关了 —— @panelOutside 的判定漏了")
-    if m["current"] != "bag":
+    if m["current"] != "read":
         bad.append("current 变成了 %r" % m["current"])
     return bad
 

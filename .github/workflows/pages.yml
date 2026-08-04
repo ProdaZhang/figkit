@@ -44,14 +44,14 @@ jobs:
         working-directory: figma2html/scripts/tests
         run: |
           python3 test_fixtures_fresh.py
-          python3 test_main_example.py
+          python3 test_mail_example.py
 
       - name: Don't ship a demo whose flow is broken
         # flow.json 里写错一个 node id,页面照常渲染、只是点了没反应 ——
         # 正是"看起来好好的、其实是坏的"那类。发布前离线拦一道,两个 demo 都拦。
         run: |
           python3 figma2html/scripts/flow_check.py figma2html/examples/login/flow.json
-          python3 figma2html/scripts/flow_check.py figma2html/examples/main/flow.json
+          python3 figma2html/scripts/flow_check.py figma2html/examples/mail/flow.json
 
       - name: Stage the site
         run: |
@@ -79,14 +79,14 @@ jobs:
           </style>
           <main>
             <h1>FigKit — live demos</h1>
-            <p class="sub">Both screens are synthesized through the real capture pipeline. No Figma file, no token, no network.</p>
+            <p class="sub">Both run straight off static files &mdash; no Figma file, no token, no network. The first is synthesized through the real capture pipeline; the second is a real Figma capture.</p>
             <a class="card" href="examples/login/app.html">
               <b>Login →</b>
               <span>The pipeline at its smallest: a notice overlay, a server list cloned from data, an agreement guard that refuses.</span>
             </a>
-            <a class="card" href="examples/main/app.html">
-              <b>Main screen →</b>
-              <span>73 elements: an inventory grid, a codex list, locked tabs — and CLAIM, where coins fly into the top bar. That last part is the app hook, not the engine.</span>
+            <a class="card" href="examples/mail/app.html">
+              <b>Mail &rarr;</b>
+              <span>A real Figma capture: four screens, 129 elements, three overlays. Open a mail, claim its attachment and watch the panel swap state in place &mdash; that swap is the app hook, not the engine.</span>
             </a>
             <footer><a href="https://github.com/ProdaZhang/figkit">Source on GitHub</a></footer>
           </main>

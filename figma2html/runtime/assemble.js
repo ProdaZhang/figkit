@@ -9,6 +9,15 @@
 // 事件元素选择器:figma node id(底屏元素)/ 特殊 "@any:<modal>"、"@panelOutside:<modal>"、
 //                "@in:<modal>:<nodeId>"(弹窗内部的元素,如那个 ✗)。
 
+// 素材路径在 IR 里是**相对 .ui.json 自己**的,而 .ui.json 在哪由 flow.caps 说了算 ——
+// 于是素材的前缀就是那条路径的目录部分。曾经在 render.js 里写死过 '../../':
+// 那是某一个工程的目录深度,换个布局(app.html 与素材同级)图片全 404,
+// 而且不报错、只是"图没了",看着像设计如此。推出来就不会跟着布局漂。
+function assetBaseOf(capPath) {
+  const i = String(capPath || '').lastIndexOf('/');
+  return i < 0 ? '' : String(capPath).slice(0, i + 1);
+}
+
 (function () {
   const APP = {
     flow: null, caps: null, net: null,
@@ -35,7 +44,8 @@
       // 底屏。**底屏 cap 缺了要吭声**:不吭声的话页面就是一块空舞台,
       // 看着像"渲染坏了",实际是 flow.base 指了个不存在的 cap —— 那是最难查的一类。
       this.layers.base = document.getElementById('layer-base');
-      if (caps[flow.base]) renderScreen(caps[flow.base], this.layers.base);
+      if (caps[flow.base]) renderScreen(caps[flow.base], this.layers.base,
+                                        assetBaseOf((flow.caps || {})[flow.base]));
       else console.warn('[assemble] base cap 未载入:', flow.base, '—— 底屏会是空的');
 
       // 弹窗 = 抽面板子树叠加 + 半透明遮罩
@@ -50,7 +60,8 @@
         bd.dataset.backdrop = '1';
         Object.assign(bd.style, { position: 'absolute', left: '0', top: '0', width: w + 'px', height: h + 'px', background: 'rgba(0,0,0,0.5)', zIndex: '0' });
         layer.appendChild(bd);
-        if (caps[m.cap]) renderScreen(subtreeOf(caps[m.cap], m.roots), layer);
+        if (caps[m.cap]) renderScreen(subtreeOf(caps[m.cap], m.roots), layer,
+                                      assetBaseOf((flow.caps || {})[m.cap]));
         this.layers[name] = layer;
         this.modals[name] = { el: layer, panel: m.panel };
       });

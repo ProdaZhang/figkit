@@ -1,0 +1,69 @@
+{
+  "stage": { "w": 1080, "h": 1920 },
+
+  "caps": {
+    "base":    "screen-list.ui.json",
+    "read":    "screen-read.ui.json",
+    "claimed": "screen-readclaimed.ui.json",
+    "plain":   "screen-readplain.ui.json"
+  },
+  "base": "base",
+
+  "modals": {
+    "read":    { "cap": "read",    "roots": ["25:4193"],  "panel": "25:4193" },
+    "claimed": { "cap": "claimed", "roots": ["31:1382"],  "panel": "31:1382" },
+    "plain":   { "cap": "plain",   "roots": ["245:1802"], "panel": "245:1802" }
+  },
+
+  "state": {},
+
+  "events": [
+    { "on": "click", "el": ["25:1615", "25:2474"],
+      "do": "openModal", "arg": "read",
+      "transition": { "type": "SCALE_IN", "duration": 260, "fromScale": 0.95,
+                      "easing": { "type": "CUSTOM_CUBIC_BEZIER", "bezier": [0.23, 1, 0.32, 1] } } },
+
+    { "on": "click", "el": ["25:1629", "25:2446", "25:2460", "25:2488"],
+      "do": "openModal", "arg": "plain",
+      "transition": { "type": "SCALE_IN", "duration": 260, "fromScale": 0.95,
+                      "easing": { "type": "CUSTOM_CUBIC_BEZIER", "bezier": [0.23, 1, 0.32, 1] } } },
+
+    { "on": "click", "el": "@in:read:25:2568",
+      "do": "claim",
+      "transition": { "type": "DISSOLVE", "duration": 180,
+                      "easing": { "type": "CUSTOM_CUBIC_BEZIER", "bezier": [0.23, 1, 0.32, 1] } } },
+
+    { "on": "click", "el": "@in:claimed:31:1424",
+      "do": "closeModal",
+      "transition": { "type": "SCALE_OUT", "duration": 180, "toScale": 0.95,
+                      "easing": { "type": "CUSTOM_CUBIC_BEZIER", "bezier": [0.23, 1, 0.32, 1] } } },
+
+    { "on": "click", "el": "@in:plain:245:1844",
+      "do": "closeModal",
+      "transition": { "type": "SCALE_OUT", "duration": 180, "toScale": 0.95,
+                      "easing": { "type": "CUSTOM_CUBIC_BEZIER", "bezier": [0.23, 1, 0.32, 1] } } },
+
+    { "on": "click", "el": "@panelOutside:read",
+      "do": "closeModal",
+      "transition": { "type": "SCALE_OUT", "duration": 180, "toScale": 0.95,
+                      "easing": { "type": "CUSTOM_CUBIC_BEZIER", "bezier": [0.23, 1, 0.32, 1] } } },
+    { "on": "click", "el": "@panelOutside:claimed",
+      "do": "closeModal",
+      "transition": { "type": "SCALE_OUT", "duration": 180, "toScale": 0.95,
+                      "easing": { "type": "CUSTOM_CUBIC_BEZIER", "bezier": [0.23, 1, 0.32, 1] } } },
+    { "on": "click", "el": "@panelOutside:plain",
+      "do": "closeModal",
+      "transition": { "type": "SCALE_OUT", "duration": 180, "toScale": 0.95,
+                      "easing": { "type": "CUSTOM_CUBIC_BEZIER", "bezier": [0.23, 1, 0.32, 1] } } }
+  ],
+
+  "motion": {
+    "preset": "base",
+    "press": {
+      "scale": 0.96,
+      "duration": 120,
+      "easing": { "type": "CUSTOM_CUBIC_BEZIER", "bezier": [0.23, 1, 0.32, 1] },
+      "source": "preset:base"
+    }
+  }
+}

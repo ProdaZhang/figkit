@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FigKit · figma2html mail demo</title>
+  <style>
+    /* 设计字体 = Source Han Sans SC(思源黑体简体),与 Noto Sans SC 是同一套字形的
+       两个发行名。这里挂的 **FigCJK** 是它按本示例四屏真正用到的 116 个字做的子集
+       (每字重 TTF 39KB → woff2 19KB),Regular/Bold 两个字重都是从可变字体
+       `NotoSansSC-VF` 实例化出来的 —— **那份 VF 的 wght 默认值是 100(Thin)**,
+       直接引用会整屏细体,而设计稿 45/51 处文本是 Bold 700。
+       四端(html/cocos/unity/godot)共用同一份字形:否则每端各拿系统默认字体,
+       连换行位置都不一样,逐像素比出来的差异大半是字形噪声。 */
+    @font-face { font-family: 'FigCJK'; src: url('fonts/FigCJK-Regular.woff2') format('woff2');
+                 font-weight: 400; font-style: normal; font-display: block; }
+    @font-face { font-family: 'FigCJK'; src: url('fonts/FigCJK-Bold.woff2') format('woff2');
+                 font-weight: 700; font-style: normal; font-display: block; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #1a1a2e; overflow: hidden; width: 100vw; height: 100vh;
+           font-family: 'FigCJK', 'Source Han Sans SC', 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
+           /* 整页禁选中:连点两下 = 双击 = 选中文字 → 划词工具栏盖住界面、手势被打断。
+              游戏界面几乎没有需要选中的文字。 */
+           user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+    #stage-wrap { position: fixed; inset: 0; overflow: hidden; }
+    /* 缩放靠 transform,但**居中不能交给 flex**:flex 排的是未缩放的 1080×1920 布局盒,
+       在小视口里它先把父级撑爆再被 scale 缩小,结果画面偏出去一大截。
+       所以显式 left/top 归零、origin 归左上,平移量在 fit() 里按缩放后的真实尺寸算。 */
+    #stage { position: absolute; left: 0; top: 0; background: #000; transform-origin: 0 0; }
+    .screen-layer { position: absolute; inset: 0; }
+    #boot-err { position: fixed; left: 0; right: 0; top: 4px; text-align: center; font-size: 14px; color: #f99; z-index: 999; pointer-events: none; }
+  </style>
+</head>
+<body>
+  <div id="boot-err"></div>
+  <div id="stage-wrap">
+    <div id="stage">
+      <div id="layer-base" class="screen-layer"></div>   <!-- 底屏:邮件列表 -->
+      <div id="modal-layers"></div>                       <!-- 弹窗层(引擎注入) -->
+    </div>
+  </div>
+
+  <!-- 运行时(直接引 skill 的 runtime;拷出去部署时把这两个文件放同目录即可) -->
+  <script src="../../runtime/render.js"></script>
+  <script src="../../runtime/assemble.js"></script>
+  <!-- 内联数据(bundle.py 生成):双击 file:// 打开也能跑,见下面 loadSync -->
+  <script src="fixtures.js"></script>
+  <!-- app 专属 hook -->
+  <script src="app.js"></script>
+
+  <script>
+  (function () {
+    // 优先用内联数据:file:// 下浏览器会拦掉对本地文件的 XHR,不内联就只有白屏,
+    // 而控制台报错长得像"脚本坏了",很难联想到是跨域。起了 http server 时两条路都通。
+    function loadSync(p) {
+      const B = window.__FIGKIT_FIXTURES;
+      if (B && Object.prototype.hasOwnProperty.call(B, p)) return B[p];
+      try {
+        const x = new XMLHttpRequest(); x.open('GET', p, false); x.send(null);
+        if (x.status === 200 || x.status === 0) return JSON.parse(x.responseText);
+      } catch (e) { /* file:// 下 send() 直接抛,落到下面的提示 */ }
+      return null;
+    }
+    const FLOW = loadSync('flow.json');
+    if (!FLOW) {
+      document.getElementById('boot-err').innerHTML =
+        'Could not load <code>flow.json</code>. Run <code>python3 bundle.py</code> in this folder ' +
+        'to regenerate <code>fixtures.js</code>, or serve this directory over HTTP.';
+      return;
+    }
+    const caps = {};
+    Object.keys(FLOW.caps || {}).forEach(k => caps[k] = loadSync(FLOW.caps[k]));   // 各屏 .ui.json
+    if (window.APPHOOK && window.APPHOOK.register) window.APPHOOK.register(window.FigApp);
+    window.FigApp.build(FLOW, caps, null);
+    if (window.APPHOOK && window.APPHOOK.init) window.APPHOOK.init(window.FigApp, null);
+
+    // 1080×1920 的舞台按窗口等比缩放。这是竖屏手机稿,不缩放的话在桌面浏览器里
+    // 只能看见上半截。
+    function fit() {
+      const W = FLOW.stage.w, H = FLOW.stage.h;
+      const s = Math.min(innerWidth / W, innerHeight / H);
+      const x = (innerWidth - W * s) / 2, y = (innerHeight - H * s) / 2;
+      document.getElementById('stage').style.transform =
+        'translate(' + x + 'px,' + y + 'px) scale(' + s + ')';
+    }
+    addEventListener('resize', fit); fit();
+  })();
+  </script>
+</body>
+</html>
