@@ -117,6 +117,27 @@ Canvas (cc.Canvas, designResolution = cap.w × cap.h)
 | 实例内部 `rot=0` | 上游 API 限制 | hook 手动 `node.angle` |
 | `motion.json` 里 `unresolved` 的曲线 | 该转场瞬时显隐 | figma 没公开 `BOUNCY` / `*_BACK` 的控制点;别编数,见下 |
 
+### 踩坑:Graphics 的洞挖不出来 —— 缠绕方向对它无效
+
+`fill-rule` 在这里没有 API,但真正的问题比"没有 API"更靠下一层:**Graphics 的三角化根本不看
+缠绕方向**。引擎的 `_expandFill` 是逐轮廓循环、每条轮廓各调一次
+`Earcut(earcutData, null, 3)` —— 第二个参数正是 holeIndices,而它恒为 `null`。
+于是在 canvas / SVG 上通用的"把内轮廓翻个向,让缠绕相消"这一招,在这里是**空操作**:
+两条轮廓各自填实,内圈那条直接盖住外圈。
+
+代价看得见。v1.3 起,capture 把 figma 的描边带劈成「外轮廓 + 内轮廓 + evenodd」这种**环**发下来,
+底栏那三颗胶囊正是这个形状 —— 于是整颗被描边色填满:黑胶囊变灰、绿药丸变成发白的薄荷色,
+而 html / godot / unity 三家都是对的。四端逐像素比时,cocos 的均差因此挂在 5.41/255。
+
+改法是**用模板挖,不用缠绕挖**:一条路径里若有轮廓被别的轮廓整个套住(且 `rule` 是 evenodd),
+就多套一层 —— 外层挂 `Mask`(`GRAPHICS_STENCIL` + `inverted = true`)、模板画的正是那些"洞"轮廓,
+填充色画在它的子节点上。`inverted` 的语义恰好是"模板之外才画",于是洞是真的洞。
+没有洞的路径不加这一层:四屏 97 条路径里只有 3 条要挖洞,不该为少数情况给所有人多一个节点。
+修完 cocos 的均差 5.41 → **3.86/255**,底栏那一条 3.60。
+
+**`rule` 必须看。** nonzero 的多轮廓路径里,绕向本身就是数据(信封上镂空的折线、48 段的描边几何
+都靠它),按包围盒把"内轮廓"一律当洞处理会把这份数据毁掉。只有 evenodd 才判。
+
 ### 踩坑:`Graphics.arc` 不是 canvas 的 `arc`
 
 这里的圆角用三次贝塞尔而不是圆弧,是**故意的**。引擎的 `arc(cx, cy, r, a0, a1, ccw)` 与 canvas

@@ -142,6 +142,33 @@ Canvas (cc.Canvas, designResolution = cap.w × cap.h)
 | `rot=0` inside instances | An upstream API limitation | Set `node.angle` by hand in the hook |
 | `unresolved` curves in `motion.json` | That transition shows/hides instantly | Figma publishes no control points for `BOUNCY` / `*_BACK`; do not invent numbers, see below |
 
+### Pitfall: Graphics cannot punch holes — winding order means nothing to it
+
+There is no `fill-rule` API here, but the real problem sits one layer below "no API":
+**Graphics' tessellator does not look at winding order at all**. The engine's `_expandFill` loops
+over contours and calls `Earcut(earcutData, null, 3)` once per contour — that second argument is
+`holeIndices`, and it is always `null`. So the trick that works on canvas and in SVG — reverse the
+inner contour so the windings cancel — is a **no-op** here: both contours fill solid, and the inner
+one simply covers the outer.
+
+The cost is visible. Since v1.3 capture splits Figma's stroke band into a **ring** (outer contour +
+inner contour + `evenodd`), and the three pills in the bottom bar are exactly that shape — so each
+pill came out filled with its *stroke* colour: the black pills went grey, the green one went a
+washed-out mint, while HTML, Godot and Unity were all correct. It was worth 5.41/255 of the
+four-way pixel comparison.
+
+The fix punches the hole with a **stencil** instead of with winding: when a path has contours fully
+enclosed by another (and `rule` is `evenodd`), it gets one extra layer — the outer node carries a
+`Mask` (`GRAPHICS_STENCIL`, `inverted = true`) whose stencil draws exactly those hole contours, and
+the fill is drawn on its child. `inverted` means "draw everywhere except the stencil", which is
+precisely a hole. Paths without holes do not get the extra layer: 3 of the 97 paths across the four
+screens need one, and a minority case should not cost everyone a node. Cocos went 5.41 →
+**3.86/255**, the bottom-bar strip alone 3.60.
+
+**`rule` has to be honoured.** In a nonzero path the winding *is* the data — the cut-out fold lines
+on the envelope and the 48-segment stroke geometry both depend on it — so treating every enclosed
+contour as a hole would destroy it. Only `evenodd` is inspected.
+
 ### Pitfall: `Graphics.arc` is not canvas's `arc`
 
 Rounded corners here are cubic Béziers, not arcs, and that is deliberate. The engine's

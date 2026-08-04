@@ -322,9 +322,17 @@ function contourBoxes(cmds: PathCmd[]): number[][] {
 /**
  * `paths` → Graphics 真画。一条 path 一个子节点(一个 Graphics 只有一种 fillColor)。
  *
- * **填充规则**:Graphics 没有 fill-rule API。IR 里 evenodd 的多轮廓几乎都是"环/带洞"
- * (v1.3 起描边带就是发的这种环),而 Graphics 按缠绕方向定内外 —— 所以**把落在别的轮廓
- * 里面的那条反向**:这样无论底层按 nonzero 还是 evenodd,洞都是洞。
+ * **填充规则:洞得靠 Mask 挖,靠不了缠绕方向。** Graphics 没有 fill-rule API,而它的
+ * 三角化**根本不看缠绕**:引擎的 `_expandFill` 是逐轮廓循环、每条各调一次
+ * `Earcut(data, null, 3)` —— 第二个参数是 holeIndices,恒为 `null`。所以"把内轮廓翻个向"
+ * 这种在 canvas/SVG 上管用的招数,在这里是**空操作**:两条轮廓各自填实,内圈那条直接盖住外圈。
+ *
+ * 代价是看得见的:底栏那三颗胶囊(v1.3 起描边带就是发的「外轮廓 + 内轮廓 + evenodd」这种环)
+ * 于是整颗被描边色填满 —— 黑胶囊变灰、绿药丸变成发白的薄荷色,而 html/godot/unity 三家都是对的。
+ *
+ * 改法:有洞的路径拆成两层 —— 外层挂一个 **inverted 的 GRAPHICS_STENCIL Mask**、模板画的是
+ * 那些"洞"轮廓,填充色画在它的子节点上。inverted 的语义正好是"模板之外才画",于是洞是真的洞。
+ * 没洞的路径照旧一层,不为少数情况给所有人加节点。
  */
 function paintPaths(node: Node, el: CapEl, ga: number): void {
   const ut = node.getComponent(UITransform)!;
@@ -365,61 +373,73 @@ function paintPaths(node: Node, el: CapEl, ga: number): void {
     cut.setContentSize(el.w, el.h);
     node.addChild(child);
     child.setPosition(0, 0, 0);
-    const g = child.addComponent(Graphics);
-    g.fillColor = toColor(col, ga);
-    // **只有 evenodd 才能翻轮廓方向**。nonzero 的路径里,绕向本身就是数据 ——
-    // figma 导出的多轮廓形状(信封上镂空的折线、48 段的描边几何)靠内外相反的绕向挖洞,
-    // 无条件按包围盒把"内轮廓"翻一遍,等于把这份数据毁掉:洞被填实,线看着就粗了一圈。
-    // evenodd 则相反:Graphics 只认 nonzero,得把内轮廓翻过来才挖得出洞。
+
+    // 哪些轮廓是"洞":evenodd 且包围盒被别的轮廓整个套住。nonzero 的路径不判 ——
+    // 那里的绕向本身就是数据(信封上镂空的折线、48 段的描边几何都靠它),不该动。
     const evenOdd = String(p.rule || '').toLowerCase() === 'evenodd';
     const boxes = contourBoxes(cmds);
     const inside = boxes.map((b, i) => evenOdd && boxes.some((o, j) =>
       j !== i && o[0] <= b[0] && o[1] <= b[1] && o[2] >= b[2] && o[3] >= b[3]));
+    let holes = false;
+    for (const f of inside) if (f) holes = true;
     // 轮廓用**下标区间**表示,不用一个反复重新赋值的数组变量 —— 同上那条 Babel 约束:
     // `let sub: PathCmd[] = []` 再被 `sub = [c]` 赋值,声明的 TS 注解与字面量推出的 Flow 注解
     // 撞在一起,整份脚本编译不进包。
     const starts: number[] = [];
     for (let k = 0; k < cmds.length; k++) if (cmds[k].op === 'M') starts.push(k);
-    starts.forEach((s0, ci) => {
-      let end = cmds.length;
-      if (ci + 1 < starts.length) end = starts[ci + 1];
-      const raw: PathCmd[] = cmds.slice(s0, end).filter(c => c.op !== 'Z');
-      if (!raw.length) return;
-      let seq: PathCmd[] = raw;
-      if (inside[ci]) seq = reverseContour(raw);
-      for (const c of seq) {
-        if (c.op === 'M') { const [x, y] = map(c.x, c.y); g.moveTo(x, y); }
-        else if (c.op === 'L') { const [x, y] = map(c.x, c.y); g.lineTo(x, y); }
-        else if (c.op === 'C') {
-          const [x1, y1] = map(c.x1, c.y1), [x2, y2] = map(c.x2, c.y2), [x, y] = map(c.x, c.y);
-          g.bezierCurveTo(x1, y1, x2, y2, x, y);
-        } else if (c.op === 'Q') {
-          const [x1, y1] = map(c.op1x, c.op1y), [x, y] = map(c.x, c.y);
-          g.quadraticCurveTo(x1, y1, x, y);
-        }
+
+    // 有洞才多套一层:inverted 模板画"洞",填充色画在它的子节点上 → 洞是真的洞。
+    let target: Node = child;
+    if (holes) {
+      const mask = child.addComponent(Mask);
+      mask.type = Mask.Type.GRAPHICS_STENCIL;
+      mask.inverted = true;
+      const mg = mask.subComp as Graphics | null;
+      if (mg) {
+        mg.clear();
+        emitContours(mg, cmds, starts, inside, true, map);
+        mg.fill();
+      } else {
+        console.warn('[figma-ui] 洞的模板建不出来,这条路径会被填实:', el.id, idx);
       }
-      g.close();
-    });
+      const holeFill = adopt(new Node('fill'), child);
+      const hut = holeFill.addComponent(UITransform);
+      hut.setAnchorPoint(ut.anchorX, ut.anchorY);
+      hut.setContentSize(el.w, el.h);
+      child.addChild(holeFill);
+      holeFill.setPosition(0, 0, 0);
+      target = holeFill;
+    }
+
+    const g = target.addComponent(Graphics);
+    g.fillColor = toColor(col, ga);
+    emitContours(g, cmds, starts, inside, false, map);
     g.fill();
   });
 }
 
-/** 轮廓反向(首个 M 不动,其余命令倒着重连) —— 用来把"洞"的缠绕方向翻过来。 */
-function reverseContour(sub: PathCmd[]): PathCmd[] {
-  const pts: PathCmd[] = sub.slice();
-  if (!pts.length || pts[0].op !== 'M') return sub;
-  const start = pts[0] as { op: 'M'; x: number; y: number };
-  const ends: [number, number][] = [[start.x, start.y]];
-  for (const c of pts.slice(1)) if (c.op !== 'Z') ends.push([c.x, c.y]);
-  const out: PathCmd[] = [{ op: 'M', x: ends[ends.length - 1][0], y: ends[ends.length - 1][1] }];
-  for (let k = pts.length - 1; k >= 1; k--) {
-    const c = pts[k];
-    const to = ends[k - 1];
-    if (c.op === 'L') out.push({ op: 'L', x: to[0], y: to[1] });
-    else if (c.op === 'C') out.push({ op: 'C', x1: c.x2, y1: c.y2, x2: c.x1, y2: c.y1, x: to[0], y: to[1] });
-    else if (c.op === 'Q') out.push({ op: 'Q', op1x: c.op1x, op1y: c.op1y, x: to[0], y: to[1] });
-  }
-  return out;
+/** 把轮廓画进 g:`wantHoles` 为真只画"洞"那几条,为假只画外圈(没洞时即全部)。 */
+function emitContours(g: Graphics, cmds: PathCmd[], starts: number[], inside: boolean[],
+                      wantHoles: boolean, map: (x: number, y: number) => [number, number]): void {
+  starts.forEach((s0, ci) => {
+    if (inside[ci] !== wantHoles) return;
+    let end = cmds.length;
+    if (ci + 1 < starts.length) end = starts[ci + 1];
+    const seq: PathCmd[] = cmds.slice(s0, end).filter(c => c.op !== 'Z');
+    if (!seq.length) return;
+    for (const c of seq) {
+      if (c.op === 'M') { const [x, y] = map(c.x, c.y); g.moveTo(x, y); }
+      else if (c.op === 'L') { const [x, y] = map(c.x, c.y); g.lineTo(x, y); }
+      else if (c.op === 'C') {
+        const [x1, y1] = map(c.x1, c.y1), [x2, y2] = map(c.x2, c.y2), [x, y] = map(c.x, c.y);
+        g.bezierCurveTo(x1, y1, x2, y2, x, y);
+      } else if (c.op === 'Q') {
+        const [x1, y1] = map(c.op1x, c.op1y), [x, y] = map(c.x, c.y);
+        g.quadraticCurveTo(x1, y1, x, y);
+      }
+    }
+    g.close();
+  });
 }
 
 const H_ALIGN: Record<string, number> = {
