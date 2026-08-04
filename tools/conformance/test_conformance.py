@@ -283,6 +283,37 @@ def test_known_loss_is_documented():
     assert not bad, "文档与代码脱节:\n  " + "\n  ".join(bad)
 
 
+def test_scripts_that_print_chinese_pin_their_stdout():
+    """★ 会打印中文的脚本必须把自己的 stdout 钉成 UTF-8。
+
+    Windows 上 stdout 的编码跟系统区域走。开发机是 GBK,中文编得动,一路绿;CI 的
+    windows runner 是 Latin-1,同一句 print 直接 UnicodeEncodeError、退出码非 0。
+    实际代价:`examples/mail/bundle.py` 末尾那句 "wrote fixtures.js (5 条, ...)" 让
+    windows-latest 那个 job 红了,而 ubuntu / macos / 本机三处全绿 —— **最难查的那种红**,
+    因为它跟被测逻辑一点关系都没有,而且在能复现它的机器上根本复现不出来。
+
+    所以这条不查"有没有踩",查的是**有没有设防**:凡是源码里出现中文 print 的 .py,
+    都得带上那段 reconfigure。新写一个脚本、顺手 print 一句中文,这里立刻红。
+    """
+    import io as _io
+    skip = {".git", "node_modules", "__pycache__", ".ruff_cache", "build", "library", "temp"}
+    bad = []
+    for root, dirs, files in os.walk(ROOT):
+        dirs[:] = [d for d in dirs if d not in skip]
+        for fn in files:
+            if not fn.endswith(".py"):
+                continue
+            p = os.path.join(root, fn)
+            src = _io.open(p, encoding="utf-8").read()
+            prints = re.findall(r"print\((.{0,160})", src, re.S)
+            if not any(re.search(r"[一-鿿]", s) for s in prints):
+                continue
+            if "reconfigure(encoding" not in src:
+                bad.append(os.path.relpath(p, ROOT).replace(os.sep, "/"))
+    assert not bad, ("这些脚本会打印中文却没钉住 stdout,在 Latin-1 的 windows 上会崩:\n  "
+                     + "\n  ".join(sorted(bad)))
+
+
 def test_percent_radius_is_measured_against_css_not_another_backend():
     """百分比圆角的对齐对象是 **CSS**,不是别家后端的将就实现。
 

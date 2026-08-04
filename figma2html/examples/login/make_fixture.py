@@ -23,6 +23,15 @@ import sys, os, json, argparse
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'scripts'))
 import figma_capture
 
+# 输出里有中文。Windows 上 stdout 的编码跟系统区域走(CI runner 是 Latin-1),
+# 一 print 就 UnicodeEncodeError、退出码非 0 —— 而开发机是 GBK,中文编得动,一路绿。
+# 这一条把本进程的输出钉成 UTF-8,让「能不能打印」不再取决于跑在谁的机器上。
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 
 # ── 文案(唯一区别所在;几何/结构两语言完全一致)────────────────────────────────
 COPY = {

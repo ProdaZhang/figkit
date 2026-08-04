@@ -6,6 +6,15 @@
   python3 subset_font.py <源字体.ttf/.otf> <out.woff2> <ui.json...> [--extra "✓ "]
 """
 import sys, json
+
+# 输出里有中文。Windows 上 stdout 的编码跟系统区域走(CI runner 是 Latin-1),
+# 一 print 就 UnicodeEncodeError、退出码非 0 —— 而开发机是 GBK,中文编得动,一路绿。
+# 这一条把本进程的输出钉成 UTF-8,让「能不能打印」不再取决于跑在谁的机器上。
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
 try:
     from fontTools import subset
 except ImportError:                      # 唯一的外部依赖,别让人对着 ModuleNotFoundError 猜

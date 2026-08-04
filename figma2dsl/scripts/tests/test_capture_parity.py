@@ -4,6 +4,16 @@
 兄弟目录不存在(单独分发本 skill)时跳过——守卫只在同仓工作区生效。
 """
 import os
+import sys
+
+# 输出里有中文。Windows 上 stdout 的编码跟系统区域走(CI runner 是 Latin-1),
+# 一 print 就 UnicodeEncodeError、退出码非 0 —— 而开发机是 GBK,中文编得动,一路绿。
+# 这一条把本进程的输出钉成 UTF-8,让「能不能打印」不再取决于跑在谁的机器上。
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 MINE = os.path.join(HERE, "..", "figma_capture.py")
