@@ -99,7 +99,7 @@ tscn 节点名不允许 `. : @ / " %` —— **统一换 `_`**:figma id `1:40` �
 (`cubic-bezier(.32,.72,0,1)` 或弹簧三参),`Tween.EASE_OUT` 是**另一条同名不同形**的曲线。
 挑"最像的枚举"是各后端各挑各的 —— 同一份 IR 在六个引擎里六种手感,而每家测试都绿。
 量级参考:easeOutCubic 与 `cubic-bezier(.23,1,.32,1)` 最大差 **19.8 个百分点**,且差在起步段。
-采样点没有这个自由度,`tools/conformance` 还会拿它跟 unity/unreal **逐点对账**。
+采样点没有这个自由度,`tools/conformance` 还会拿它跟 unity **逐点对账**。
 
 用法:`Curve` 资源逐点 `add_point(Vector2(x, y))`,再 `tween_method` 按 `curve.sample(t)` 插值。
 

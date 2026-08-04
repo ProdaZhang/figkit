@@ -344,7 +344,7 @@ def bake_flow(flow, generator):
 
     # flow.motion 里那几条(按压 / 逐项入场)也烘进来。**引擎侧一条曲线都不该自己算**:
     # 各引擎自带的缓动枚举同名不同形,自己算就等于各算各的。这里烘成关键帧,
-    # 引擎只做插值 —— 与 unreal 那条"python 段做完全部数值解算、C++ 侧零解析"的分工一致。
+    # 引擎只做插值 —— 全部数值解算留在 python 段,运行时侧零解析。
     for key in ("press", "stagger"):
         blk = (flow.get("motion") or {}).get(key)
         if not isinstance(blk, dict) or not blk.get("easing"):

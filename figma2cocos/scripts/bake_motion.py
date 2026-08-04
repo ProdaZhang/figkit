@@ -4,7 +4,7 @@
 用法:
     python3 bake_motion.py <flow.json> <outdir>
 
-**为什么 cocos 也要这一步。** 别的后端是编译型的(产 .tscn / .uss / uespec),烘焙顺手挂在
+**为什么 cocos 也要这一步。** 别的后端是编译型的(产 .tscn / .uss),烘焙顺手挂在
 转换器里;cocos 是**运行时解释器**,没有转换器可挂 —— 但曲线该在哪解算不因此改变:
 
   figma 给的是一条具体曲线(`cubic-bezier(.32,.72,0,1)`)或一组弹簧参数;Creator 的
@@ -13,7 +13,7 @@
   cubic-bezier(.23,1,.32,1) 最大差 19.8 个百分点,且差在起步段 —— 肉眼看得出,测试看不出)。
 
 所以曲线一律在 python 侧解成 17 个采样点,`flow-binder.ts` 只做线性插值,
-再由 tools/conformance 拿 cocos 烘出来的点跟 godot/unity/unreal 逐点对账。
+再由 tools/conformance 拿 cocos 烘出来的点跟 godot/unity 逐点对账。
 `motion.py` 是 figma2html 主拷贝的**逐字节镜像**(skill 必须自足、可单独安装)。
 """
 import json

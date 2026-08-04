@@ -86,7 +86,7 @@ per event carrying a transition, a **17-point evenly spaced sampled curve** (x a
 **different curve sharing the name**. Every backend picking "the closest one" means one IR becomes
 six different feels across six engines while every test stays green. For scale: easeOutCubic differs
 from `cubic-bezier(.23,1,.32,1)` by up to **19.8 percentage points**, and the worst of it is in the
-opening moments. `tools/conformance` compares these points against godot and unreal **one by one**.
+opening moments. `tools/conformance` compares these points against godot **one by one**.
 
 Usage: `new AnimationCurve(points.Select(p => new Keyframe(p[0], p[1])).ToArray())`, then tween it
 yourself. **Do not** swap in a `transition-timing-function` keyword for convenience.

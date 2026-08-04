@@ -76,7 +76,7 @@ def test_zh_variant_still_matches_backend_fixtures():
     """各后端 tests/fixtures 是同一生成器的 zh 产物(故意留着做 CJK 覆盖)。
     几何一改两边都得重生成,这里盯住"没人只改了一半"。"""
     root = os.path.abspath(os.path.join(_HERE, "..", "..", ".."))
-    backends = [d for d in ("figma2godot", "figma2unity", "figma2unreal", "figma2cocos")
+    backends = [d for d in ("figma2godot", "figma2unity", "figma2cocos")
                 if os.path.isdir(os.path.join(root, d, "scripts", "tests", "fixtures"))]
     if not backends:
         # skill 文件夹要能单独安装(装成 Claude Code 插件时只拷本目录),

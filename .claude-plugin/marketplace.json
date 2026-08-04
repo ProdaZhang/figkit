@@ -1,6 +1,6 @@
 {
   "name": "figkit",
-  "description": "Turn one Figma frame into runnable UI for HTML, Unity, Godot, Unreal or Cocos Creator — six skills sharing one pixel-faithful IR and one declared interaction layer (modals, guards, list binding).",
+  "description": "Turn one Figma frame into runnable UI for HTML, Unity, Godot or Cocos Creator — five skills sharing one pixel-faithful IR and one declared interaction layer (modals, guards, list binding).",
   "owner": {
     "name": "ProdaZhang",
     "url": "https://github.com/ProdaZhang"
@@ -37,14 +37,6 @@
       "version": "0.3.0",
       "author": { "name": "ProdaZhang" },
       "keywords": ["figma", "godot", "gdscript", "design-to-code"]
-    },
-    {
-      "name": "figma2unreal",
-      "source": "./figma2unreal",
-      "description": "Compile the FigKit IR into a strongly-typed uespec plus a UMG C++ runtime for Unreal 5.3+. Ships source and an integration guide; two engine-free gates (contract parity, UE reflection lint) hold the line until it is compiled in-engine.",
-      "version": "0.3.0",
-      "author": { "name": "ProdaZhang" },
-      "keywords": ["figma", "unreal-engine", "umg", "cpp", "design-to-code"]
     },
     {
       "name": "figma2cocos",

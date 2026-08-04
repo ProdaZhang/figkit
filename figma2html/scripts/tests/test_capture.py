@@ -81,7 +81,7 @@ def test_writable_shapes_are_never_baked_into_a_bitmap():
     这条是 2026-08-04 从一次真事故里补的:一个 1012×1618 的邮件面板,figma 里是
     4 个圆角实色矩形 + 1 条渐变 + 几个椭圆,**零张图片填充**,只因角落有 9 个矢量装饰,
     旧的 `needs_image = 含矢量 and 无文字` 就把整块烤成了一张 PNG。产物退化成
-    "截图 + 热区",下游 unity/godot/unreal/cocos 拿到的也全是位图。
+    "截图 + 热区",下游 unity/godot/cocos 拿到的也全是位图。
 
     两个分支都必须守:
       · 缺 PNG —— 旧代码这里靠 `vector_leaf_count<=4` 兜底,矢量一多(这里 5 个)

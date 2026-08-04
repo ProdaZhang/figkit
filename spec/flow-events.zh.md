@@ -3,11 +3,11 @@
 > 只改一边会红(散文可以有出入,schema 不行)。
 
 > **FigKit IR Spec v1.1 — 2026-07-31**(v1.0 于 2026-07-03 冻结)
-> 本文件是六后端(html/dsl/unity/godot/unreal/cocos)共享 IR 契约的**权威版本**;
+> 本文件是五后端(html/dsl/unity/godot/cocos)共享 IR 契约的**权威版本**;
 > `figma2html/references/` 下的同名文件是随 skill 分发的工作副本(内容同源)。
 > 冻结纪律:v1.0 起**只允许 additive**(新增可选字段/枚举值),不改既有字段形状;
 > 每一次结构性改动都须由某个后端撞出的真实缺口触发,升次版本号,并记录于本头部变更行。
-> 变更史:v1.0(2026-07-03)冻结 —— 经 6 后端互证(html 渲染/dsl 转写/unity 编译+导入/godot 实机渲染/unreal 强类型化/cocos 校验器)。
+> 变更史:v1.0(2026-07-03)冻结 —— 经 5 后端互证(html 渲染/dsl 转写/unity 编译+导入/godot 实机渲染/cocos 校验器)。
 > v1.1(2026-07-31)additive:新增事件选择器 `@in:<modal>:<nodeId>`。这正是 v1.0 起就记在
 > Fields 里的那个缺口 —— `events[].el` 只能指 base 屏的节点,于是真实 figma 文件里最常见的
 > 那条连线(弹窗里的 ✗)根本没有表达。当时是**记下来而不顺手补**,等真值得升 v1.1;

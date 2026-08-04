@@ -108,7 +108,7 @@ curve sharing the name**. Picking "the closest enum" means every backend picks i
 becomes six different feels across six engines while every test stays green. For scale: easeOutCubic
 differs from `cubic-bezier(.23,1,.32,1)` by up to **19.8 percentage points**, and the worst of it is
 in the opening moments. Sample points have no such freedom, and `tools/conformance` compares them
-against unity and unreal **one by one**.
+against unity **one by one**.
 
 Usage: build a `Curve` resource with `add_point(Vector2(x, y))` per point, then `tween_method`
 interpolating through `curve.sample(t)`.

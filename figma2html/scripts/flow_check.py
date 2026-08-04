@@ -6,11 +6,11 @@
 
 **为什么需要它**:README 让人**手写** flow.json,而它整篇是靠 figma node id 互相引用的。
 写错一个 id,`assemble.js` 只会在**浏览器 console** 里 warn 一句 —— 得先起服务、打开
-devtools、点到那个元素,才发现"点了没反应"。同一类错误在 figma2cocos / figma2unreal
+devtools、点到那个元素,才发现"点了没反应"。同一类错误在 figma2cocos
 是**离线就 exit 2** 当场说清的。这条路是首选入口和 live demo 走的路,反馈却最差,
 所以把那份判定搬过来,在打开浏览器之前就拦下。
 
-校验什么(与 figma2cocos/scripts/ui_check.py、figma2unreal/scripts/ui_to_uespec.py 同语义):
+校验什么(与 figma2cocos/scripts/ui_check.py 同语义):
   1. flow.caps 里每个 .ui.json 存在且能载入;
   2. base → 已声明的 cap;
   3. modals[*].cap 存在;roots / panel 的 id 在该 modal 的 cap 里;

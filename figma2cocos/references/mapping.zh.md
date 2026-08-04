@@ -149,7 +149,7 @@ flow.json ──► scripts/bake_motion.py ──► motion.json(每条曲线 17
 参数;Creator 的 `easing.quadOut` 之流是**另一套同名不同形**的曲线。让每个引擎各挑"最像的
 内置缓动",同一份 IR 在六个引擎里就是六种手感,而每家测试照样绿(实测:easeOutCubic 与
 `cubic-bezier(.23,1,.32,1)` 最大差 **19.8 个百分点**,且差在起步段)。所以 cocos 虽然没有
-转换器可挂烘焙,也**单独带一个烘焙 CLI**,产出与 godot/unity/unreal 一起进
+转换器可挂烘焙,也**单独带一个烘焙 CLI**,产出与 godot/unity 一起进
 `tools/conformance` 逐点对账。
 
 ⚠️ **帧间必须线性插值**:采样点一致只保证**关键帧上**一致。Godot 的默认切线把每段两头压平、
@@ -181,7 +181,7 @@ Unity 的默认平滑切线在段内拱起来 —— 两家都栽过。`sampleCu
 
 ### 验证等级(诚实)
 
-- ✅ 采样点与 godot / unity / unreal **逐点一致**(`tools/conformance`,含贝塞尔与弹簧)。
+- ✅ 采样点与 godot / unity **逐点一致**(`tools/conformance`,含贝塞尔与弹簧)。
 - ✅ TS 严格类型编译门(tsc `--noEmit` 对官方 `@cocos/creator-types` 3.8.3,零错)。
   可复现:`cd tools/cocos-typecheck && npm ci && python3 check.py`;它跑两条 ——
   零错,**以及**往真源码里种一个必然的类型错误后 tsc 必须报出来(只跑前者证明不了"门有牙":

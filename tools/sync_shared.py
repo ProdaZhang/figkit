@@ -5,11 +5,11 @@
     python3 tools/sync_shared.py --sync     # 主拷贝 → 各镜像
     python3 tools/sync_shared.py --sync --force   # 明知镜像更新,仍然按主拷贝覆盖
 
-**为什么会有镜像。** 七个 skill 必须能**单独安装**(CONTRIBUTING 原则 3),所以
-`motion.py`(五份)与 `figma_capture.py`(两份)是有意重复的 —— 这一条不打算靠 DRY 消灭。
+**为什么会有镜像。** 六个 skill 必须能**单独安装**(CONTRIBUTING 原则 3),所以
+`motion.py`(四份)与 `figma_capture.py`(两份)是有意重复的 —— 这一条不打算靠 DRY 消灭。
 
 **为什么要这支工具。** 重复本身有测试守着(逐字节一致,漂了就红),但同步一直是手工 `cp`:
-改完主拷贝要记得复制到另外四个地方,漏一个只有 CI 会告诉你。工具管这一步,
+改完主拷贝要记得复制到另外三个地方,漏一个只有 CI 会告诉你。工具管这一步,
 测试继续管"有没有漏"。
 
 `--sync` 会先看一眼**镜像是不是比主拷贝新**。是的话多半是改错了地方 —— 把编辑落在了
@@ -27,7 +27,6 @@ MIRRORS = {
     os.path.join("figma2html", "scripts", "motion.py"): [
         os.path.join("figma2godot", "scripts", "motion.py"),
         os.path.join("figma2unity", "scripts", "motion.py"),
-        os.path.join("figma2unreal", "scripts", "motion.py"),
         os.path.join("figma2cocos", "scripts", "motion.py"),
     ],
     os.path.join("figma2html", "scripts", "figma_capture.py"): [

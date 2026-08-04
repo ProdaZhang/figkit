@@ -25,10 +25,10 @@ except Exception:
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(_HERE)
-# 七套 skill。前六个是后端(吃 IR、产东西);figkit-motion 是**查阅层** ——
+# 六套 skill。前五个是后端(吃 IR、产东西);figkit-motion 是**查阅层** ——
 # 它不产物、不吃 IR,但它的 tokens.json 是 motion.py 那份预设的出处,所以同样要跑测试。
 SUITES = ["figma2dsl", "figma2html", "figma2unity",
-          "figma2godot", "figma2unreal", "figma2cocos", "figkit-motion"]
+          "figma2godot", "figma2cocos", "figkit-motion"]
 
 
 _COUNTS = {}        # 套件名 -> 通过的检查条数(顺带数出来,不额外跑第二遍)

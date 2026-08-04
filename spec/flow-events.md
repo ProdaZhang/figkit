@@ -1,9 +1,9 @@
 > **FigKit IR Spec v1.1 — 2026-07-31** (v1.0 frozen 2026-07-03)
-> This file is the **authoritative** copy of the IR contract shared by the six backends (html/dsl/unity/godot/unreal/cocos);
+> This file is the **authoritative** copy of the IR contract shared by the five backends (html/dsl/unity/godot/cocos);
 > the same-named file under `figma2html/references/` is the working copy shipped with the skill (same content).
 > Freeze discipline: from v1.0 on, changes are **additive only** (new optional fields / enum values); existing field shapes do not change.
 > Every structural change must be triggered by a real gap hit by some backend, bump the minor version, and be recorded in the changelog line below.
-> Changelog: v1.0 (2026-07-03) frozen — cross-validated by 6 backends (html render / dsl transcription / unity compile+import / godot in-engine render / unreal strong typing / cocos checker).
+> Changelog: v1.0 (2026-07-03) frozen — cross-validated by 5 backends (html render / dsl transcription / unity compile+import / godot in-engine render / cocos checker).
 > Additive since freeze (still v1.0, no shape change): optional `events[].transition` and `motion`,
 > plus the SCALE_IN / SCALE_OUT preset transition types. Motion defaults are authored into the file
 > by the importer with a `source` marker, never injected at runtime; Figma always wins over a preset.

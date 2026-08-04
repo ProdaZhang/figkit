@@ -107,7 +107,7 @@ def parse_radius(s, w=0, h=0):
     百分比不是边角料:capture 对**每个 figma ELLIPSE** 都产 `radius: "50%"`
     (见 figma_capture.py 的 ELLIPSE 分支),头像/圆点/徽章/胶囊按钮全走这条。
     早先 float('50%') 抛 ValueError → 返回 None → 圆角整个丢掉、椭圆渲染成方块,
-    而且不打日志。口径与 figma2unreal 对齐:百分比取 min(w,h) 的比例(Godot 的
+    而且不打日志。口径:百分比取 min(w,h) 的比例(Godot 的
     corner_radius 是标量,非正方形元素上是近似,已记在 mapping.md known-loss)。"""
     if not s:
         return None

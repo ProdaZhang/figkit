@@ -3,11 +3,11 @@
 > 只改一边会红(散文可以有出入,schema 不行)。
 
 > **FigKit IR Spec v1.0 — FROZEN 2026-07-03**
-> 本文件是六后端(html/dsl/unity/godot/unreal/cocos)共享 IR 契约的**权威版本**;
+> 本文件是五后端(html/dsl/unity/godot/cocos)共享 IR 契约的**权威版本**;
 > `figma2html/references/` 下的同名文件是随 skill 分发的工作副本(内容同源)。
 > 冻结纪律:v1.0 起**只允许 additive**(新增可选字段/枚举值),不改既有字段形状;
 > 下一次结构性改动须由某个后端撞出的真实缺口触发,并升 v1.1 记录于本头部变更行。
-> 变更史:v1.0(2026-07-03)冻结 —— 经 6 后端互证(html 渲染/dsl 转写/unity 编译+导入/godot 实机渲染/unreal 强类型化/cocos 校验器)。
+> 变更史:v1.0(2026-07-03)冻结 —— 经 5 后端互证(html 渲染/dsl 转写/unity 编译+导入/godot 实机渲染/cocos 校验器)。
 > v1.3(2026-08-05）—— 不加字段,把三件**只有 figma 答得上来的事**收进捕获层,免得每个后端各猜各的。`text.wrap`(additive,读 `textAutoResize`):定宽的折行、随字撑宽的不折 —— 以前 html 靠运行时 hook 猜,引擎侧没有等价物。**文本几何改为行盒**:figma 把高 `lh` 的行块按 `textAlignVertical` 放进文本框,而拿 `absoluteRenderBounds` 实测,行块高过框时是**居中溢出**而非顶对齐;godot 的 Label 与 Unity 的 UI Toolkit 都没有 line-height,所以单行文本的 `y`/`h` 现在直接给行盒、`alignV` 恒为 `center`,后端只要「在盒子里居中」就精确一致(此前 godot 低 12px、unity 高 8.5px)。多行框不动。**描边带改发预裁的环**:figma 的 `strokeGeometry` 是骑在边线上的 ±w 带子,原样发 + `clip` 提示等于把布尔裁剪当入场券 —— 没有它的后端(Painter2D)只能整条照画、粗一倍。捕获层现在把带子劈开,发「形状 + 内缩/外扩轮廓」两条闭合轮廓、按 evenodd 当环填,`clip` 清空;劈不开的退回原样 + 提示,所以路径上的 `clip` 仍留在契约里。
 
 # .ui.json — 全保真渲染真源(figma_capture.py 产)

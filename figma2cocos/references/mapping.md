@@ -181,7 +181,7 @@ feels across six engines while every test stays green (measured: easeOutCubic di
 `cubic-bezier(.23,1,.32,1)` by up to **19.8 percentage points**, and the worst of it is in the
 opening moments). So even though cocos has no converter to hang the baking off, it **ships its own
 baking CLI**, and its output goes into `tools/conformance` for point-by-point comparison against
-godot / unity / unreal.
+godot / unity.
 
 ⚠️ **Interpolation between frames must be linear**: matching sample points only guarantees agreement
 **at the keyframes**. Godot's default tangents flatten both ends of each segment and Unity's default
@@ -220,7 +220,7 @@ curve values are identical either way and only the distance differs.
 
 ### Verification level (honest)
 
-- ✅ Sample points agree with godot / unity / unreal **point by point** (`tools/conformance`,
+- ✅ Sample points agree with godot / unity **point by point** (`tools/conformance`,
   béziers and springs alike).
 - ✅ Strict TS type gate (tsc `--noEmit` against the official `@cocos/creator-types` 3.8.3, zero errors).
   Reproducible: `cd tools/cocos-typecheck && npm ci && python3 check.py`. It runs two checks —

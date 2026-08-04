@@ -65,6 +65,6 @@ examples/login/ 自足可跑示例:make_fixture.py(合成三屏,走真 capture �
 - UTF-8 无 BOM。**FIGMA_TOKEN** 只读进单子进程、绝不进对话/文件/CHANGELOG、用完即删。
 - **figma_capture.py 主拷贝在本 skill**;同级 `figma2dsl/scripts/` 持镜像(其 tests 有 parity 守卫)。改捕获逻辑只在这里改,再同步过去。
 - 运行时全局名 `window.FigApp`(app hook 一律用 register(app) 的形参,别直引全局);子集字体族名 `FigCJK`。
-- **下游引擎后端**:同级 `figma2unity / figma2godot / figma2unreal / figma2cocos` 消费本 skill 产的 `.ui.json + flow.json`(它们不含 capture,只做编译/解释)。
+- **下游引擎后端**:同级 `figma2unity / figma2godot / figma2cocos` 消费本 skill 产的 `.ui.json + flow.json`(它们不含 capture,只做编译/解释)。
 - 跳隐藏节点(visible:false / opacity≈0 / 0尺寸)。
 - 服务端零依赖(Node)即可:POST /api + SSE + 静态服务(**.woff2 MIME**)。

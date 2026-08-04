@@ -81,7 +81,7 @@ IR 样式值是 **CSS 风格字符串**(`radius="45px"`、`border="2.0px solid r
 (`cubic-bezier(.32,.72,0,1)` 或弹簧三参);USS 的 `ease-out` 之流是**另一条同名不同形**的曲线。
 各后端各挑"最像的" = 同一份 IR 在六个引擎里六种手感,而每家测试都绿。
 量级参考:easeOutCubic 与 `cubic-bezier(.23,1,.32,1)` 最大差 **19.8 个百分点**,且差在起步段。
-`tools/conformance` 会拿这些点跟 godot/unreal **逐点对账**。
+`tools/conformance` 会拿这些点跟 godot **逐点对账**。
 
 用法:`new AnimationCurve(points.Select(p => new Keyframe(p[0], p[1])).ToArray())`,
 再自己 tween;**别**图省事换成 `transition-timing-function` 的关键字。

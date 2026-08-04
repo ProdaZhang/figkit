@@ -2,13 +2,13 @@
 """跨后端一致性:同一份 IR,各后端的处置必须与它自己的声明相符。
 
 **为什么需要它**:此前每个后端只跟**自己手写的期望**比对,没有任何东西断言
-"五个后端对同一份 IR 理解一致"。而唯一的跨后端共享夹具(login 三屏)实测只覆盖
+"各后端对同一份 IR 理解一致"。而唯一的跨后端共享夹具(login 三屏)实测只覆盖
 radius / border / stageBg —— shadow / blur / rot / opacity / img / vec / gradient /
 text-stroke / 百分比圆角全是零覆盖。于是 `radius:"50%"`(capture 对每个 ELLIPSE 都产)
 在 godot 被整个丢掉、在 cocos 被当成 50px,两边测试却都是绿的。
 
 本套做三件事:
-  1. 三个产物型后端都能吃下 kitchen-sink(不崩、退出码 0);
+  1. 两个产物型后端都能吃下 kitchen-sink(不崩、退出码 0);
   2. 各后端在 expectations.json 里的声明与产物**对得上**
      (render/approx → 产物里找得到信号;known-loss → 找不到信号,但必须有降级留痕);
   3. 声明为 approx / known-loss 的,必须能在该后端 references/mapping.md 里查到 ——
@@ -16,7 +16,7 @@ text-stroke / 百分比圆角全是零覆盖。于是 `radius:"50%"`(capture 对
 
 覆盖边界(诚实):figma2html 与 figma2cocos 是**解释器**,运行时直接吃 .ui.json,
 没有可静态检查的**像素**产物,不在像素那几节内(见 expectations.json 的 _scope)。
-**但转场缓动那一节四家都在**:cocos 虽无转换器,曲线仍在 python 侧解算(它自带
+**但转场缓动那一节三家都在**:cocos 虽无转换器,曲线仍在 python 侧解算(它自带
 `scripts/bake_motion.py`),烘出来的采样点照样逐点对账。
 """
 import io
@@ -56,14 +56,13 @@ _SCHEMA_FIELDS = _schema_fields()
 BACKENDS = {
     "godot":  ("figma2godot",  "scripts/ui_to_tscn.py",   "kitchen-sink.tscn"),
     "unity":  ("figma2unity",  "scripts/ui_to_unity.py",  "kitchen-sink.uss"),
-    "unreal": ("figma2unreal", "scripts/ui_to_uespec.py", "kitchen-sink.uespec.json"),
 }
 
 _ART = {}      # backend -> (artifact_text, stderr_text)
 
 
 def _run_all():
-    """跑三个转换器,缓存产物与 stderr。"""
+    """跑每个转换器,缓存产物与 stderr。"""
     if _ART:
         return _ART
     tmp = tempfile.mkdtemp(prefix="figkit_conf_")
@@ -134,13 +133,6 @@ def _unity_chunk(text, eid):
     return "\n".join(parts)
 
 
-def _unreal_el(text, eid):
-    for e in json.loads(text)["els"]:
-        if e["id"] == eid:
-            return e
-    return None
-
-
 GODOT_SIGNALS = {
     "radius-px": "corner_radius", "radius-pct": "corner_radius",
     "radius-pct-oblong": "corner_radius", "border": "border_width",
@@ -169,31 +161,13 @@ UNITY_SIGNALS = {
     # OUTSIDE 描边环 = 垫在本体下面、四边各外扩 N 的额外盒子(USS 无 box-shadow)
     "paths": "FigVector", "clip": "overflow", "border-outside": "-ring",
 }
-UNREAL_FIELD = {
-    "radius-px": "radius", "radius-pct": "radius", "radius-pct-oblong": "radius",
-    "border": "border", "shadow": "shadow", "blur": "blur", "rot": "rot",
-    "opacity": "opacity", "img": "img", "vec": "vec", "gradient-linear": "fill",
-    "gradient-radial": "fill", "text": "text", "text-stroke": "text",
-    "paths": "paths", "clip": "clip", "border-outside": "borderAlign",
-}
 
 
 def _present(backend, feat, eid):
     art, _ = _run_all()[backend]
     if backend == "godot":
         return GODOT_SIGNALS[feat] in _godot_chunk(art, eid)
-    if backend == "unity":
-        return UNITY_SIGNALS[feat] in _unity_chunk(art, eid)
-    e = _unreal_el(art, eid)
-    assert e is not None, "unreal uespec 里没有元素 %s" % eid
-    v = e.get(UNREAL_FIELD[feat])
-    if feat == "text-stroke":
-        return bool((v or {}).get("stroke"))
-    if feat in ("gradient-linear", "gradient-radial"):
-        return (v or {}).get("type") in ("linear", "radial")
-    if feat == "opacity":
-        return v < 1
-    return bool(v)
+    return UNITY_SIGNALS[feat] in _unity_chunk(art, eid)
 
 
 def _loss_report(backend):
@@ -207,9 +181,9 @@ def _loss_report(backend):
 # ── 检查 ─────────────────────────────────────────────────────────────────────
 
 def test_all_backends_consume_kitchen_sink():
-    """三个产物型后端都得吃得下这份把特性打满的 IR。"""
+    """每个产物型后端都得吃得下这份把特性打满的 IR。"""
     arts = _run_all()
-    assert len(arts) == 3, arts.keys()
+    assert len(arts) == len(BACKENDS), arts.keys()
     for name, (art, _) in arts.items():
         assert len(art) > 200, "%s 的产物短得可疑(%d 字节)" % (name, len(art))
 
@@ -222,7 +196,7 @@ def test_declarations_match_artifacts():
         for backend in BACKENDS:
             status = spec[backend]
             got = _present(backend, feat, eid)
-            want = status in ("render", "approx", "carry")
+            want = status in ("render", "approx")
             if got != want:
                 bad.append("%s/%s 声明 %s,产物里%s(元素 %s)"
                            % (backend, feat, status, "找到了信号" if got else "找不到信号", eid))
@@ -235,7 +209,7 @@ def test_every_ir_field_is_accounted_for():
     这是补票的一条。v1.2 加 `paths`/`viewBox`/`clip`/`borderAlign` 时,我把新字段写进了
     schema、写进了 capture、html 那侧也做对了 —— 唯独没往这套一致性检查里喂:
     `make_kitchen_sink.py` 重跑后新键**以默认值**出现(paths: [] / clip: false),
-    三个后端"都吃得下"、声明也"都对得上",于是 paths 与 clip 在 godot/unity/unreal 里
+    各后端"都吃得下"、声明也"都对得上",于是 paths 与 clip 在 godot/unity 里
     集体静默消失,而全套测试一路绿灯,直到有人把真稿丢进 Godot 才看见。
 
     闸门本身是对的,漏的是**有人得往里喂料**。这条断言把"记得喂"从自觉变成硬约束:
@@ -284,7 +258,7 @@ def test_degradations_leave_a_trace():
     """approx / known-loss 必须留痕 —— 仓库原则:不许静默丢失。"""
     bad = []
     for feat, spec in sorted(EXP["features"].items()):
-        for backend in ("godot", "unity"):          # unreal 的取舍在 C++ 运行时
+        for backend in BACKENDS:
             if spec[backend] not in ("approx", "known-loss"):
                 continue
             rep = _loss_report(backend)
@@ -309,19 +283,28 @@ def test_known_loss_is_documented():
     assert not bad, "文档与代码脱节:\n  " + "\n  ".join(bad)
 
 
-def test_percent_radius_agrees_across_parsers():
-    """三个 python 解析器对同一串 CSS 必须给同一个数 —— 这正是当初漏掉的那类分叉。"""
+def test_percent_radius_is_measured_against_css_not_another_backend():
+    """百分比圆角的对齐对象是 **CSS**,不是别家后端的将就实现。
+
+    这条原先比的是"两个 python 解析器给不给同一个数"。那个口径本身是错的:两家
+    **一起**照 `min(w,h)` 折,测试照样全绿,而 CSS 说 `50%` 在非正方形上是**椭圆角**
+    (水平按 w、垂直按 h)。互比只能测出分叉,测不出"一起错"。
+
+    所以改成直接对 CSS 真值断言,并把 godot 当下的近似**显式钉住** —— 它退化成胶囊
+    是已知取舍(StyleBoxFlat 的 corner_radius 是标量),写在 mapping.md 里;哪天改用
+    烘图补齐了,这条会红,提醒来改期望而不是让近似悄悄留一辈子。
+    """
     sys.path.insert(0, os.path.join(ROOT, "figma2godot", "scripts"))
-    sys.path.insert(0, os.path.join(ROOT, "figma2unreal", "scripts"))
     import ui_to_tscn as G
-    import ui_to_uespec as R
     bad = []
     for w, h in ((100, 100), (300, 80), (40, 40), (17, 100)):
-        g = G.parse_radius("50%", w, h)
-        r = R.parse_radius("50%", w, h)
-        if list(g) != [round(x) for x in r]:
-            bad.append("%dx%d: godot=%s unreal=%s" % (w, h, g, r))
-    assert not bad, "百分比圆角口径分叉:\n  " + "\n  ".join(bad)
+        css = (w / 2.0, h / 2.0)                       # CSS 真值:逐轴各算各的
+        got = G.parse_radius("50%", w, h)
+        want = round(min(w, h) / 2.0)                  # godot 现状:折成胶囊
+        if list(got) != [want] * 4:
+            bad.append("%dx%d: godot=%s,期望的近似是 %s(CSS 真值 %s)"
+                       % (w, h, got, [want] * 4, css))
+    assert not bad, "百分比圆角与声明的近似对不上:\n  " + "\n  ".join(bad)
 
 
 def test_kitchen_sink_is_fresh():
@@ -353,7 +336,7 @@ BAD_IRS = {
 
 
 def _feed(cap_obj, tag):
-    """把一份 IR 喂给三个后端 → {backend: (returncode, 合并输出)}。"""
+    """把一份 IR 喂给每个产物型后端 → {backend: (returncode, 合并输出)}。"""
     tmp = tempfile.mkdtemp(prefix="figkit_bad_")
     p = os.path.join(tmp, "%s.ui.json" % tag)
     with io.open(p, "w", encoding="utf-8", newline="") as f:
@@ -370,7 +353,7 @@ def _feed(cap_obj, tag):
 def test_malformed_ir_is_rejected_consistently():
     """畸形 IR 必须被**每个**后端挡下:退出码非 0,且不是 traceback。
 
-    此前 6 个后端里只有 cocos 有校验器,其余喂进畸形 IR 就是 KeyError 或静默错渲染。
+    此前各后端里只有 cocos 有校验器,其余喂进畸形 IR 就是 KeyError 或静默错渲染。
     校验代码在各后端里各带一份(skill 必须自足、不能跨目录 import),所以"一致"这件事
     没法靠共享代码保证 —— 只能靠这条测试。"""
     bad = []
@@ -415,27 +398,39 @@ def test_backends_name_the_ir_fields_they_do_not_understand():
 
     冻结纪律说小版本是"只增字段",于是旧后端读新文件"安全" —— 安全的前提是
     它**知道自己没读**。v1.2 的 paths/clip/borderAlign 就是在这个前提失效时丢的:
-    闸门只比大版本,新键当不存在,四个后端集体静默降级而全套测试一路绿灯。
+    闸门只比大版本,新键当不存在,各后端集体静默降级而全套测试一路绿灯。
 
-    godot 与 unity 三个都实现了 → 不该有话说;unreal 还没实现 → 必须逐个点名。
-    等哪天它实现了,这条会红,提醒把字段加进它的 IR_FIELDS_KNOWN。
+    两个方向都要测,只测一边没有牙:
+      · 已实现的字段(paths/clip/borderAlign)→ 一个字都不该说;
+      · 一个谁都没实现的字段 → **每家都必须点名**。
+    后一半此前是靠"当时还没实现 v1.2 的那个后端"顺带覆盖的 —— 那是运气,不是设计:
+    等它实现了,正向锚就跟着消失。改用一个合成的未来字段,覆盖不再随实现进度漂移。
     """
-    obj = json.loads(io.open(CAP, encoding="utf-8").read())
+    base = json.loads(io.open(CAP, encoding="utf-8").read())
     bad = []
-    for backend, (rc, text) in sorted(_feed(obj, "unknown").items()):
+    for backend, (rc, text) in sorted(_feed(base, "unknown").items()):
         assert rc == 0, "%s 因陌生字段直接失败了(该告警,不该拒收)" % backend
         # 只在那条告警的**字段名段**里找(| 之前),别在整份 stderr 里找:
         # godot 的 known-loss 文案提到 `clip_contents`,整篇搜 "clip" 会误判(踩过)。
         # 判据也必须是 ASCII —— 中文在管道里会因 cp936/utf-8 错配变乱码(也踩过)。
-        line = "".join(ln.split("|")[0] for ln in text.splitlines()
-                       if "[unknown-fields]" in ln)
-        named = sorted(f for f in ("paths", "clip", "borderAlign") if f in line)
-        if backend in ("godot", "unity"):
-            if named:
-                bad.append("%s 已实现 v1.2 却仍报不认识:%s" % (backend, named))
-        elif named != ["borderAlign", "clip", "paths"]:
-            bad.append("%s 没点名全部未实现字段,只报了 %s" % (backend, named))
+        named = sorted(f for f in ("paths", "clip", "borderAlign")
+                       if f in _unknown_line(text))
+        if named:
+            bad.append("%s 已实现 v1.2 却仍报不认识:%s" % (backend, named))
+
+    future = json.loads(json.dumps(base))
+    for el in future["els"]:
+        el["figkitFutureField"] = 1
+    for backend, (rc, text) in sorted(_feed(future, "future").items()):
+        assert rc == 0, "%s 因陌生字段直接失败了(该告警,不该拒收)" % backend
+        if "figkitFutureField" not in _unknown_line(text):
+            bad.append("%s 读到没实现的 figkitFutureField 却一声不吭" % backend)
     assert not bad, "陌生字段处置不一致:\n  " + "\n  ".join(bad)
+
+
+def _unknown_line(text):
+    return "".join(ln.split("|")[0] for ln in text.splitlines()
+                   if "[unknown-fields]" in ln)
 
 
 def test_capture_stamps_the_spec_version():
@@ -461,9 +456,6 @@ FLOW_CONSUMERS = {
                lambda d: [os.path.join(d, "flow.json")]),
     "cocos":  ("figma2cocos/scripts/ui_check.py",
                lambda d: [os.path.join(d, "flow.json"), d]),
-    "unreal": ("figma2unreal/scripts/ui_to_uespec.py",
-               lambda d: [os.path.join(d, "screen-login.ui.json"),
-                          os.path.join(d, "flow.json"), os.path.join(d, "out")]),
 }
 LOGIN_FIX = os.path.join(ROOT, "figma2cocos", "scripts", "tests", "fixtures")
 FLOW_FILES = ("flow.json", "screen-login.ui.json",
@@ -471,7 +463,7 @@ FLOW_FILES = ("flow.json", "screen-login.ui.json",
 
 
 def _feed_flow(mutate, tag):
-    """把 login 夹具拷进临时目录、按 mutate 改坏 flow,再喂给三个后端 → {backend: rc}。"""
+    """把 login 夹具拷进临时目录、按 mutate 改坏 flow,再喂给每个消费方 → {backend: rc}。"""
     tmp = tempfile.mkdtemp(prefix="figkit_flow_%s_" % tag)
     for fn in FLOW_FILES:
         with io.open(os.path.join(LOGIN_FIX, fn), encoding="utf-8") as f:
@@ -523,14 +515,14 @@ BAD_FLOWS = {
 
 
 def test_good_flow_accepted_by_every_consumer():
-    """反向锚:没改坏的 flow,三家都得放行。"""
+    """反向锚:没改坏的 flow,每家都得放行。"""
     bad = [("%s rc=%d\n%s" % (b, rc, t[:300]))
            for b, (rc, t) in sorted(_feed_flow(None, "good").items()) if rc != 0]
     assert not bad, "合法 flow 被拒:\n  " + "\n  ".join(bad)
 
 
 def test_in_modal_selector_accepted_by_every_consumer():
-    """★ v1.1 新增的 `@in:<modal>:<nodeId>` —— 三家离线校验器要**一致地放行**。
+    """★ v1.1 新增的 `@in:<modal>:<nodeId>` —— 各家离线校验器要**一致地放行**。
 
     坏引用被一致拦下(见 BAD_FLOWS 里那两条)只证明了一半:一个把所有 `@in:` 都当成
     坏引用的校验器,那两条也一样是绿的。所以正向锚必须单列一条。
@@ -546,7 +538,7 @@ def test_bad_flow_rejected_by_every_consumer():
     """坏引用必须被**每个**消费 flow 的后端挡下。
 
     此前 html 这条路只在浏览器 console.warn 一句 —— 而 README 恰恰让人手写 flow.json,
-    这条路又是首选入口和 live demo 走的路,反馈却最差。判定逻辑三家各带一份
+    这条路又是首选入口和 live demo 走的路,反馈却最差。判定逻辑各家各带一份
     (skill 必须自足),所以"一致"只能靠这条测试保证。"""
     bad = []
     for tag, mut in sorted(BAD_FLOWS.items()):
@@ -562,8 +554,8 @@ def test_bad_flow_rejected_by_every_consumer():
 #
 # 这一节要挡的东西和 radius:"50%" 是同一类,但更隐蔽:figma 给的是一条具体曲线
 # (cubic-bezier / 弹簧三参),而每个引擎都有一套**同名不同形**的内置缓动枚举
-# (DOTween 的 Ease.OutQuad、Godot 的 Tween.EASE_OUT、USS 的 ease-out、UE 的 EEasingFunc)。
-# 各后端各挑"最像的那个",同一份 IR 在六个引擎里就是六种手感 —— 而每家的测试都绿着,
+# (DOTween 的 Ease.OutQuad、Godot 的 Tween.EASE_OUT、USS 的 ease-out)。
+# 各后端各挑"最像的那个",同一份 IR 在每个引擎里就是一种手感 —— 而每家的测试都绿着,
 # 因为每家都只跟自己的期望比。所以这里不比"用了哪个枚举",直接比**采出来的点**。
 #
 # 参照量级:easeOutCubic 与 cubic-bezier(.23,1,.32,1) 最大差 19.8 个百分点,且差在起步段。
@@ -576,9 +568,6 @@ MOTION_BACKENDS = {                                   # 后端 → 跑法(都产
     "unity":  lambda tmp: ["figma2unity/scripts/ui_to_unity.py",
                            os.path.join(tmp, "screen-login.ui.json"), tmp,
                            os.path.join(tmp, "flow.json")],
-    "unreal": lambda tmp: ["figma2unreal/scripts/ui_to_uespec.py",
-                           os.path.join(tmp, "screen-login.ui.json"),
-                           os.path.join(tmp, "flow.json"), tmp],
     # cocos 是运行时解释器,没有转换器可挂烘焙 —— 但曲线该在哪解算不因此改变,
     # 它自带一个独立的烘焙 CLI,产出同样进这张对账表。
     "cocos":  lambda tmp: ["figma2cocos/scripts/bake_motion.py",
@@ -600,7 +589,7 @@ UNKNOWN_TR = {"type": "DISSOLVE", "duration": 260, "easing": {"type": "BOUNCY"}}
 
 
 def _bake_everywhere(transition):
-    """给 login flow 的首个 openModal 事件换上 transition,四家各烘一次 → {backend: (motion, stderr)}。"""
+    """给 login flow 的首个 openModal 事件换上 transition,各家各烘一次 → {backend: (motion, stderr)}。"""
     tmp = tempfile.mkdtemp(prefix="figkit_motion_")
     for fn in FLOW_FILES:
         with io.open(os.path.join(LOGIN_FIX, fn), encoding="utf-8") as f:
@@ -631,7 +620,7 @@ def test_motion_solver_copies_are_byte_identical():
     行为一致是结论,字节一致才是能守住的前提。capture 的镜像就是这么守的。"""
     master = io.open(os.path.join(ROOT, "figma2html", "scripts", "motion.py"), "rb").read()
     drift = []
-    for pkg in ("figma2godot", "figma2unity", "figma2unreal", "figma2cocos"):
+    for pkg in ("figma2godot", "figma2unity", "figma2cocos"):
         p = os.path.join(ROOT, pkg, "scripts", "motion.py")
         if not os.path.exists(p):
             drift.append("%s 缺 motion.py" % pkg)
@@ -756,7 +745,7 @@ def test_motion_not_played_is_written_down_in_every_mapping():
     """曲线烘出来了但**没有后端在播** —— 这是登记在案的降级,不是静默丢失。
     每家 mapping.md 都得能查到,否则就成了"代码里有、文档里没有"的那类账。"""
     missing = []
-    for pkg in ("figma2godot", "figma2unity", "figma2unreal", "figma2cocos"):
+    for pkg in ("figma2godot", "figma2unity", "figma2cocos"):
         p = os.path.join(ROOT, pkg, "references", "mapping.md")
         text = io.open(p, encoding="utf-8").read() if os.path.exists(p) else ""
         if "transition" not in text.lower():
@@ -873,7 +862,7 @@ def test_guard_shake_is_the_same_waveform_in_every_backend():
 def test_mapping_docs_and_their_zh_mirrors_stay_structurally_paired():
     """★ 每份 `mapping.md` 与它的 `mapping.zh.md` 必须**结构成对**。
 
-    这四份是六后端契约的对外面(README 直接指过来),v0.3.x 之前一直是中文,挡掉了一半读者;
+    这三份是后端契约的对外面(README 直接指过来),v0.3.x 之前一直是中文,挡掉了一半读者;
     译英之后原文按仓里既有的做法(`spec/*.zh.md`)留成镜像 —— 但 `spec/` 那对之所以敢留,
     是因为有 `spec_parity.py` 守着。**没有守卫的双份文档必然漂**,而漂了的镜像比没有镜像更坏:
     它看起来是真的。
@@ -883,7 +872,7 @@ def test_mapping_docs_and_their_zh_mirrors_stay_structurally_paired():
     """
     import re as _re
     bad = []
-    for pkg in ("figma2godot", "figma2unity", "figma2unreal", "figma2cocos"):
+    for pkg in ("figma2godot", "figma2unity", "figma2cocos"):
         en_p = os.path.join(ROOT, pkg, "references", "mapping.md")
         zh_p = os.path.join(ROOT, pkg, "references", "mapping.zh.md")
         if not os.path.exists(zh_p):
@@ -905,7 +894,7 @@ def test_mapping_docs_and_their_zh_mirrors_stay_structurally_paired():
             bad.append("%s 表格行数 en=%d ≠ zh=%d" % (pkg, rows(en), rows(zh)))
 
         # ③ 代码块:**块数**必须一致;**内容**只比那些在 zh 侧不含中文的块。
-        #    这四份里的代码块有两类:真代码(如 unreal 的 Build.cs,跨语言逐字相同)和
+        #    这三份里的代码块有两类:真代码(跨语言逐字相同)和
         #    带散文的 ASCII 示意图(cocos 那张烘焙管线图、坐标通式里的行内注释)——
         #    后者两边本来就不一样,那是**翻译**不是漂移。
         #    第一版按行剔中文,结果被"注释与代码同一行"打败(zh 整行没了、en 还在);
@@ -928,17 +917,17 @@ def test_mapping_docs_and_their_zh_mirrors_stay_structurally_paired():
 def test_every_runtime_guards_the_json_it_is_handed():
     """★ "畸形 IR 给一句话,不给 traceback" —— 这条规矩 v0.2.0 就立了。
 
-    但它当时只在**转换器**那侧兑现(五个后端补了输入校验、exit 2 列出问题),
-    四个**运行时**的入口从来没人查过。实测:Unity 的 `MiniJson` 一路 `throw
+    但它当时只在**转换器**那侧兑现(各后端补了输入校验、exit 2 列出问题),
+    **运行时**的入口从来没人查过。实测:Unity 的 `MiniJson` 一路 `throw
     FormatException`,而调用处直接接返回值 —— 它下一行那个 `== null` 判断在真·畸形
-    输入上**永远轮不到执行**,结果就是一个未捕获异常。另外三家都守住了,写自家规矩
+    输入上**永远轮不到执行**,结果就是一个未捕获异常。另外两家都守住了,写自家规矩
     反例的偏偏是自家代码。
 
     引擎跑不进 CI,所以查源码:每家的 JSON 入口都必须**在同一处**看得见防护。
     html 那侧不靠这条 —— 它在 `tools/html-smoke` 里被真浏览器喂过空 flow。
 
     ⚠️ 每一条都先钉**存在性锚点**再查防护。只查"有调用且没设防"的写法,在调用被改名
-    或删掉时会静默通过 —— 变异验证当场抓到过:把 unreal 那句 `if (!Deserialize(...))`
+    或删掉时会静默通过 —— 变异验证当场抓到过:把某家那句 `if (!Deserialize(...))`
     整个换成 `if (false)`,调用没了,断言反而绿。不可能红的断言等于没有断言。
     """
     bad = []
@@ -964,15 +953,6 @@ def test_every_runtime_guards_the_json_it_is_handed():
         near = "\n".join(gd[i:i + 6])
         if "push_error" not in near and "push_warning" not in near:
             bad.append("flow_binder.gd:%d 解析之后没判返回值(parse_string 失败返回 null)" % (i + 1))
-
-    cpp = _nocomment(io.open(os.path.join(ROOT, "figma2unreal", "runtime",
-                                          "FigmaFlowComponent.cpp"), encoding="utf-8").read()).split("\n")
-    hits = [i for i, l in enumerate(cpp) if "FJsonSerializer::Deserialize" in l]
-    if not hits:
-        bad.append("FigmaFlowComponent.cpp 里找不到 JSON 反序列化调用(改名了?)")
-    for i in hits:
-        if "if (" not in cpp[i]:
-            bad.append("FigmaFlowComponent.cpp:%d 的 Deserialize 返回值没被判" % (i + 1))
 
     ts = _nocomment(_runtime("figma2cocos", "flow-binder.ts"))
     if "flowAsset" not in ts:

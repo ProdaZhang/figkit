@@ -8,7 +8,7 @@
 守的第一条 = 百分比圆角:capture 对**每个 figma ELLIPSE** 都产 `radius: "50%"`
 (figma_capture.py 的 ELLIPSE 分支),而 JS 的 `parseFloat("50%")` 返回 **50** 不报错,
 于是百分比会被静默当成 50px —— 错得还随元素尺寸变。修法是按 min(w,h) 折算,
-口径与 figma2godot / figma2unreal 一致。
+口径与 figma2godot 一致。
 """
 import os
 import re
@@ -36,7 +36,7 @@ def test_parse_radius_handles_percent_per_axis():
     只靠 parseFloat 会把 '50%' 静默读成 50px;而折成 `min(w,h)×50%` 的**单一圆半径**
     同样是错的 —— 邮件面板底部那条弧是个 2143×680、`radius:50%` 的真椭圆,
     按 min 折算会画成胶囊,顶弧被削平 38px(实机比对量出来的)。
-    这条曾经写成"与 godot/unreal 同口径",但那个口径与 HTML 基准不一致:HTML 走 CSS,
+    这条曾经写成"与 godot 同口径",但那个口径与 HTML 基准不一致:HTML 走 CSS,
     Unity 的 UI Toolkit 也按轴算,所以对齐对象应该是 CSS,不是另外两个后端的将就实现。
     """
     body = _src("parse-css.ts")
