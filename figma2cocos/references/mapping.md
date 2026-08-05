@@ -32,7 +32,7 @@ is the implementation contract for `runtime/*.ts`.
 | `fill` (linear-gradient) | A **runtime-baked texture** on a Sprite inside a rounded Mask | Graphics has no gradient fill, so a 64² texture is generated with every texel projected onto that element's real gradient axis (any angle), then shown through a `GRAPHICS_STENCIL` Mask so the corners still round. **The texture must be uploaded via `Texture2D.reset` + `uploadData`** — building an `ImageAsset` from `_data` and assigning `tex.image` takes the image-element upload path and throws `texSubImage2D … Overload resolution failed` on every frame (4686 of them in one screen) |
 | `radius` | Per-corner path (line + cubic Bézier) | Each corner keeps its own radius, so `73px 73px 0 0` renders as it should; radii are clamped by the CSS rule (adjacent pair ≤ edge) first. **Do not use `Graphics.arc` here** — see the pitfall note under §5 |
 | `border` | `Graphics.lineWidth/strokeColor` + `stroke()` | CSS strokes inward (border-box) while Graphics centres on the path → the path is **inset by width/2** to approximate it |
-| `shadow` (hard) | A sibling **underlay** node of the same shape | Creator has no `box-shadow`, but `2px 6px 0 c` is just the same rounded box offset by (2,6) and filled — drawn, not declared away. **Blurred** shadows are still lost |
+| `shadow` | A sibling **underlay** node: hard ones are drawn with `Graphics`, **blurred** ones get a texture baked at load time (`softShadowFrame`) and shown through a `Sprite` | Creator has no `box-shadow` and no per-node blur, but "another node underneath" expresses both. The blur is a rounded-rect coverage mask run through **three box passes ≈ Gaussian at σ = blur/2** (CSS's own definition), on a canvas inflated by 3σ. Same route this backend already used for gradients — `Texture2D.reset` + `uploadData`, and `sprite.trim = false`, because Creator trims transparent borders and a shadow is nearly all transparent border |
 | `blur` | **not rendered** (known-loss) | Same (a full-screen post-process does not suit per-node use) |
 | `img` | `Sprite` (`SizeMode.CUSTOM`) | `resources.load(assetRoot + stem(img) + '/spriteFrame', SpriteFrame)`; missing → transparent fallback plus a warning (never a filled placeholder, matching render.js) |
 | `imgSize` (cover/contain) | **always stretched to fill** (known-loss) | `SizeMode.CUSTOM` fills contentSize; capture's images are mostly 1:1 exports, so distortion is limited |
@@ -131,9 +131,7 @@ Canvas (cc.Canvas, designResolution = cap.w × cap.h)
 | Item | Loss | Workaround |
 |---|---|---|
 | `blur` | Not rendered | Use a pre-baked texture or a post-process, in the hook layer |
-| `shadow` | Not rendered | Same, or a nine-slice shadow sprite |
 | Gradients that will not parse | Takes the first stop as a solid | Only radial / non-`<angle>deg` forms land here; linear ones are baked |
-| Blurred shadows | Not rendered (hard ones are, as underlays) | A nine-slice shadow sprite in the hook layer |
 | Font family / exact weight | System font + `isBold(≥600)` | Attach a TTFFont asset and override `label.font` in the hook |
 | `letterSpacing` | Not rendered | — |
 | `textAlign` vs `alignH` conflict | alignH wins | For rich multi-line alignment, rework it with RichText |

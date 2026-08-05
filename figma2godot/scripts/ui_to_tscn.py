@@ -244,6 +244,20 @@ def parse_linear_gradient(s):
     return (angle, stops)
 
 
+def parse_radial_gradient(s):
+    """'radial-gradient(rgba(..) 0%, rgba(..) 100%)' → stops;不是径向就 None。
+
+    捕获层对 figma 的 GRADIENT_RADIAL 只写色标(handle 位置没带出来),所以这里按
+    **CSS 的缺省**理解:`ellipse at center`,终止形状取 `farthest-corner`。
+    """
+    if not s.startswith('radial-gradient'):
+        return None
+    lo, hi = s.find('('), s.rfind(')')
+    if lo < 0 or hi <= lo:
+        return None
+    return _parse_stops(_split_top(s[lo + 1:hi]))
+
+
 def gradient_uv(angle_deg):
     """CSS 角度(0=向上,90=向右)→ GradientTexture2D 的 fill_from/fill_to(UV)。"""
     rad = math.radians(angle_deg % 360.0)
@@ -407,18 +421,30 @@ def _blur_of(shadow):
     return float(m.group(3)) if m else None
 
 
-def _gradient_subs(name, angle, stops):
+# CSS 的 `farthest-corner`:终止椭圆过最远的那个角。中心在 (0.5,0.5) 的 UV 里,
+# 那个角的距离是 √2/2;GradientTexture2D 的径向填充在 UV 里是**正圆**,贴到非正方形
+# 元素上被拉成椭圆 —— 正好就是 CSS 缺省的 `ellipse` 形状,不用另外补偿。
+_FARTHEST_CORNER_UV = 0.7071
+
+
+def _gradient_subs(name, angle, stops, radial=False):
     gid, tid = 'grad_' + sub_id(name), 'gt_' + sub_id(name)
     offs = ', '.join(cnum(p) for p, _ in stops)
     cols = ', '.join(', '.join(cnum(x) for x in c) for _, c in stops)
     g = ['[sub_resource type="Gradient" id="%s"]' % gid,
          'offsets = PackedFloat32Array(%s)' % offs,
          'colors = PackedColorArray(%s)' % cols]
-    f, t = gradient_uv(angle)
+    if radial:
+        f = (0.5, 0.5)
+        t = (0.5 + _FARTHEST_CORNER_UV, 0.5)
+    else:
+        f, t = gradient_uv(angle)
     gt = ['[sub_resource type="GradientTexture2D" id="%s"]' % tid,
-          'gradient = SubResource("%s")' % gid,
-          'fill_from = Vector2(%s, %s)' % (cnum(f[0]), cnum(f[1])),
-          'fill_to = Vector2(%s, %s)' % (cnum(t[0]), cnum(t[1]))]
+          'gradient = SubResource("%s")' % gid]
+    if radial:
+        gt.append('fill = 1')                 # GradientTexture2D.FILL_RADIAL
+    gt += ['fill_from = Vector2(%s, %s)' % (cnum(f[0]), cnum(f[1])),
+           'fill_to = Vector2(%s, %s)' % (cnum(t[0]), cnum(t[1]))]
     return '\n'.join(g), '\n'.join(gt), tid
 
 
@@ -442,6 +468,92 @@ def svg_fill_attr(css):
     if a < 0.999:
         out += ' fill-opacity="%s"' % cnum(a)
     return out
+
+
+def radius_axes(s, w, h):
+    """CSS border-radius → 四角**各自的** `(rx, ry)`;解析不动返回 None。
+
+    与 `parse_radius` 的分工:那个把四角折成**标量**喂 StyleBoxFlat,这个保留两轴。
+    CSS 说百分比是**逐轴**算的(水平按 w、垂直按 h),所以非正方形上的 `50%` 是
+    **椭圆角**,折成 `min(w,h)` 就成了胶囊 —— 面板底部那道 2143×680 的横扫,
+    胶囊比椭圆低了 38px,一眼能看出来。
+
+    末尾按 CSS Backgrounds §5.5 等比收缩:同一条边上两角之和超过边长时,
+    **四角按同一个比例**一起缩(不是各夹各的)。
+    """
+    if not s:
+        return None
+    toks = s.split()
+    if len(toks) == 1:
+        toks = toks * 4
+    elif len(toks) == 2:
+        toks = [toks[0], toks[1], toks[0], toks[1]]
+    elif len(toks) == 3:
+        toks = [toks[0], toks[1], toks[2], toks[1]]
+    else:
+        toks = toks[:4]
+    cs = []
+    for tok in toks:
+        try:
+            if tok.endswith('%'):
+                p = float(tok[:-1]) / 100.0
+                cs.append([w * p, h * p])
+            else:
+                v = float(tok.replace('px', ''))
+                cs.append([v, v])
+        except ValueError:
+            return None
+    (tlx, tly), (trx, try_), (brx, bry), (blx, bly) = cs
+    f = 1.0
+    for total, edge in ((tlx + trx, w), (blx + brx, w), (tly + bly, h), (try_ + bry, h)):
+        if total > 0 and edge > 0:
+            f = min(f, edge / float(total))
+    if f < 1.0:
+        cs = [[rx * f, ry * f] for rx, ry in cs]
+    return tuple((rx, ry) for rx, ry in cs)
+
+
+def elliptical_corners(e):
+    """这个元素是不是「StyleBoxFlat 画不出来」的椭圆角 → 四角 (rx,ry);不是就 None。
+
+    Godot 的 `corner_radius_*` 是**标量**,画不了 rx≠ry。这类元素改走 .svg
+    (与 v1.2 矢量同一条路:编译期吐 svg、导入期由 ThorVG 栅格化),
+    而不是把它折成胶囊了事。
+
+    只接**纯实色填充**的:带渐变/图片/文字/描边/阴影/裁剪的还得靠 StyleBoxFlat
+    或纹理那几条路,那些仍按原样走并照旧记 known-loss。
+    """
+    if e.get('paths') or e.get('text') or e.get('img') or e.get('clip'):
+        return None
+    if e.get('border') or e.get('shadow'):
+        return None
+    fill = e.get('fill') or ''
+    if not fill or '-gradient(' in fill:
+        return None
+    cs = radius_axes(e.get('radius') or '', e.get('w') or 0, e.get('h') or 0)
+    if not cs or all(abs(rx - ry) < 0.5 for rx, ry in cs):
+        return None
+    return cs
+
+
+def rounded_rect_d(w, h, corners):
+    """四角各带 (rx,ry) 的圆角矩形 → SVG path 的 `d`。四角顺序 TL/TR/BR/BL,与 CSS 一致。"""
+    (tlx, tly), (trx, try_), (brx, bry), (blx, bly) = corners
+    n = cnum
+    return ('M %s,0 H %s A %s %s 0 0 1 %s,%s V %s A %s %s 0 0 1 %s,%s '
+            'H %s A %s %s 0 0 1 0,%s V %s A %s %s 0 0 1 %s,0 Z' % (
+                n(tlx), n(w - trx), n(trx), n(try_), n(w), n(try_),
+                n(h - bry), n(brx), n(bry), n(w - brx), n(h),
+                n(blx), n(blx), n(bly), n(h - bly), n(tly), n(tlx), n(tly), n(tlx)))
+
+
+def svg_shape_doc(e, corners):
+    """椭圆角实色块 → 一份独立 .svg(同 svg_doc 的写法,只是形状是我们自己算的)。"""
+    w, h = float(e.get('w') or 1), float(e.get('h') or 1)
+    return ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 %.2f %.2f" '
+            'width="%.2f" height="%.2f"><path d="%s" %s/></svg>\n'
+            % (max(w, 1.0), max(h, 1.0), max(w, 1.0), max(h, 1.0),
+               _xml_esc(rounded_rect_d(w, h, corners)), svg_fill_attr(e.get('fill'))))
 
 
 def svg_doc(e):
@@ -487,6 +599,8 @@ def svg_doc(e):
 def _classify(e):
     if e.get('paths'):
         return 'VectorRect'               # v1.2:矢量按路径画,编译期落成 .svg
+    if elliptical_corners(e):
+        return 'ShapeRect'                # 椭圆角实色块:corner_radius 是标量,画不出来
     if e.get('text'):
         return 'Label'
     if e.get('img'):
@@ -494,8 +608,10 @@ def _classify(e):
     fill = e.get('fill') or ''
     if fill.startswith('linear-gradient'):
         return 'GradientRect'
+    if fill.startswith('radial-gradient') and parse_radial_gradient(fill):
+        return 'RadialRect'           # GradientTexture2D 的 FILL_RADIAL,不再取平均色
     if '-gradient(' in fill:
-        return 'FallbackPanel'        # radial/conic → 平均色回退
+        return 'FallbackPanel'        # conic 等仍是平均色回退
     if fill or e.get('border') or e.get('shadow'):
         return 'Panel'
     return 'Control'                  # 无任何可见样式的容器(空 Panel 会画默认灰皮)
@@ -559,7 +675,8 @@ def _emit_el(em, e, parent_path, parent_rec, used, rounded_clips=frozenset()):
     if clip_rad and any(clip_rad) and kind == 'Control':
         kind = 'Panel'
     gtype = {'Label': 'Label', 'TextureRect': 'TextureRect', 'GradientRect': 'TextureRect',
-             'VectorRect': 'TextureRect',
+             'VectorRect': 'TextureRect', 'ShapeRect': 'TextureRect',
+             'RadialRect': 'TextureRect',
              'Panel': 'Panel', 'FallbackPanel': 'Panel', 'Control': 'Control'}[kind]
 
     # **硬阴影垫一层实心副本**:CSS 的 `2px 6px 0px` 是把整个形状按位移复制一份填成阴影色,
@@ -638,6 +755,11 @@ def _emit_el(em, e, parent_path, parent_rec, used, rounded_clips=frozenset()):
         face = 'Bold' if (t.get('weight') or 400) >= 600 else 'Regular'
         L.append('theme_override_fonts/font = ExtResource("%s")'
                  % em.add_font('fonts/FigCJK-%s.ttf' % face))
+    elif kind == 'ShapeRect':
+        eid = em.add_svg('%s.svg' % sub_id(name), svg_shape_doc(e, elliptical_corners(e)))
+        L.append('texture = ExtResource("%s")' % eid)
+        L.append('expand_mode = 1')                                   # IGNORE_SIZE:贴满节点矩形
+        L.append('stretch_mode = 0')                                  # SCALE:非等比拉满
     elif kind == 'VectorRect':
         eid = em.add_svg('%s.svg' % sub_id(name), svg_doc(e))
         L.append('texture = ExtResource("%s")' % eid)
@@ -648,6 +770,12 @@ def _emit_el(em, e, parent_path, parent_rec, used, rounded_clips=frozenset()):
         L.append('texture = ExtResource("%s")' % eid)
         L.append('expand_mode = 1')                                   # IGNORE_SIZE:贴满节点矩形
         L.append('stretch_mode = %d' % _STRETCH.get(e.get('imgSize') or 'cover', 0))
+    elif kind == 'RadialRect':
+        gb, tb, tid = _gradient_subs(name, 0, parse_radial_gradient(e['fill']), radial=True)
+        em.add_sub(gb)
+        em.add_sub(tb)
+        L.append('texture = SubResource("%s")' % tid)
+        L.append('expand_mode = 1')
     elif kind == 'GradientRect':
         g = parse_linear_gradient(e['fill'])
         if g is not None:
@@ -704,19 +832,24 @@ def collect_losses(cap):
             out.append("%s: 阴影用 shadow_size 近似 CSS 的 blur+spread(且最小 1,"
                        "Godot size=0 不绘制,硬阴影会消失)" % eid)
         fill = e.get('fill') or ''
-        if fill.startswith('radial-gradient'):
-            out.append("%s: 径向渐变降级为色标平均色(Godot GradientTexture1D 只做线性)" % eid)
+        if '-gradient(' in fill and not fill.startswith(('linear-gradient', 'radial-gradient')):
+            out.append("%s: 这种渐变(conic 等)降级为色标平均色" % eid)
+        elif fill.startswith('radial-gradient') and not parse_radial_gradient(fill):
+            out.append("%s: 径向渐变的色标解析不动,降级为色标平均色" % eid)
         if e.get('clip') and (e.get('radius') or '') and e.get('id') not in rounded_ok:
             out.append("%s: 圆角裁剪退回矩形 —— 祖先链上已经有一个圆角裁剪,而 Godot 的 "
                        "clip_children 不能嵌套;外层留给轮廓(丢了就是方角怼底色),"
                        "这一层只裁矩形,圆角处会露出同色方角" % eid)
         rad = e.get('radius') or ''
-        if '%' in rad and e.get('w') != e.get('h'):
+        if '%' in rad and e.get('w') != e.get('h') and not elliptical_corners(e):
+            # 纯实色的椭圆角已经改走 .svg 画真椭圆(见 elliptical_corners);
+            # 还会落到这里的,是带渐变/图片/描边/阴影/裁剪的那些 —— 它们仍靠
+            # StyleBoxFlat 或纹理,标量 corner_radius 只能折成胶囊。
             out.append("%s: 百分比圆角在非正方形元素上取 min(w,h) 近似"
-                       "(Godot corner_radius 是标量,画不出椭圆角)" % eid)
+                       "(带渐变/描边/裁剪,画不成 .svg;Godot corner_radius 是标量)" % eid)
     bg = (cap.get('stageBg') or '')
-    if bg.startswith('radial-gradient'):
-        out.append("stageBg: 径向渐变降级为色标平均色(同上)")
+    if '-gradient(' in bg and not bg.startswith(('linear-gradient', 'radial-gradient')):
+        out.append("stageBg: 这种渐变(conic 等)降级为色标平均色")
     return out
 
 
@@ -787,6 +920,15 @@ def _emit_stage_bg(em, bg, w, h):
         g = parse_linear_gradient(bg)
         if g is not None:
             gb, tb, tid = _gradient_subs('StageBg', g[0], g[1])
+            em.add_sub(gb)
+            em.add_sub(tb)
+            em.add_node(['[node name="StageBg" type="TextureRect" parent="."]'] + geo +
+                        ['texture = SubResource("%s")' % tid, 'expand_mode = 1'])
+            return
+    if bg.startswith('radial-gradient'):
+        stops = parse_radial_gradient(bg)
+        if stops:
+            gb, tb, tid = _gradient_subs('StageBg', 0, stops, radial=True)
             em.add_sub(gb)
             em.add_sub(tb)
             em.add_node(['[node name="StageBg" type="TextureRect" parent="."]'] + geo +

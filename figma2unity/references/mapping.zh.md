@@ -36,7 +36,7 @@ IR 样式值是 **CSS 风格字符串**(`radius="45px"`、`border="2.0px solid r
 | `fill`(渐变) | `background-image` = **编译期烘的 PNG** | USS 没有渐变属性,转换器自己烘一张 64² 纹理:每个纹素按该元素**真实 w/h** 投影到渐变轴再插值,任意角度都准(不是只处理 0/90°)。放在编译期做,集成方不用多加运行时代码,产物也保持逐字节确定。解析不了的渐变仍退首色 |
 | `img` | `background-image: url("...")` + `background-size`(imgSize,默认 cover)+ `background-position: center` + `background-repeat: no-repeat` | background-size 等需 Unity 2022.2+ |
 | `stageBg` | 帧根 `.screen-root`:url→背景图,色→背景色,渐变→首停靠色 | — |
-| `shadow` | **丢弃** | USS 无 box-shadow;记 known-loss |
+| `shadow` | 兄弟**垫层**盒子:硬阴影 `2px 6px 0 c` 就是同一个圆角盒子按位移填色;**带模糊**的则在编译期烘一张 PNG(`soft_shadow_asset`)当垫层的底 | USS 既没有 `box-shadow` 也没有模糊,但"底下多垫一个盒子"把两者都表达得了。模糊那半 = 圆角矩形覆盖率(逐轴椭圆角、带一像素抗锯齿)过**三次盒滤波 ≈ σ=blur/2 的高斯**,这正是 CSS 自己的定义;画布按 3σ 外扩,免得拖尾被裁。产物按内容哈希命名,六张一样的卡共用一张图。只有在**没有可写素材目录**时才退回 known-loss |
 | `blur` | **丢弃** | USS 无 filter;记 known-loss |
 | `paths` + `viewBox`(v1.2) | `<figkit:FigVector>` —— `runtime/FigVector.cs` 用 **Painter2D** 真画 | 货真价实的矢量绘制:不产任何图片资产,也不用额外的包(`com.unity.vectorgraphics` 是预览包)。元素自己解析 SVG 路径(M/L/H/V/C/S/Q/T/Z,贝塞尔按固定步数采样以保确定性),按 IR 要的 winding rule 填充。**UXML 只在这一屏真有矢量时才声明 `xmlns:figkit`** —— 声明了却没把 runtime 拷进工程,整份 UXML 会加载失败。描边带一般由捕获层直接发成可填的 evenodd 环(IR v1.3),这里照填即可。捕获层读不懂的带子会退回「原样 ±2w + `clip` 提示」,而 Painter2D 没有布尔裁剪:OUTSIDE 那半仍是精确的 —— 先画带子、再让不透明的填充盖住内侧那一半;退回来的 INSIDE 只能全宽画,粗一倍,逐元素记 known-loss。另有一条:**Painter2D 会把同一条路径的多个轮廓连成一个多边形**(实测把描边带整块绞成细长三角),所以包围盒互不相交的轮廓逐个填,相交的仍走一次填充 —— 形状上的洞正是靠那一次填充规则挖出来的 |
 | `clip`(v1.1) | `overflow: hidden` | UI Toolkit 的 `overflow` 本来就跟随 `border-radius`,所以圆角裁剪在这里不花额外力气就是精确的(Godot 得靠 `clip_children` 才到得了同一步) |

@@ -200,21 +200,27 @@ def report(ref, got, cap, args):
     intext = 0
     ntx = 0
     over = 0
+    over_out = 0
     for i, p in enumerate(dp):
         s = p[0] + p[1] + p[2]
         total += s
-        if max(p) > 24:
+        big = max(p) > 24
+        if big:
             over += 1
         if mp[i]:
             intext += s
             ntx += 1
+        elif big:
+            over_out += 1
     print("端      %s" % (args.label or ("render.js" if not args.rendered else os.path.basename(args.rendered))))
     print("基准    %s" % os.path.basename(args.design))
     print("文字盒  %d 个,覆盖 %.1f%% 画面" % (ntext, 100.0 * ntx / n))
     print("全帧    mean %.2f/255   >24 的像素 %.1f%%" % (total / (3.0 * n), 100.0 * over / n))
     print("文字内  mean %.2f/255" % (intext / (3.0 * max(ntx, 1))))
-    print("文字外  mean %.2f/255   ← 几何/颜色/圆角/描边/图片,真正说明问题的是这个"
-          % ((total - intext) / (3.0 * max(n - ntx, 1))))
+    print("文字外  mean %.2f/255   >24 的像素 %.1f%%   ← 几何/颜色/圆角/描边/图片,"
+          "真正说明问题的是这个"
+          % ((total - intext) / (3.0 * max(n - ntx, 1)),
+             100.0 * over_out / max(n - ntx, 1)))
     if args.heat:
         diff.point(lambda v: min(255, v * 4)).save(args.heat)
         print("热图    %s(差异 ×4,黑=一致)" % args.heat)

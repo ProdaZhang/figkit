@@ -166,21 +166,30 @@ GRAD_TEX = 64          # 渐变纹理边长;双线性放大后 172px 的奖励�
 
 
 def parse_gradient(fill):
-    """'linear-gradient(0deg, rgba(..) 0%, rgba(..) 100%)' → (角度, [(位置, (r,g,b,a)), …])。
+    """渐变 → `(角度, stops)`;径向的角度给 `None`(它没有轴,烘图时按到中心的距离取值)。
 
-    认不出(径向渐变、缺停靠位)返回 None,调用方退回首色。
+    认不出(缺停靠位、conic 之类)返回 None,调用方退回首色。
+    径向按 **CSS 缺省**理解:`ellipse at center` + `farthest-corner` —— 捕获层只带出
+    色标(figma 的 handle 位置没跟过来),这也正是浏览器画同一串 CSS 时的口径。
     """
     m = re.match(r"^\s*linear-gradient\((.*)\)\s*$", fill, re.S)
+    radial = False
+    if not m:
+        m = re.match(r"^\s*radial-gradient\((.*)\)\s*$", fill, re.S)
+        radial = bool(m)
     if not m:
         return None
     parts = split_top_level(m.group(1))
-    if len(parts) < 3:
+    if len(parts) < (2 if radial else 3):
         return None
-    a = re.match(r"^\s*(-?[\d.]+)deg\s*$", parts[0])
-    if not a:
-        return None
+    if radial:
+        a = None
+    else:
+        a = re.match(r"^\s*(-?[\d.]+)deg\s*$", parts[0])
+        if not a:
+            return None
     stops = []
-    for p in parts[1:]:
+    for p in (parts if radial else parts[1:]):
         cm = COLOR_TOKEN_RE.search(p)
         pm = re.search(r"(-?[\d.]+)\s*%", p[cm.end():] if cm else "")
         if not cm or not pm:
@@ -195,7 +204,7 @@ def parse_gradient(fill):
     if len(stops) < 2:
         return None
     stops.sort(key=lambda s: s[0])
-    return float(a.group(1)), stops
+    return (None if radial else float(a.group(1))), stops
 
 
 def _png(w, h, rgba):
@@ -229,15 +238,24 @@ def gradient_asset(fill, w, h, asset_dir, losses, eid):
         return None
     ang, stops = g
     n = GRAD_TEX
-    rad = math.radians(ang)
-    dx, dy = math.sin(rad), -math.cos(rad)          # CSS:0deg 指向上方,顺时针增大
-    ln = abs(w * dx) + abs(h * dy)                  # 渐变线长度(CSS Images §3.3)
+    if ang is None:                                 # 径向:CSS 缺省的 ellipse/farthest-corner
+        dx = dy = 0.0
+        ln = 0.0
+    else:
+        rad = math.radians(ang)
+        dx, dy = math.sin(rad), -math.cos(rad)      # CSS:0deg 指向上方,顺时针增大
+        ln = abs(w * dx) + abs(h * dy)              # 渐变线长度(CSS Images §3.3)
     buf = bytearray(n * n * 4)
     for j in range(n):
         for i in range(n):
             px = ((i + 0.5) / n - 0.5) * w
             py = ((j + 0.5) / n - 0.5) * h
-            t = 0.5 if ln <= 0 else 0.5 + (px * dx + py * dy) / ln
+            if ang is None:
+                # 终止椭圆过最远的角:半轴 = (w/2, h/2)×√2,逐轴归一后取模
+                ex, ey = w * 0.7071, h * 0.7071
+                t = math.sqrt((px / ex) ** 2 + (py / ey) ** 2) if ex and ey else 0.0
+            else:
+                t = 0.5 if ln <= 0 else 0.5 + (px * dx + py * dy) / ln
             t = min(1.0, max(0.0, t))
             lo, hi = stops[0], stops[-1]
             for k in range(len(stops) - 1):
@@ -257,6 +275,168 @@ def gradient_asset(fill, w, h, asset_dir, losses, eid):
         f.write(_png(n, n, bytes(buf)))
     losses.append("%s: gradient '%s' 烘成 assets/%s(USS 无渐变属性,编译期出图)" % (eid, fill, name))
     return "assets/" + name
+
+
+def _box_sizes(sigma, n=3):
+    """把一次高斯近似成 n 次盒滤波,返回每次的**窗口宽度**(奇数)。
+
+    经典做法(Ivan Kutskir):先算理想窗宽 √(12σ²/n + 1),取奇数的上下界,
+    再定其中多少次用小窗。三次盒滤波与真高斯的差已经在半个色阶以内,
+    而它是 O(1)/像素的滑动求和 —— 纯 python 也跑得动。
+    """
+    if sigma <= 0:
+        return []
+    ideal = math.sqrt(12.0 * sigma * sigma / n + 1)
+    wl = int(math.floor(ideal))
+    if wl % 2 == 0:
+        wl -= 1
+    wu = wl + 2
+    m = int(round((12.0 * sigma * sigma - n * wl * wl - 4.0 * n * wl - 3.0 * n)
+                  / (-4.0 * wl - 4.0)))
+    return [wl if i < m else wu for i in range(n)]
+
+
+def _blur_1d(src, w, h, radius, horizontal):
+    """一次盒滤波(滑动求和),边界按 0 外推 —— 阴影外面本来就是空的。"""
+    dst = [0.0] * (w * h)
+    span = 2 * radius + 1
+    if horizontal:
+        for y in range(h):
+            row = y * w
+            acc = sum(src[row:row + min(radius + 1, w)])
+            for x in range(w):
+                dst[row + x] = acc / span
+                add = x + radius + 1
+                sub = x - radius
+                if add < w:
+                    acc += src[row + add]
+                if sub >= 0:
+                    acc -= src[row + sub]
+    else:
+        for x in range(w):
+            acc = 0.0
+            for y in range(min(radius + 1, h)):
+                acc += src[y * w + x]
+            for y in range(h):
+                dst[y * w + x] = acc / span
+                add = y + radius + 1
+                sub = y - radius
+                if add < h:
+                    acc += src[add * w + x]
+                if sub >= 0:
+                    acc -= src[sub * w + x]
+    return dst
+
+
+def _rrect_coverage(cw, ch, rw, rh, corners, ox, oy):
+    """rw×rh 的圆角矩形画在 cw×ch 的画布上(左上角 (ox,oy))→ 覆盖率 0..1。
+
+    走的是**带符号距离**:矩形内为负、外为正,覆盖率 = clamp(0.5 - d) —— 边缘因此
+    自带一像素抗锯齿。落进某个角的那块方形区域时,距离改按该角的**椭圆**算
+    (逐轴归一后取模再乘回短轴),所以 rx≠ry 的角也是真椭圆。
+    """
+    cov = [0.0] * (cw * ch)
+    tl, tr, br, bl = corners
+    cor = (((tl[0], tl[1]), tl, -1, -1),
+           ((rw - tr[0], tr[1]), tr, +1, -1),
+           ((rw - br[0], rh - br[1]), br, +1, +1),
+           ((bl[0], rh - bl[1]), bl, -1, +1))
+    for y in range(ch):
+        py = y + 0.5 - oy
+        for x in range(cw):
+            px = x + 0.5 - ox
+            d = max(max(-px, px - rw), max(-py, py - rh))
+            for (cx, cy), (rx, ry), sx, sy in cor:
+                if rx <= 0 or ry <= 0:
+                    continue
+                if (px - cx) * sx > 0 and (py - cy) * sy > 0:
+                    nx = (px - cx) / rx
+                    ny = (py - cy) / ry
+                    d = (math.sqrt(nx * nx + ny * ny) - 1.0) * min(rx, ry)
+                    break
+            cov[y * cw + x] = min(1.0, max(0.0, 0.5 - d))
+    return cov
+
+
+def soft_shadow_asset(dx, dy, blur, spread, color, el, asset_dir, losses, eid):
+    """带模糊的阴影 → 烘一张 PNG,返回 (url, 相对本体的几何)。烘不了返回 None。
+
+    USS 没有 box-shadow,而**硬**阴影早就用"同形状的另一个盒子"垫出来了 ——
+    带模糊的那半以前只能记 known-loss(整片投影凭空消失)。这里沿用渐变那条已经
+    走通的路:编译期烘图。CSS 的口径是 σ = blur/2(模糊半径是两倍标准差),
+    三次盒滤波近似高斯,形状按 spread 外扩、圆角同步长大。
+    编译期做而不是运行时:不给集成方加运行时代码,产物仍是确定性的同输入同字节。
+    """
+    if not asset_dir:
+        return None
+    w, h = float(el.get("w") or 0), float(el.get("h") or 0)
+    if w <= 0 or h <= 0:
+        return None
+    sigma = blur / 2.0
+    margin = int(math.ceil(3.0 * sigma)) + int(math.ceil(max(spread, 0)))
+    sw, sh = int(round(w + 2 * spread)), int(round(h + 2 * spread))
+    if sw <= 0 or sh <= 0:
+        return None
+    cw, ch = sw + 2 * margin, sh + 2 * margin
+    if cw * ch > 4_000_000:                 # 兜底:别为一个阴影烘出上百 MB
+        return None
+    r = parse_radius(el.get("radius") or "") or ["0px"] * 4
+    r = clamp_radius(r, w, h)
+    grown = []
+    for v in clamp_radius([_grow_radius(v, spread) for v in r], sw, sh):
+        m = _PX_ONLY.match(str(v).strip())
+        n = float(m.group(1)) if m else 0.0
+        grown.append((n, n))
+    cov = _rrect_coverage(cw, ch, sw, sh, grown, margin, margin)
+    for bw in _box_sizes(sigma):
+        rad = (bw - 1) // 2
+        cov = _blur_1d(cov, cw, ch, rad, True)
+        cov = _blur_1d(cov, cw, ch, rad, False)
+    rgba = parse_rgba_255(color)
+    if rgba is None:
+        return None
+    cr, cg, cb, ca = rgba
+    buf = bytearray(cw * ch * 4)
+    for i, v in enumerate(cov):
+        o = i * 4
+        buf[o] = cr
+        buf[o + 1] = cg
+        buf[o + 2] = cb
+        buf[o + 3] = int(round(min(1.0, max(0.0, v)) * ca * 255))
+    name = "shadow-%s.png" % hashlib.sha1(
+        ("%s|%s|%s|%s|%s|%.2f|%.2f|%s" % (dx, dy, blur, spread, color, w, h,
+                                          el.get("radius") or "")).encode("utf-8")).hexdigest()[:16]
+    sub = os.path.join(asset_dir, "assets")
+    os.makedirs(sub, exist_ok=True)
+    path = os.path.join(sub, name)
+    if not os.path.exists(path):
+        with open(path, "wb") as f:
+            f.write(_png(cw, ch, bytes(buf)))
+    losses.append("%s: 带模糊的阴影 '%s' 烘成 assets/%s(USS 无 box-shadow,编译期出图)"
+                  % (eid, color, name))
+    return ("assets/" + name,
+            {"left": dx - spread - margin, "top": dy - spread - margin, "w": cw, "h": ch})
+
+
+def parse_rgba_255(css):
+    """'rgba(r,g,b,a)' / '#rrggbb' → (r, g, b, a 0..1);解不动返回 None。"""
+    s = (css or "").strip()
+    m = re.match(r"rgba?\(([^)]*)\)", s)
+    if m:
+        parts = [p.strip() for p in m.group(1).split(",")]
+        if len(parts) < 3:
+            return None
+        try:
+            r, g, b = (int(round(float(p))) for p in parts[:3])
+            a = float(parts[3]) if len(parts) > 3 else 1.0
+        except ValueError:
+            return None
+        return r, g, b, a
+    m = re.match(r"#([0-9a-fA-F]{6})$", s)
+    if m:
+        v = m.group(1)
+        return int(v[0:2], 16), int(v[2:4], 16), int(v[4:6], 16), 1.0
+    return None
 
 
 TEXT_ALIGN_V = {"flex-start": "upper", "center": "middle", "flex-end": "lower"}
@@ -283,14 +463,21 @@ def split_ring(shadow, align):
     return (float(m.group(1)), m.group(2)), ",".join(parts[1:])
 
 
-def underlays(el):
-    """本元素需要**垫在下面**的额外盒子 → [(后缀, 几何偏移 dict, 属性列表), ...]。
+SOFT_SHADOW_RE = re.compile(
+    r"^(-?[\d.]+)px\s+(-?[\d.]+)px\s+([\d.]+)px(?:\s+(-?[\d.]+)px)?\s+(.+)$")
 
-    USS 没有 box-shadow,但"多画一个盒子"是它完全表达得了的 —— 而硬阴影与描边环
+
+def underlays(el, asset_dir=None, losses=None):
+    """本元素需要**垫在下面**的额外盒子 → [(后缀, 属性列表), ...]。
+
+    USS 没有 box-shadow,但"多画一个盒子"是它完全表达得了的 —— 而阴影与描边环
     本来就是"同形状的另一个盒子"。这么做比记 known-loss 诚实得多:
       · 硬阴影 `2px 6px 0px c` → 同尺寸同圆角、按 (2,6) 位移、填阴影色;
-      · OUTSIDE 描边环 `0 0 0 Npx c` → 四边各外扩 N、圆角 +N、填描边色。
-    两者都排在本体**之前**(UI Toolkit 无 z-index,先出现的在下面)。
+      · OUTSIDE 描边环 `0 0 0 Npx c` → 四边各外扩 N、圆角 +N、填描边色;
+      · **带模糊的阴影** `2px 4px 10px c` → 同样是垫一个盒子,只是它的底不是纯色
+        而是编译期烘出来的一张 PNG(`soft_shadow_asset`)。给不了 asset_dir 时
+        才退回 known-loss。
+    三者都排在本体**之前**(UI Toolkit 无 z-index,先出现的在下面)。
     """
     out = []
     align = (el.get("borderAlign") or "").lower()
@@ -313,6 +500,23 @@ def underlays(el):
     for part in split_top_level(rest, ","):
         m = HARD_SHADOW_RE.match(part.strip())
         if not m:
+            s = SOFT_SHADOW_RE.match(part.strip())
+            if s and asset_dir is not None:
+                baked = soft_shadow_asset(
+                    float(s.group(1)), float(s.group(2)), float(s.group(3)),
+                    float(s.group(4) or 0), s.group(5).strip(), el, asset_dir,
+                    losses if losses is not None else [], el.get("id", ""))
+                if baked:
+                    url, geo = baked
+                    out.append(("softshadow", [
+                        ("position", "absolute"),
+                        ("left", fmt_num(geo["left"]) + "px"),
+                        ("top", fmt_num(geo["top"]) + "px"),
+                        ("width", fmt_num(geo["w"]) + "px"),
+                        ("height", fmt_num(geo["h"]) + "px"),
+                        ("background-image", 'url("%s")' % url),
+                        ("background-size", "%dpx %dpx" % (geo["w"], geo["h"])),
+                        ("background-repeat", "no-repeat")]))
             continue
         dx, dy, color = fmt_num(m.group(1)), fmt_num(m.group(2)), m.group(3)
         props = [("position", "absolute"), ("left", dx + "px"), ("top", dy + "px"),
@@ -411,10 +615,12 @@ def build_uss_props(el, parent, losses, asset_dir=None):
     # shadow 里可能混着两样东西:真阴影,和 borderAlign=outside/center 塞在头部的**描边环**。
     # 两者都由 `underlays()` 变成垫在本体下面的额外元素(USS 没有 box-shadow,但多画一个
     # 盒子是完全表达得了的),这里只把**剩下画不出来的**记成 known-loss。
+    # 带模糊的那半现在也由 `underlays()` 垫出来(底是编译期烘的 PNG),
+    # 所以这里只在**真没地方放图**(没有 asset_dir)时才记 known-loss。
     _ring, rest = split_ring(el.get("shadow") or "", (el.get("borderAlign") or "").lower())
     soft = [p for p in split_top_level(rest, ",") if p.strip() and not HARD_SHADOW_RE.match(p.strip())]
-    if soft:
-        losses.append("%s: 带模糊的阴影 '%s' 丢弃(USS 无 box-shadow;硬阴影已用垫层还原)"
+    if soft and not asset_dir:
+        losses.append("%s: 带模糊的阴影 '%s' 丢弃(USS 无 box-shadow,且没有可写素材的目录)"
                       % (eid, ", ".join(s.strip() for s in soft)))
     if el.get("blur"):
         losses.append("%s: blur '%s' 丢弃(USS 无 filter)" % (eid, el["blur"]))
@@ -570,7 +776,7 @@ def convert(cap, stem, asset_dir=None):
         pad = INDENT * depth
         # 垫层(硬阴影 / OUTSIDE 描边环)排在本体**之前**:UI Toolkit 无 z-index,
         # 先出现的兄弟画在下面。几何是相对本体的,所以挂在本体的父级里、用绝对定位。
-        for suffix, props in underlays(el):
+        for suffix, props in underlays(el, asset_dir, losses):
             ucls = "%s-%s" % (cls, suffix)
             uss_rules.append(("." + ucls, _rebase(props, el, parent)))
             uxml_lines.append('%s<ui:VisualElement name="%s-%s" class="%s" />'

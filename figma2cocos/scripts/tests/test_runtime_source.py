@@ -156,6 +156,30 @@ def test_corners_never_use_graphics_arc():
     assert not bad, "用了 Graphics.arc(会另起子路径 + 方向相反,形状会碎):\n  " + "\n  ".join(bad)
 
 
+def test_blurred_shadows_are_baked_not_dropped():
+    """**带模糊的阴影不许再当 known-loss 丢掉。**
+
+    Graphics 画不出模糊,所以这条曾经是"警告一声然后跳过" —— 而卡片式 UI 的投影
+    几乎全是带模糊的,整片消失。现在与渐变同路:加载期烘一张纹理挂 `Sprite`。
+    这里钉三件在真引擎里咬过人的细节:
+      · 走 `uploadData` 的裸数据路径(`ImageAsset` 那条会每帧抛 texSubImage2D);
+      · `trim = false` —— Creator 会裁掉 PNG 的透明边,而阴影几乎全是透明边,
+        裁完再按 CUSTOM 拉满,投影就会被放大、错位;
+      · 模糊用三次盒滤波近似高斯(σ = blur/2 是 CSS 自己的定义)。
+    """
+    body = _src("figma-ui.ts")
+    assert "softShadowFrame" in body, "带模糊的阴影没有烘图那条路"
+    m = re.search(r"function softShadowFrame[\s\S]*?\n}", body)
+    assert m, "抓不到 softShadowFrame 函数体"
+    fn = m.group(0)
+    assert "uploadData" in fn, "纹理没走 uploadData 的裸数据路径"
+    assert "boxSizes" in fn and "boxBlur" in fn, "模糊不是三次盒滤波近似高斯"
+    assert "u.blur / 2" in fn, "σ 不是 blur/2(CSS 的口径)"
+    ub = re.search(r"function buildUnderlay[\s\S]*?\n}", body)
+    assert ub and "trim = false" in ub.group(0), "阴影 Sprite 没关 trim,透明边会被裁掉"
+    assert "带模糊的阴影丢弃" not in body, "还留着'带模糊的阴影丢弃'的 known-loss 告警"
+
+
 def _run():
     ok = True
     for n, f in sorted(globals().items()):

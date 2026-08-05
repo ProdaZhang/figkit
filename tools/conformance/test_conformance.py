@@ -109,6 +109,19 @@ def _godot_chunk(text, eid):
     for rid in set(re.findall(r'ExtResource\("([^"]+)"\)', body)):
         parts += [b for b in blocks
                   if b.startswith("[ext_resource") and ('id="%s"]' % rid) in b]
+    # 同理,`sub_resource` 也得跟着引用捞:节点块里只写 `texture = SubResource("gt_N")`,
+    # 而"这是径向填充"的证据(`fill = 1`)在那个 GradientTexture2D 块里。跟一层不够 ——
+    # GradientTexture2D 自己又引 Gradient —— 所以跟到不动为止。
+    seen = set()
+    while True:
+        body = "\n".join(parts)
+        want = set(re.findall(r'SubResource\("([^"]+)"\)', body)) - seen
+        if not want:
+            break
+        seen |= want
+        for rid in want:
+            parts += [b for b in blocks
+                      if b.startswith("[sub_resource") and ('id="%s"]' % rid) in b]
     return "\n".join(parts)
 
 
@@ -124,7 +137,7 @@ def _unity_chunk(text, eid):
     # 名字里带着特性词,一旦混进来每个信号都会在自己的类名上撞出假阳性(踩过两次)。
     # 所以:只取规则**体**、UXML 行先剥掉 name=/class=、垫层用合成标记而不是它的选择器。
     parts = re.findall(r"\.el-%s\s*\{(.*?)\}" % n, text, re.S)
-    for suf in ("ring", "shadow"):
+    for suf in ("ring", "shadow", "softshadow"):
         if re.search(r"\.el-%s-%s\s*\{" % (n, suf), text):
             parts.append("underlay:-" + suf)      # 垫层存在的证据,不带元素名
     for ln in text.splitlines():
@@ -135,13 +148,18 @@ def _unity_chunk(text, eid):
 
 GODOT_SIGNALS = {
     "radius-px": "corner_radius", "radius-pct": "corner_radius",
-    "radius-pct-oblong": "corner_radius", "border": "border_width",
+    # 非正方形上的百分比圆角**不再**走 corner_radius(那是标量,只能折成胶囊):
+    # 纯实色的这类元素改成编译期吐一份带椭圆角的 .svg,由 ThorVG 栅格化。
+    # 所以信号是 .svg,和 paths 一样 —— 走的本来就是同一条路。
+    "radius-pct-oblong": ".svg", "border": "border_width",
     # blur 的信号不能用 "blur" 这个词:元素自己就叫 k:blur,节点名会撞出假阳性
     # (第一版就这么误报了)。Godot 侧真要做模糊只能是 BackBufferCopy + 着色器,
     # 拿它当信号 —— 找不到才说明确实没实现。
     "shadow": "shadow_color", "blur": "BackBufferCopy", "rot": "rotation",
     "opacity": "modulate", "img": "texture", "vec": "texture",
-    "gradient-linear": "texture", "gradient-radial": "Gradient",
+    # 径向的信号取 `fill = 1`(GradientTexture2D.FILL_RADIAL)—— 只写 "Gradient"
+    # 分不出线性还是径向,两边都能撞上。
+    "gradient-linear": "texture", "gradient-radial": "fill = 1",
     "text": "text = ", "text-stroke": "font_outline_color",
     # v1.2:矢量落成同目录的 .svg 由 ext_resource 引;裁剪 = clip_contents;
     # OUTSIDE 描边 = StyleBoxFlat 往外扩(border 本身只往内画)
@@ -153,8 +171,11 @@ UNITY_SIGNALS = {
     "radius-px": "radius", "radius-pct": "radius", "radius-pct-oblong": "radius",
     "border": "border-width", "shadow": "shadow", "blur": "blur",
     "rot": "rotate", "opacity": "opacity", "img": "background-image",
-    "vec": "background-image", "gradient-linear": "gradient",
-    "gradient-radial": "gradient", "text": "font-size", "text-stroke": "outline",
+    # 渐变在 USS 里没有属性可写,figkit 是**编译期烘一张 PNG**,所以信号是那张图的
+    # 文件名前缀 —— 拿 "gradient" 当信号会被元素自己的类名 `.el-k_gradient_*` 撞出
+    # 假阴性(声明写着 known-loss、实际早就画出来了,两边一起错了一段时间)。
+    "vec": "background-image", "gradient-linear": "grad-",
+    "gradient-radial": "grad-", "text": "font-size", "text-stroke": "outline",
     # v1.2 三件套本后端未实现 —— 这些信号**必须找不到**(known-loss)
     # 矢量走 <figkit:FigVector>(Painter2D 真画,不产图片);裁剪 = overflow:hidden
     # (UI Toolkit 的 overflow 跟随 border-radius,圆角裁剪天然就对);
@@ -321,21 +342,28 @@ def test_percent_radius_is_measured_against_css_not_another_backend():
     **一起**照 `min(w,h)` 折,测试照样全绿,而 CSS 说 `50%` 在非正方形上是**椭圆角**
     (水平按 w、垂直按 h)。互比只能测出分叉,测不出"一起错"。
 
-    所以改成直接对 CSS 真值断言,并把 godot 当下的近似**显式钉住** —— 它退化成胶囊
-    是已知取舍(StyleBoxFlat 的 corner_radius 是标量),写在 mapping.md 里;哪天改用
-    烘图补齐了,这条会红,提醒来改期望而不是让近似悄悄留一辈子。
+    所以改成直接对 CSS 真值断言。**那个近似已经补上了**:纯实色的椭圆角元素现在
+    编译期落成一份带椭圆角的 .svg(与 v1.2 矢量同一条路),不再折成胶囊 ——
+    这条于是从"钉住近似"变成"钉住真值",两头都断言:
+      · `radius_axes` 必须逐轴给出 CSS 真值;
+      · 非正方形的实色 `50%` 必须真的走上 .svg 那条路(否则又悄悄退回胶囊)。
+    `parse_radius` 仍按 min(w,h) 折,那是留给还得靠 StyleBoxFlat 的那些
+    (带渐变/描边/裁剪的),它的近似照旧在 mapping.md 里记着。
     """
     sys.path.insert(0, os.path.join(ROOT, "figma2godot", "scripts"))
     import ui_to_tscn as G
     bad = []
     for w, h in ((100, 100), (300, 80), (40, 40), (17, 100)):
         css = (w / 2.0, h / 2.0)                       # CSS 真值:逐轴各算各的
-        got = G.parse_radius("50%", w, h)
-        want = round(min(w, h) / 2.0)                  # godot 现状:折成胶囊
-        if list(got) != [want] * 4:
-            bad.append("%dx%d: godot=%s,期望的近似是 %s(CSS 真值 %s)"
-                       % (w, h, got, [want] * 4, css))
-    assert not bad, "百分比圆角与声明的近似对不上:\n  " + "\n  ".join(bad)
+        got = G.radius_axes("50%", w, h)
+        if any(abs(rx - css[0]) > 0.01 or abs(ry - css[1]) > 0.01 for rx, ry in got):
+            bad.append("%dx%d: radius_axes=%s,CSS 真值是四角都 %s" % (w, h, got, css))
+        el = {"id": "e", "w": w, "h": h, "radius": "50%", "fill": "rgba(1,2,3,1)"}
+        shaped = G._classify(el) == "ShapeRect"
+        if shaped != (w != h):
+            bad.append("%dx%d: %s 走了 .svg,应当是 %s"
+                       % (w, h, "" if shaped else "没", w != h))
+    assert not bad, "百分比圆角没按 CSS 逐轴落地:\n  " + "\n  ".join(bad)
 
 
 def test_kitchen_sink_is_fresh():

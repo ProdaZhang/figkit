@@ -544,33 +544,136 @@ function applyClip(node: Node, el: CapEl): void {
   g.fill();
 }
 
+interface Underlay { suffix: string; dx: number; dy: number; grow: number; color: RGBA; blur: number; spread: number }
+
 /**
  * 需要**垫在本体下面**的额外盒子 → [(后缀, 画法)]。
- * Creator 没有 box-shadow,但硬阴影和 OUTSIDE 描边环本来就是"同形状的另一个盒子":
+ * Creator 没有 box-shadow,但阴影和 OUTSIDE 描边环本来就是"同形状的另一个盒子":
  *   · 硬阴影 `2px 6px 0px c` → 同尺寸同圆角、按 (2,6) 位移、填阴影色;
- *   · OUTSIDE 描边环 `0 0 0 Npx c` → 四边各外扩 N、圆角 +N、填描边色。
- * 画得出来就不该记成丢失;**带模糊的**投影才是真丢(Creator 无轻量逐节点模糊)。
+ *   · OUTSIDE 描边环 `0 0 0 Npx c` → 四边各外扩 N、圆角 +N、填描边色;
+ *   · **带模糊的阴影** `2px 4px 10px c` → 同样是垫一个盒子,只是它的底不是 Graphics 填色,
+ *     而是运行时烘的一张纹理(`softShadowFrame`)—— 与渐变走的是同一条路。
  */
-function underlays(el: CapEl): { suffix: string; dx: number; dy: number; grow: number; color: RGBA }[] {
-  const out: { suffix: string; dx: number; dy: number; grow: number; color: RGBA }[] = [];
+function underlays(el: CapEl): Underlay[] {
+  const out: Underlay[] = [];
   const [ring, rest] = splitRing(el.shadow || '', (el.borderAlign || '').toLowerCase());
   if (ring && ring.width > 0) {
-    out.push({ suffix: 'ring', dx: 0, dy: 0, grow: ring.width, color: ring.color });
+    out.push({ suffix: 'ring', dx: 0, dy: 0, grow: ring.width, color: ring.color, blur: 0, spread: 0 });
   }
   for (const part of rest.split(/,(?![^(]*\))/)) {
     const sh = parseShadow(part.trim());
     if (!sh) continue;
+    const spread = sh.spread || 0;
     if (sh.blur > 0) {
-      console.warn('[figma-ui] 带模糊的阴影丢弃(known-loss,硬阴影已用垫层还原):', el.id, part.trim());
+      // 画布要比形状大一圈,否则模糊被裁在边上:3σ 之外的高斯已经看不见(σ = blur/2)
+      const margin = Math.ceil(1.5 * sh.blur);
+      out.push({ suffix: 'softshadow', dx: sh.x, dy: sh.y, grow: spread + margin,
+                 color: sh.color, blur: sh.blur, spread });
       continue;
     }
-    out.push({ suffix: 'shadow', dx: sh.x, dy: sh.y, grow: sh.spread || 0, color: sh.color });
+    out.push({ suffix: 'shadow', dx: sh.x, dy: sh.y, grow: spread, color: sh.color, blur: 0, spread });
   }
   return out;
 }
 
+/** 一次盒滤波(滑动求和);三次叠起来≈高斯,而每像素是 O(1)。 */
+function boxBlur(src: Float32Array, w: number, h: number, r: number, horizontal: boolean): Float32Array {
+  const dst = new Float32Array(w * h);
+  const span = 2 * r + 1;
+  if (horizontal) {
+    for (let y = 0; y < h; y++) {
+      const row = y * w;
+      let acc = 0;
+      for (let x = 0; x <= r && x < w; x++) acc += src[row + x];
+      for (let x = 0; x < w; x++) {
+        dst[row + x] = acc / span;
+        if (x + r + 1 < w) acc += src[row + x + r + 1];
+        if (x - r >= 0) acc -= src[row + x - r];
+      }
+    }
+  } else {
+    for (let x = 0; x < w; x++) {
+      let acc = 0;
+      for (let y = 0; y <= r && y < h; y++) acc += src[y * w + x];
+      for (let y = 0; y < h; y++) {
+        dst[y * w + x] = acc / span;
+        if (y + r + 1 < h) acc += src[(y + r + 1) * w + x];
+        if (y - r >= 0) acc -= src[(y - r) * w + x];
+      }
+    }
+  }
+  return dst;
+}
+
+/** 把一次高斯拆成三次盒滤波的窗宽(Ivan Kutskir 的经典解法)。 */
+function boxSizes(sigma: number, n = 3): number[] {
+  if (sigma <= 0) return [];
+  const ideal = Math.sqrt((12 * sigma * sigma) / n + 1);
+  let wl = Math.floor(ideal);
+  if (wl % 2 === 0) wl -= 1;
+  const wu = wl + 2;
+  const m = Math.round((12 * sigma * sigma - n * wl * wl - 4 * n * wl - 3 * n) / (-4 * wl - 4));
+  const out: number[] = [];
+  for (let i = 0; i < n; i++) out.push(i < m ? wl : wu);
+  return out;
+}
+
+/**
+ * 带模糊的阴影 → 一张运行时烘的 `SpriteFrame`(画布 = 形状 + 两侧 margin)。
+ *
+ * Graphics 画不出模糊,而这类投影是真实设计稿里最常见的东西之一 —— 以前只能记
+ * known-loss,整片投影凭空消失。CSS 的口径是 **σ = blur/2**(模糊半径是两倍标准差);
+ * 形状按 `spread` 外扩、圆角同步长大,再用三次盒滤波近似高斯。
+ */
+function softShadowFrame(el: CapEl, u: Underlay, cw: number, ch: number): SpriteFrame {
+  const rw = el.w + 2 * u.spread, rh = el.h + 2 * u.spread;
+  const off = u.grow - u.spread;                       // 形状左上角在画布里的位置
+  const c = parseRadius(el.radius, el.w, el.h);
+  const cor: { cx: number; cy: number; rx: number; ry: number; sx: number; sy: number }[] = [
+    { cx: c.tl.x + u.spread, cy: c.tl.y + u.spread, rx: c.tl.x + u.spread, ry: c.tl.y + u.spread, sx: -1, sy: -1 },
+    { cx: rw - c.tr.x - u.spread, cy: c.tr.y + u.spread, rx: c.tr.x + u.spread, ry: c.tr.y + u.spread, sx: 1, sy: -1 },
+    { cx: rw - c.br.x - u.spread, cy: rh - c.br.y - u.spread, rx: c.br.x + u.spread, ry: c.br.y + u.spread, sx: 1, sy: 1 },
+    { cx: c.bl.x + u.spread, cy: rh - c.bl.y - u.spread, rx: c.bl.x + u.spread, ry: c.bl.y + u.spread, sx: -1, sy: 1 },
+  ];
+  let cov = new Float32Array(cw * ch);
+  for (let y = 0; y < ch; y++) {
+    const py = y + 0.5 - off;
+    for (let x = 0; x < cw; x++) {
+      const px = x + 0.5 - off;
+      let d = Math.max(Math.max(-px, px - rw), Math.max(-py, py - rh));
+      for (const k of cor) {
+        if (k.rx <= 0 || k.ry <= 0) continue;
+        if ((px - k.cx) * k.sx > 0 && (py - k.cy) * k.sy > 0) {
+          const nx = (px - k.cx) / k.rx, ny = (py - k.cy) / k.ry;
+          d = (Math.sqrt(nx * nx + ny * ny) - 1) * Math.min(k.rx, k.ry);
+          break;
+        }
+      }
+      cov[y * cw + x] = Math.min(1, Math.max(0, 0.5 - d));
+    }
+  }
+  for (const bw of boxSizes(u.blur / 2)) {
+    const r = (bw - 1) >> 1;
+    cov = boxBlur(cov, cw, ch, r, true);
+    cov = boxBlur(cov, cw, ch, r, false);
+  }
+  const buf = new Uint8Array(cw * ch * 4);
+  for (let i = 0; i < cov.length; i++) {
+    const o = i * 4;
+    buf[o] = u.color.r; buf[o + 1] = u.color.g; buf[o + 2] = u.color.b;
+    buf[o + 3] = Math.round(Math.min(1, Math.max(0, cov[i])) * u.color.a * 255);
+  }
+  const tex = new Texture2D();
+  tex.reset({ width: cw, height: ch, format: Texture2D.PixelFormat.RGBA8888, mipmapLevel: 1 });
+  tex.uploadData(buf);                 // 与渐变同理:必须走 uploadData 这条裸数据路径
+  tex.setFilters(Texture2D.Filter.LINEAR, Texture2D.Filter.LINEAR);
+  const sf = new SpriteFrame();
+  sf.texture = tex;
+  return sf;
+}
+
 /** 画一个垫层节点(与本体同形状,按 grow 外扩 / 按 dx,dy 位移)。 */
-function buildUnderlay(host: Node, el: CapEl, u: { suffix: string; dx: number; dy: number; grow: number; color: RGBA }, ga: number): Node {
+function buildUnderlay(host: Node, el: CapEl, u: Underlay, ga: number): Node {
   const ut = host.getComponent(UITransform)!;
   const n = adopt(new Node((el.name || el.id) + '-' + u.suffix), host);
   const nut = n.addComponent(UITransform);
@@ -578,6 +681,17 @@ function buildUnderlay(host: Node, el: CapEl, u: { suffix: string; dx: number; d
   const w = el.w + 2 * u.grow, h = el.h + 2 * u.grow;
   nut.setContentSize(w, h);
   const c = parseRadius(el.radius, el.w, el.h);
+  if (u.blur > 0) {
+    const cw = Math.max(1, Math.round(w)), ch = Math.max(1, Math.round(h));
+    const sp = n.addComponent(Sprite);
+    sp.sizeMode = Sprite.SizeMode.CUSTOM;
+    sp.type = Sprite.Type.SIMPLE;
+    sp.trim = false;                    // 与图片同理:Creator 会裁掉透明边,阴影四周全是透明边
+    sp.spriteFrame = softShadowFrame(el, u, cw, ch);
+    if (ga !== 1) n.addComponent(UIOpacity).opacity = Math.round(ga * 255);
+    nut.setContentSize(cw, ch);
+    return n;
+  }
   const g = n.addComponent(Graphics);
   g.fillColor = toColor(u.color, ga);
   const grow = (v: Corner): Corner => ({ x: v.x + u.grow, y: v.y + u.grow });

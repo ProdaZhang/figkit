@@ -100,12 +100,23 @@ def _run():
           and 'texture = SubResource("gt_7_1")' in t3,
           '90deg 线性渐变:stops 正确 + fill_from(0,0.5)→fill_to(1,0.5)')
 
-    # 8. 径向渐变 → 平均色 Panel 回退(known-loss)
+    # 8. 径向渐变 → GradientTexture2D 的 FILL_RADIAL(不再是平均色回退)。
+    #    捕获层只带出色标(figma 的 handle 位置没跟过来),所以按 CSS 缺省理解:
+    #    `ellipse at center` + `farthest-corner`。UV 里的正圆贴到非正方形元素上
+    #    自然被拉成椭圆 —— 与 CSS 的缺省形状一致,不用另外补偿。
     cap4 = {'frame': 'X', 'w': 200, 'h': 200, 'stageBg': '', 'els': [
-        _el('8:1', fill='radial-gradient(circle, rgba(255,0,0,1), rgba(0,0,255,1))')]}
+        _el('8:1', fill='radial-gradient(rgba(255,0,0,1) 0%, rgba(0,0,255,1) 100%)')]}
     t4 = M.convert(cap4, 'radial-case')
-    check('type="Panel"' in t4 and 'bg_color = Color(0.5, 0, 0.5, 1)' in t4,
-          '径向渐变 → Panel 平均色 Color(0.5, 0, 0.5, 1) 回退')
+    check('type="TextureRect"' in t4 and 'fill = 1' in t4
+          and 'fill_from = Vector2(0.5, 0.5)' in t4
+          and 'fill_to = Vector2(1.2071, 0.5)' in t4
+          and 'colors = PackedColorArray(1, 0, 0, 1, 0, 0, 1, 1)' in t4,
+          '径向渐变 → FILL_RADIAL 的 GradientTexture2D(中心→最远角)')
+    # 平均色回退还在,但只留给真解不动的(conic 之类)
+    t4b = M.convert({'frame': 'X', 'w': 200, 'h': 200, 'stageBg': '', 'els': [
+        _el('8:2', fill='conic-gradient(rgba(255,0,0,1) 0%, rgba(0,0,255,1) 100%)')]}, 'conic')
+    check('type="Panel"' in t4b and 'bg_color = Color(0.5, 0, 0.5, 1)' in t4b,
+          'conic 等仍走平均色 Panel 回退')
 
     # 9. 四角圆角简写 + 阴影(StyleBoxFlat 原生 shadow,别丢)
     cap5 = {'frame': 'X', 'w': 200, 'h': 200, 'stageBg': '', 'els': [
@@ -153,7 +164,16 @@ def _run():
     check('corner_radius_top_left = 50' in t7 and 'corner_radius_bottom_right = 50' in t7,
           '百分比圆角 50% + 100x100 → 四角 50(椭圆不再变方块)')
     check(M.parse_radius('50%', 300, 80) == (40, 40, 40, 40),
-          '非正方形 300x80 的 50% → min(w,h)/2 = 40(胶囊近似,见 mapping)')
+          'parse_radius 仍折成 min(w,h)/2 = 40 —— 那是 StyleBoxFlat 那条路的回退口径')
+    # 但**实色**的非正方形椭圆角不再走那条路:它落成一份带椭圆角的 .svg,
+    # 逐轴按 CSS 算(水平 150、垂直 40),不再是 40 的胶囊。
+    check(M.radius_axes('50%', 300, 80) == ((150.0, 40.0),) * 4,
+          'radius_axes 逐轴给 CSS 真值:300x80 的 50% = (150, 40)')
+    t7b, svgs = M.convert_all({'frame': 'X', 'w': 400, 'h': 200, 'stageBg': '', 'els': [
+        _el('7:2', fill='rgba(255,0,0,1)', radius='50%', w=300, h=80)]}, 'oblong')
+    check('type="TextureRect"' in t7b and len(svgs) == 1
+          and 'A 150 40 0 0 1' in list(svgs.values())[0],
+          '非正方形实色 50% → .svg 里画的是 rx=150 ry=40 的真椭圆角')
     check(M.parse_radius('50%') is None or M.parse_radius('50%') == (0, 0, 0, 0),
           '缺尺寸时百分比退化为 0/None,不瞎猜')
     check(M.parse_radius('bogus', 100, 100) is None,

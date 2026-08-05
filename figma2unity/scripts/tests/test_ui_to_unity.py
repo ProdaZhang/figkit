@@ -4,7 +4,11 @@ import importlib.util
 import json
 import os
 import re
+import shutil
+import struct
 import sys
+import tempfile
+import zlib
 
 # 输出里有中文。Windows 上 stdout 的编码跟系统区域走(CI runner 是 Latin-1),
 # 一 print 就 UnicodeEncodeError、退出码非 0 —— 而开发机是 GBK,中文编得动,一路绿。
@@ -31,6 +35,48 @@ def _rule(uss, cls):
     """取 .<cls> { ... } 规则体。"""
     m = re.search(r"\." + re.escape(cls) + r"\s*\{([^}]*)\}", uss)
     return m.group(1) if m else ""
+
+
+def _png_pixels(path):
+    """读回 ui_to_unity._png 写出的图 → [(r,g,b,a), …]。
+
+    自己解码是因为**测试也不许引第三方库**(全仓零依赖),而这里只需要认它自己写的
+    那一种:8 位 RGBA、逐行 filter=0。别的 PNG 一律不保证。
+    """
+    raw = open(path, "rb").read()
+    w = h = None
+    idat = b""
+    i = 8
+    while i < len(raw):
+        ln = struct.unpack(">I", raw[i:i + 4])[0]
+        tag = raw[i + 4:i + 8]
+        body = raw[i + 8:i + 8 + ln]
+        if tag == b"IHDR":
+            w, h, depth, ctype = struct.unpack(">IIBB", body[:10])
+            assert depth == 8 and ctype == 6, "只认 8 位 RGBA"
+        elif tag == b"IDAT":
+            idat += body
+        i += 12 + ln
+    data = zlib.decompress(idat)
+    out = []
+    stride = w * 4
+    for y in range(h):
+        row = data[y * (stride + 1) + 1: (y + 1) * (stride + 1)]
+        for x in range(w):
+            out.append(tuple(row[x * 4: x * 4 + 4]))
+    return out
+
+
+def _png_size(path):
+    raw = open(path, "rb").read()
+    return struct.unpack(">II", raw[16:24])
+
+
+def _png_alpha_row(path):
+    """中间那一行的 alpha 序列。"""
+    w, h = _png_size(path)
+    px = _png_pixels(path)
+    return [p[3] for p in px[(h // 2) * w:(h // 2 + 1) * w]]
 
 
 def _run():
@@ -170,5 +216,50 @@ def _run():
             text=dict(content="一行", color="rgba(0,0,0,1)", size=36, family="X", weight=400,
                       lh=48, ls=0, alignH="center", alignV="center", textAlign="center",
                       wrap=False, stroke=""))]}, "one")[2]))
+
+    # 9. 给了素材目录之后:带模糊的阴影与径向渐变都**烘成图**,不再是 known-loss。
+    #    USS 既没有 box-shadow 也没有渐变属性,但"垫一个底是图片的盒子"它完全表达得了。
+    tmp = tempfile.mkdtemp(prefix="figkit_uy_")
+    try:
+        scap = {"frame": "S", "w": 200, "h": 120, "stageBg": "", "els": [dict(
+            lcap["els"][0], id="s:1", w=100.0, h=40.0, radius="8px", blur="",
+            shadow="2px 4px 10px rgba(0,0,0,0.5)")]}
+        suxml, suss, slosses = mod.convert(scap, "soft", tmp)
+        r = _rule(suss, "el-s_1-softshadow")
+        m = re.search(r'url\("assets/(shadow-[0-9a-f]+\.png)"\)', r)
+        head = suss.split("*/")[0]
+        check("带模糊的阴影 → 垫一层烘出来的 PNG(不再 known-loss)",
+              bool(m) and 'name="s_1-softshadow"' in suxml
+              and "烘成" in head
+              and any("烘成" in x for x in slosses)
+              and not any("丢弃" in x for x in slosses))
+        if m:
+            png = os.path.join(tmp, "assets", m.group(1))
+            check("阴影图落盘且尺寸 = 元素 + 两侧 3σ", os.path.exists(png)
+                  and _png_size(png) == (100 + 2 * 15, 40 + 2 * 15))
+            a = _png_alpha_row(png)
+            # 形状中心必须最浓(≈ 阴影色的 alpha),边缘必须散没 —— 反过来就是烘反了
+            check("阴影中心浓、边缘散", a[len(a) // 2] > 100 and a[0] < 8
+                  and a[len(a) // 2] > a[20] > a[2])
+        # 垫层要排在本体**之前**:UI Toolkit 无 z-index,先出现的画在下面
+        check("阴影垫层排在本体之前",
+              suxml.index('name="s_1-softshadow"') < suxml.index('name="s_1"'))
+
+        rcap = {"frame": "R", "w": 80, "h": 80, "stageBg": "", "els": [dict(
+            lcap["els"][0], id="r:1", w=80.0, h=80.0, shadow="", blur="",
+            fill="radial-gradient(rgba(255,0,0,1) 0%, rgba(0,0,255,1) 100%)")]}
+        _, russ, _ = mod.convert(rcap, "radial", tmp)
+        rr = _rule(russ, "el-r_1")
+        rm = re.search(r'url\("assets/(grad-[0-9a-f]+\.png)"\)', rr)
+        check("径向渐变 → 烘图(不再退首色)", bool(rm))
+        if rm:
+            px = _png_pixels(os.path.join(tmp, "assets", rm.group(1)))
+            n = int(len(px) ** 0.5)
+            mid = px[(n // 2) * n + n // 2]
+            corner = px[0]
+            check("径向:中心取首色、角落取末色",
+                  mid[0] > 200 and mid[2] < 60 and corner[2] > 200 and corner[0] < 60)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
 
     return ok

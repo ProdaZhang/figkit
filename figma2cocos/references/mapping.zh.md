@@ -21,7 +21,7 @@
 | `fill`(linear-gradient) | 运行时**烘一张纹理**,Sprite 套进圆角 Mask | Graphics 没有渐变填充,于是自己生成 64² 纹理:每个纹素按该元素**真实渐变轴**投影(任意角度都准),再用 `GRAPHICS_STENCIL` 的 Mask 套住,圆角照样跟上。**纹理必须走 `Texture2D.reset` + `uploadData`** —— 用 `ImageAsset({_data})` 再 `tex.image = img` 会走「图片元素」的上传重载,实机每帧抛 `texSubImage2D … Overload resolution failed`(一屏 4686 条) |
 | `radius` | 逐角路径(直线 + 三次贝塞尔) | 四角**各自**保留半径,`73px 73px 0 0` 照原样出;半径先按 CSS 规则夹紧(相邻两角之和 ≤ 边长)。**这里绝不能用 `Graphics.arc`** —— 见 §5 下的踩坑说明 |
 | `border` | `Graphics.lineWidth/strokeColor` + `stroke()` | CSS 是内描边(border-box)、Graphics 沿路径居中 → **路径内缩 width/2** 逼近 |
-| `shadow`(硬阴影) | 同形状的**垫层**兄弟节点 | Creator 没有 `box-shadow`,但 `2px 6px 0 c` 本来就是"同一个圆角盒子按 (2,6) 位移再填色" —— 画得出来就不记成丢失。**带模糊**的仍是真丢 |
+| `shadow` | 同形状的**垫层**兄弟节点:硬阴影用 `Graphics` 画,**带模糊**的在加载期烘一张纹理(`softShadowFrame`)挂 `Sprite` | Creator 既没有 `box-shadow` 也没有逐节点模糊,但"底下多垫一个节点"把两者都表达得了。模糊那半 = 圆角矩形覆盖率过**三次盒滤波 ≈ σ=blur/2 的高斯**(CSS 自己的定义),画布按 3σ 外扩。走的是本后端给渐变用过的同一条路 —— `Texture2D.reset` + `uploadData`,并且 `sprite.trim = false`:Creator 会裁掉透明边,而阴影几乎全是透明边 |
 | `blur` | **不渲**(known-loss) | 同上(全屏后处理不适合逐节点) |
 | `img` | `Sprite`(`SizeMode.CUSTOM`) | `resources.load(assetRoot + stem(img) + '/spriteFrame', SpriteFrame)`;缺失 → 透明回退 + warn(不平涂占位,对齐 render.js) |
 | `imgSize`(cover/contain) | **一律拉伸铺满**(known-loss) | `SizeMode.CUSTOM` 铺满 contentSize;capture 的图多为 1:1 导出,失真有限 |
@@ -106,9 +106,7 @@ Canvas (cc.Canvas, designResolution = cap.w × cap.h)
 | 项 | 损失 | 补救 |
 |---|---|---|
 | `blur` | 不渲 | 需要时用预烘焙贴图或后处理,hook 层做 |
-| `shadow`(带模糊) | 不渲(硬阴影已用垫层还原) | 同上;或九宫格阴影贴图 |
 | 解析不了的渐变 | 取首个 stop 纯色 | 只有径向 / 非 `<角度>deg` 的写法会落到这里;线性渐变已经烘图 |
-| 字体族(设计字体) | 一律系统字体 | 挂 TTFFont 资产,hook 里覆盖 `label.font`(四端目前都没上设计字体) |
 | 字体族 / 精确字重 | 系统字体 + `isBold(≥600)` | 挂 TTFFont 资产,hook 覆盖 `label.font` |
 | `letterSpacing` | 不渲 | — |
 | `textAlign` vs `alignH` 冲突 | 取 alignH | 多行富对齐用 RichText 自行改造 |

@@ -53,7 +53,7 @@
       "el": "k:radius-pct-oblong",
       "field": "radius",
       "doc": "50%",
-      "godot": "approx",
+      "godot": "render",
       "unity": "render"
     },
     "border": {
@@ -68,7 +68,7 @@
       "field": "shadow",
       "doc": "shadow",
       "godot": "approx",
-      "unity": "known-loss"
+      "unity": "approx"
     },
     "blur": {
       "el": "k:blur",
@@ -113,14 +113,14 @@
       "field": "fill",
       "doc": "gradient",
       "godot": "render",
-      "unity": "known-loss"
+      "unity": "approx"
     },
     "gradient-radial": {
       "el": "k:gradient-radial",
       "field": "fill",
       "doc": "gradient",
-      "godot": "known-loss",
-      "unity": "known-loss"
+      "godot": "render",
+      "unity": "approx"
     },
     "text": {
       "el": "k:text",

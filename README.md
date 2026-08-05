@@ -25,9 +25,9 @@ figma REST ──► figma_capture ──►  IR: <screen>.ui.json (pixels) + fl
 |---|---|---|
 | figma2html | ✅ 89 | ✅ rendered + interactions, and the runtime's **behaviour** is now asserted in a real browser rather than looked at — 8 checks in [`tools/html-smoke/`](tools/html-smoke/), in CI on windows. It reads numbers out of the page (offsets, row texts, guard outcome, whether each string fits its box), not pixels |
 | figma2dsl | ✅ 19 | ✅ (same render pipeline) |
-| figma2godot | ✅ 30 | ✅ **Godot 4.3**, re-verified on **4.7.1**. Fed a real capture it found what synthesized fixtures cannot reach: Figma instance ids carry `;` while `sub_resource` ids accept only `[A-Za-z0-9_]`, so every StyleBoxFlat on an instanced element failed to register; and `clip_children` **cannot nest**, so a rounded panel inside a rounded panel lost its corners. Mail list vs HTML: **3.46/255**. Open gap: `radius: 50%` still draws as a capsule, not an ellipse. [full log](docs/verification.md#figma2godot--godot) |
-| figma2unity | ✅ 24 | ✅ **Unity 6000.4.8f1** and **2022.3.62f3**, the latter as a real built Windows player rendering 1080×1920 — not just a batchmode import check. That run caught what an import check cannot: **one invalid USS selector voids the entire stylesheet**, so 129 rules applied to nothing and the screen was black. Later passes fixed per-axis radius clamping, Painter2D joining a path's contours into one polygon, and 3D texture-import defaults bleeding UI edges. `paths`, `clip` and outside borders are implemented rather than declared away; gradients are baked to PNG at compile time. Mail list vs HTML: **2.87/255**. Still lost: blurred shadows. [full log](docs/verification.md#figma2unity--unity) |
-| figma2cocos | ✅ 16 | ✅ **Cocos Creator 3.8.8**, built for `web-desktop` and screenshotted at 1080×1920. Three of its bugs only an engine can show: nodes built in code land on the wrong layer, so the whole tree exists and **nothing draws, with no error**; `Graphics.arc` is not canvas's `arc` (its first point is a `moveTo`, and the sweep runs backwards); and `UIOpacity` does not affect `Graphics` at all. `clip` nests here via `GRAPHICS_STENCIL`, unlike Godot. Mail list vs HTML: **3.86/255**. Still lost: blurred shadows. [full log](docs/verification.md#figma2cocos--cocos-creator) |
+| figma2godot | ✅ 33 | ✅ **Godot 4.3**, re-verified on **4.7.1**. Fed a real capture it found what synthesized fixtures cannot reach: Figma instance ids carry `;` while `sub_resource` ids accept only `[A-Za-z0-9_]`, so every StyleBoxFlat on an instanced element failed to register; and `clip_children` **cannot nest**, so a rounded panel inside a rounded panel lost its corners. Mail list vs the design, outside text: **1.13/255**. `radius: 50%` on a non-square box used to draw as a capsule (`corner_radius` is a scalar); those elements now compile to an `.svg` with true elliptical corners. [full log](docs/verification.md#figma2godot--godot) |
+| figma2unity | ✅ 30 | ✅ **Unity 6000.4.8f1** and **2022.3.62f3**, the latter as a real built Windows player rendering 1080×1920 — not just a batchmode import check. That run caught what an import check cannot: **one invalid USS selector voids the entire stylesheet**, so 129 rules applied to nothing and the screen was black. Later passes fixed per-axis radius clamping, Painter2D joining a path's contours into one polygon, and 3D texture-import defaults bleeding UI edges. `paths`, `clip` and outside borders are implemented rather than declared away; gradients are baked to PNG at compile time. Mail list vs the design, outside text: **0.81/255** — level with HTML. Blurred shadows are no longer dropped: they bake to a PNG at compile time, as gradients already did. [full log](docs/verification.md#figma2unity--unity) |
+| figma2cocos | ✅ 17 | ✅ **Cocos Creator 3.8.8**, built for `web-desktop` and screenshotted at 1080×1920. Three of its bugs only an engine can show: nodes built in code land on the wrong layer, so the whole tree exists and **nothing draws, with no error**; `Graphics.arc` is not canvas's `arc` (its first point is a `moveTo`, and the sweep runs backwards); and `UIOpacity` does not affect `Graphics` at all. `clip` nests here via `GRAPHICS_STENCIL`, unlike Godot. Mail list vs the design, outside text: **1.13/255**. Blurred shadows are no longer dropped: they bake to a texture at load time, the same route this backend already used for gradients. [full log](docs/verification.md#figma2cocos--cocos-creator) |
 | figkit-motion | ✅ 6 | 📖 **not a backend** — the motion catalog the other five share: 59 effects (when to use one, **and when not to**), 63 parameter tokens with a `calibration` status, 6 shared algorithms. No runtime, no artifact. Its `tokens.json` and `motion.py`'s `PRESET` are compared token-by-token by the conformance suite, so the prose and the values figkit actually writes can't drift apart |
 
 Per-backend tests only compare a backend against its own expectations, so **31 more live in [`tools/conformance/`](tools/conformance/)**: one fixture exercising every IR feature, a table where each backend declares what it renders / approximates / drops, and checks that the declaration matches the real artifact, that every degradation is logged, and that it is written down in that backend's known-loss table. Three of those thirty are there because the suite itself had a hole: when the IR grew to v1.2 the new fields were added to the schema and to capture but **never to the fixture**, so they showed up as `paths: []` / `clip: false`, every backend "handled" them, every declaration "matched", and `paths` and `clip` were silently dropped by every backend with the whole suite green. It took feeding a real Figma file to a real engine to notice. Now: every field in the schema must be either declared structural or claimed by a feature; every declared feature's carrier element must hold a **non-default** value; and a backend that meets a field it does not implement has to name it on stderr. Same suite pins the backends to identical handling of malformed IR and of broken `flow.json` references, to the same sampled curve points, and — the layer that curve values alone can't reach — to the same *displacement basis*, the same shake waveform, and progress read off a clock rather than a tick count. (Counts above are verified by `tools/run_all_tests.py`, so they can't quietly go stale.)
@@ -78,18 +78,28 @@ clone:
 
 | screen | HTML | Unity | Godot | Cocos |
 |---|---|---|---|---|
-| list | **0.81** | **1.01** | **1.21** | **1.34** |
-| detail, with attachments | **0.53** | **0.59** | **0.64** | **0.57** |
-| detail, nothing to claim | **0.59** | **0.62** | **0.70** | **0.63** |
+| list | **0.81** | **0.81** | **1.13** | **1.13** |
+| detail, with attachments | **0.53** | **0.59** | **0.58** | **0.57** |
+| detail, nothing to claim | **0.59** | **0.62** | **0.63** | **0.63** |
 
 ```bash
 python3 tools/design-diff/check.py figma2html/examples/mail/screen-list.ui.json \
                                    figma2html/examples/mail/design/screen-list.png
 ```
 
-Every backend lands within **1.4/255** of the design once glyph rasterisation is set aside, and on
-the two text-heavy screens the engines are within **0.1** of HTML. Text boxes cover 22% of the list
-frame and account for 52% of its error.
+Every backend lands within **1.2/255** of the design once glyph rasterisation is set aside, and on
+the detail screens the engines are within **0.1** of HTML — Unity now ties it on the list screen
+too. Text boxes cover 22% of the list frame and account for 52% of its error.
+
+Three of those cells moved because measuring against the design named the defects the
+backend-vs-backend table could not. Godot was drawing `radius: 50%` on a non-square box as a
+capsule — its `corner_radius` is a scalar — so a 2143×680 ellipse came out 38px flat; those
+elements now compile to an `.svg` with true elliptical corners, the same route v1.2 vectors take
+(1.21 → 1.13 on the list). Unity and Cocos were dropping **blurred** shadows entirely, which is
+most of what a card UI is made of; both now bake the blur (a rounded-rect coverage mask, three box
+passes ≈ Gaussian at σ = blur/2) — Unity at compile time into a PNG, Cocos at load time into a
+texture, each the route that backend already used for gradients. Unity 1.01 → **0.81**,
+Cocos 1.34 → **1.13**. Godot has had soft shadows natively all along.
 
 Setting the text half aside is also what lets this comparison survive a translation. The design
 frames are the Chinese originals; the demo ships in English, because a UI kit should be read by
@@ -98,7 +108,7 @@ translation — it runs 5–6/255 on these screens and would move again the next
 relocalised a string, while the layout it is supposed to be judging stayed put. Comparing layout
 rather than ink is exactly what a team does when it checks a localised build, and here it is
 checkable rather than assumed: rebuilding all four backends from the pre-translation IR moves
-eleven of these twelve cells by ≤0.02. The twelfth (Godot, middle screen) reads 0.81 in Chinese
+eleven of these twelve cells by ≤0.02. The twelfth (Godot, middle screen) read 0.81 in Chinese
 against 0.64 in English, two thirds of it CJK ink spilling just outside the boxes the mask covers.
 
 That last cell is the caveat stated in general: this only holds while the translated copy still
@@ -113,18 +123,23 @@ output instead — same IR, same scale, no Figma file needed. It answers a diffe
 **whether the backends still understand the IR the same way.** If capture misreads the design, all
 four move together and this table does not budge; if one backend regresses, only its row does.
 
-| | vs HTML | pixels off by >24 |
+| | vs HTML, outside text | pixels off by >24 |
 |---|---|---|
-| Unity 6000.4.8f1 | 2.87/255 | 3.0% |
-| Godot 4.7.1 | 3.46/255 | 3.6% |
-| Cocos Creator 3.8.8 | 3.86/255 | 4.5% |
+| Unity 6000.4.8f1 | 0.15/255 | 0.2% |
+| Godot 4.7.1 | 0.50/255 | 0.5% |
+| Cocos Creator 3.8.8 | 0.55/255 | 1.1% |
+
+Same split, for the same reason: whole-frame these read 2.9–4.2, and nearly all of that is five
+renderers disagreeing about glyph edges — a number that moves when the copy changes and says
+nothing about whether the UI is right. Every figure quoted on this page is measured **outside
+text**.
 
 All four share one subsetted design font. Before that, each backend fell back to its own system
 font and even the line breaks disagreed, so the numbers measured little except glyph noise.
 
 | Figma (the design) | HTML (Edge) | Unity | Godot | Cocos Creator |
 |---|---|---|---|---|
-| ![the Figma frame this screen was captured from](figma2html/examples/mail/design/screen-list.png) | ![mail rendered in HTML](docs/shots/mail-html.png) | ![mail rendered in Unity](docs/shots/mail-unity.png) | ![mail rendered in Godot](docs/shots/mail-godot.png) | ![mail rendered in Cocos Creator](docs/shots/mail-cocos.png) |
+| ![the Figma frame this screen was captured from](docs/shots/mail-figma.png) | ![mail rendered in HTML](docs/shots/mail-html.png) | ![mail rendered in Unity](docs/shots/mail-unity.png) | ![mail rendered in Godot](docs/shots/mail-godot.png) | ![mail rendered in Cocos Creator](docs/shots/mail-cocos.png) |
 
 The first column is the baseline the table above measures against — the Figma export itself, in the
 design's own language. The other four are the same capture compiled four ways and translated.
