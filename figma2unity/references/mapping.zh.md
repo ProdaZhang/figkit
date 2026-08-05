@@ -52,7 +52,7 @@ IR 样式值是 **CSS 风格字符串**(`radius="45px"`、`border="2.0px solid r
 | `alignV` + `textAlign` | `-unity-text-align: <upper\|middle\|lower>-<left\|center\|right>` | flex-start→upper、center→middle、flex-end→lower;水平取 textAlign(多行也对) |
 | `ls` | `letter-spacing: <n>px` | — |
 | `lh` | **丢弃** | USS 无 line-height;记 known-loss |
-| `family` | **不映射** | Unity 文字需 FontAsset:在 PanelSettings 或主题里配 CJK 字体(如思源黑体 SDF),或对 `.unity-label` 全局设 `-unity-font-definition`;记 known-loss |
+| `family` | `-unity-font-definition: url("fonts/FigCJK-<Regular\|Bold>.ttf")` | 转换器只写引用,**两个 .ttf 由集成方放到 .uss 同级**(`subset_font.py` 从可变字体实例化 + 子集化)。两个坑都不吭声:文件**缺失**会在导入期报错、看得见;而文件在、**子集却盖不住这屏用到的字**,Unity 只是**悄悄退回另一张字体**,版面还挺像样。这件事按定义在「文字外」那半量不出来 —— 会动的是「文字内」那半。第二个坑:真 Bold 加载之后必须**停发 `-unity-font-style: bold`**,否则 Unity 会在它上面再合成一层粗 |
 | `stroke` | **丢弃** | USS 无字形描边(TextMeshProUGUI 才有);记 known-loss |
 | 换行策略 | 含 `\n` → `white-space: normal`;单行 → `nowrap` | 同 render.js:防字体回退偏宽被迫折行 |
 | — | Label 额外 `margin:0; padding:0` | 压平 `.unity-label` 内建 padding,保 IR 几何 |

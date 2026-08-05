@@ -56,7 +56,7 @@ IR style values are **CSS-flavoured strings** (`radius="45px"`, `border="2.0px s
 | `alignV` + `textAlign` | `-unity-text-align: <upper\|middle\|lower>-<left\|center\|right>` | flex-start→upper, center→middle, flex-end→lower; the horizontal half comes from textAlign, which is also right for multi-line |
 | `ls` | `letter-spacing: <n>px` | — |
 | `lh` | **dropped** | USS has no line-height; recorded as known-loss |
-| `family` | **not mapped** | Unity text needs a FontAsset: configure a CJK font (e.g. Source Han Sans SDF) in PanelSettings or the theme, or set `-unity-font-definition` globally on `.unity-label`; recorded as known-loss |
+| `family` | `-unity-font-definition: url("fonts/FigCJK-<Regular\|Bold>.ttf")` | The converter writes the reference; **you place the two .ttf files next to the .uss** (`subset_font.py` instances and subsets them from a variable source). Two traps, both silent: a *missing* file is an import error you will see, but a file whose **subset does not cover the characters on screen** is not — Unity just falls back to another face, and the layout stays plausible. It is invisible in the outside-text metric by construction; what moves is the in-text half. Second trap: with a real Bold face loaded, stop emitting `-unity-font-style: bold` or Unity synthesises a second bold on top of it |
 | `stroke` | **dropped** | USS has no glyph outline (only TextMeshProUGUI does); recorded as known-loss |
 | Wrapping | contains `\n` → `white-space: normal`; single line → `nowrap` | Same as render.js: stops a wider font fallback from forcing a wrap |
 | — | Labels also get `margin:0; padding:0` | Flattens `.unity-label`'s built-in padding so the IR geometry survives |
