@@ -92,6 +92,32 @@ And the login screen, which is synthesized rather than captured:
 
 Every engine column is the *same* compiler output driven by the *same* `flow.json`.
 
+### But all of that measures the engines against HTML
+
+HTML is FigKit's own output, so the table above proves the four renderers **agree**, not that they
+are **faithful to the design**. Those are different claims: if capture misreads the Figma file, all
+four backends are wrong together and every test stays green.
+
+So the design itself is the baseline too. [`tools/design-diff/`](tools/design-diff/) takes a frame
+exported from Figma at 1× and diffs it against what `render.js` produces from that frame's IR,
+splitting the error into text and non-text — glyph rasterisation never matches across two
+renderers and that part is noise, while everything else is geometry, colour, corners, strokes and
+images landing where the design says.
+
+| screen | whole frame | non-text |
+|---|---|---|
+| list | 1.31/255 | **0.80** |
+| detail (with attachments) | 1.22/255 | **0.53** |
+| detail (nothing to claim) | 1.00/255 | **0.59** |
+
+Text boxes cover 22% of the list frame and account for 52% of its error. Outside them the render
+sits within **0.80/255** of Figma's own rasteriser.
+
+The fourth screen is not in the table on purpose: its export is a **later variant** of the frame —
+different item qualities, different counts, different tick artwork, and a panel 9px higher — so it
+measures 4.22 and measures nothing about fidelity. That is the failure mode to watch for with this
+tool, and it is written down in its README rather than quietly dropped.
+
 ## Real Figma input
 
 1. Get a personal access token (scope `file_content:read` only). It is read by a single subprocess and never written to disk.
