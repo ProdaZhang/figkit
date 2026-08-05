@@ -63,22 +63,43 @@ python3 figma2unity/scripts/ui_to_unity.py figma2html/examples/mail/screen-list.
 
 (The third argument is optional; give it `flow.json` and the converter also bakes `motion.json` — the sampled transition curves.)
 
-Same IR, four independent renderers. All four are shot at the **same scale**
-(`tools/docs-assets/shoot_stage.py` for HTML; the engines render into a 1080×1920 offscreen
-target and are downscaled by the same factor), so this is a real pixel comparison rather than
-four pictures that merely look alike. Mean difference against the HTML column, over the whole
-frame:
+Same IR, four independent renderers. The question worth asking is not whether they agree with
+each other — it is whether they agree with **the design**. So the baseline is the frame exported
+from Figma at 1×, and every renderer is measured against it directly by
+[`tools/design-diff/`](tools/design-diff/).
 
-| | mean vs HTML | pixels off by >24 |
+The error is split in two, because the halves mean different things. Figma, Chromium, Godot, Unity
+and Cocos each rasterise glyphs their own way and always will; that difference is noise. Everything
+else — geometry, colour, corners, strokes, images — is the actual claim.
+
+**Mean difference from the Figma frame, outside text** (`/255`, whole frame in parentheses):
+
+| screen | HTML | Unity | Godot | Cocos |
+|---|---|---|---|---|
+| list | **0.80** (1.31) | **1.01** (2.85) | **1.21** (3.46) | **1.34** (4.12) |
+| detail, with attachments | **0.53** (1.22) | **0.59** (5.63) | **0.81** (5.38) | **0.57** (5.43) |
+| detail, nothing to claim | **0.59** (1.00) | **0.62** (5.34) | **0.70** (4.93) | **0.63** (5.22) |
+
+Every backend lands within **1.4/255** of the design once glyph rasterisation is set aside, and on
+the two text-heavy screens the engines are within 0.1–0.3 of HTML. The whole-frame numbers diverge
+much further precisely because those screens are mostly body copy — which is the argument for
+measuring the two halves separately rather than quoting one number.
+
+Text boxes cover 22% of the list frame and account for 52% of its error.
+
+Because the engines cannot be built on every push, a second, cheap comparison runs against the HTML
+output instead — same IR, same scale, no Figma file needed. It answers a different question:
+**whether the backends still understand the IR the same way.** If capture misreads the design, all
+four move together and this table does not budge; if one backend regresses, only its row does.
+
+| | vs HTML | pixels off by >24 |
 |---|---|---|
-| Unity 6000.4.8f1 | **2.87**/255 | 3.0% |
-| Godot 4.7.1 | **3.46**/255 | 3.6% |
-| Cocos Creator 3.8.8 | **3.86**/255 | 4.5% |
+| Unity 6000.4.8f1 | 2.87/255 | 3.0% |
+| Godot 4.7.1 | 3.46/255 | 3.6% |
+| Cocos Creator 3.8.8 | 3.86/255 | 4.5% |
 
-Nearly all of the remainder is on glyph edges and 1px antialiasing rings — the geometry lands
-on the pixels the IR's arithmetic predicts. It only reads that way because all four share one
-subsetted design font; before that, each backend fell back to its own system font and even the
-line breaks disagreed, so the numbers measured little except glyph noise.
+All four share one subsetted design font. Before that, each backend fell back to its own system
+font and even the line breaks disagreed, so the numbers measured little except glyph noise.
 
 | HTML (Edge) | Unity | Godot | Cocos Creator |
 |---|---|---|---|
@@ -92,31 +113,11 @@ And the login screen, which is synthesized rather than captured:
 
 Every engine column is the *same* compiler output driven by the *same* `flow.json`.
 
-### But all of that measures the engines against HTML
-
-HTML is FigKit's own output, so the table above proves the four renderers **agree**, not that they
-are **faithful to the design**. Those are different claims: if capture misreads the Figma file, all
-four backends are wrong together and every test stays green.
-
-So the design itself is the baseline too. [`tools/design-diff/`](tools/design-diff/) takes a frame
-exported from Figma at 1× and diffs it against what `render.js` produces from that frame's IR,
-splitting the error into text and non-text — glyph rasterisation never matches across two
-renderers and that part is noise, while everything else is geometry, colour, corners, strokes and
-images landing where the design says.
-
-| screen | whole frame | non-text |
-|---|---|---|
-| list | 1.31/255 | **0.80** |
-| detail (with attachments) | 1.22/255 | **0.53** |
-| detail (nothing to claim) | 1.00/255 | **0.59** |
-
-Text boxes cover 22% of the list frame and account for 52% of its error. Outside them the render
-sits within **0.80/255** of Figma's own rasteriser.
-
-The fourth screen is not in the table on purpose: its export is a **later variant** of the frame —
-different item qualities, different counts, different tick artwork, and a panel 9px higher — so it
-measures 4.22 and measures nothing about fidelity. That is the failure mode to watch for with this
-tool, and it is written down in its README rather than quietly dropped.
+The mail example's fourth screen is deliberately absent from the design comparison: its export is a
+**later variant** of the frame — different item qualities, different counts, different tick artwork,
+and a panel 9px higher — so it measures 4.22 and measures nothing about fidelity. That is the first
+thing to suspect when this tool returns a bad number, and it is written down in its README rather
+than quietly dropped.
 
 ## Real Figma input
 

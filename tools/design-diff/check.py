@@ -2,6 +2,10 @@
 """design-diff — 拿 **figma 自己导出的那一帧** 当地面真值,量 figkit 渲出来的差多少。
 
     python3 tools/design-diff/check.py <screen.ui.json> <figma-export.png> [--heat out.png]
+    python3 tools/design-diff/check.py <screen.ui.json> <figma-export.png> --rendered <engine.png>
+
+第二种形式是给**引擎**用的:Unity / Godot / Cocos 各自渲出来的那张 PNG 直接喂进来,
+省得这支脚本去认四套构建管线。要求它是**帧原尺寸**(与导出图同尺度),别缩放过。
 
 **为什么需要它。** README 里那张四端对照表的每个数字,量的都是"各引擎 vs figkit 自己的 HTML
 产物" —— 它证明的是**四端一致**,不是**忠于设计稿**。这两件事不一样:capture 只要把设计读错了,
@@ -124,6 +128,9 @@ def main():
     ap.add_argument("cap")
     ap.add_argument("design")
     ap.add_argument("--heat", default="")
+    ap.add_argument("--rendered", default="",
+                    help="已经渲好的 PNG(引擎产物);给了就不再自己渲 HTML")
+    ap.add_argument("--label", default="", help="报告里显示的这一端的名字")
     ap.add_argument("--shot", default="")
     args = ap.parse_args()
 
@@ -138,6 +145,13 @@ def main():
     if ref.size != (w, h):
         raise SystemExit("导出图 %s 与帧尺寸 %dx%d 不一致 —— 请按 **1x** 导出整帧"
                          % (ref.size, w, h))
+
+    if args.rendered:
+        got = Image.open(args.rendered).convert("RGB")
+        if got.size != (w, h):
+            raise SystemExit("--rendered 的图 %s 不是帧原尺寸 %dx%d —— 别缩放过再喂进来"
+                             % (got.size, w, h))
+        return report(ref, got, cap, args)
 
     # 运行时拷进屏所在目录:render.js 与 .ui.json 必须同源可取,免得跨目录再起一层服务
     rt_src = os.path.join(ROOT, "figma2html", "runtime", "render.js")
@@ -170,6 +184,10 @@ def main():
             if os.path.exists(f):
                 os.remove(f)
 
+    return report(ref, got, cap, args)
+
+
+def report(ref, got, cap, args):
     diff = ImageChops.difference(ref, got)
     mask, ntext = text_mask(cap, ref.size)
     dp = list(diff.getdata())
@@ -187,7 +205,7 @@ def main():
         if mp[i]:
             intext += s
             ntx += 1
-    print("屏      %s  (%dx%d)" % (os.path.basename(cap_path), w, h))
+    print("端      %s" % (args.label or ("render.js" if not args.rendered else os.path.basename(args.rendered))))
     print("基准    %s" % os.path.basename(args.design))
     print("文字盒  %d 个,覆盖 %.1f%% 画面" % (ntext, 100.0 * ntx / n))
     print("全帧    mean %.2f/255   >24 的像素 %.1f%%" % (total / (3.0 * n), 100.0 * over / n))
