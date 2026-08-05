@@ -506,7 +506,7 @@ def test_single_line_text_is_normalised_to_its_line_box():
 
     实测 figma(拿 absoluteRenderBounds 当墨迹真值,5 个样本):行块高 = lineHeight,
     按 textAlignVertical 放进文本框;**行块比框高时不是顶对齐、而是居中溢出**。
-    「运营」框高 31、行高 50.4、TOP,墨迹中心落在框心 1820.5 而不是行块顶对齐的 1830 —— 差 10px。
+    样本:框高 31、行高 50.4、TOP —— 墨迹中心落在框心 1820.5,而不是行块顶对齐的 1830,差 10px。
 
     这套「行高 + 竖直锚点」是 CSS 语汇,引擎侧没有等价物:godot 的 Label 和 Unity 的
     UI Toolkit 都**没有 line-height**。于是同一份 IR:html 靠 line-height 对上了,
@@ -519,17 +519,17 @@ def test_single_line_text_is_normalised_to_its_line_box():
     def one(y, h, lh, av, size=36.0):
         n = {"id": "t:1", "name": "t", "type": "TEXT", "visible": True,
              "absoluteBoundingBox": {"x": 110, "y": y + 200, "width": 200, "height": h},
-             "characters": "四个字内", "fills": [{"type": "SOLID", "visible": True,
+             "characters": "short label", "fills": [{"type": "SOLID", "visible": True,
                                                "color": {"r": 0, "g": 0, "b": 0, "a": 1}}],
              "style": {"fontSize": size, "lineHeightPx": lh, "textAlignVertical": av,
                        "textAlignHorizontal": "CENTER", "fontFamily": "X", "fontWeight": 700}}
         cap, _ = fc.capture(_frame([n]), NOASSET, ASSET_REL)
         return {e["id"]: e for e in cap["els"]}["t:1"]
 
-    # ① 框比行高一点(删除已读:框 56 / 行 48 / TOP)→ 行盒贴顶
+    # ① 框比行高一点(框 56 / 行 48 / TOP)→ 行盒贴顶
     e = one(1617, 56, 48, "TOP")
     assert (e["y"], e["h"]) == (1617.0, 48.0), "TOP 的行盒应贴框顶、高=行高:%r" % [e["y"], e["h"]]
-    # ② 框比行**矮**(运营:框 31 / 行 50.4 / TOP)→ 行盒居中溢出,不是贴顶
+    # ② 框比行**矮**(框 31 / 行 50.4 / TOP)→ 行盒居中溢出,不是贴顶
     e = one(1805, 31, 50.4, "TOP", 42.0)
     assert abs(e["y"] - (1805 + (31 - 50.4) / 2)) < 0.6, (
         "行块高过框时 figma 是居中溢出,不是顶对齐:%r" % e["y"])

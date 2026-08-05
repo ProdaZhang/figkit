@@ -652,7 +652,7 @@ def capture(root, asset_dir, asset_rel):
             #
             # 竖直规则取自实测(拿 absoluteRenderBounds 当墨迹真值,5 个样本全中):
             # 行块高 = lineHeight,按 textAlignVertical 放进文本框;**行块比框高时
-            # 不是顶对齐、而是居中溢出**(「运营」框高 31/行高 50.4/TOP,墨迹中心
+            # 不是顶对齐、而是居中溢出**(样本:框高 31 / 行高 50.4 / TOP,墨迹中心
             # 落在框心而不是行块顶对齐处,差 10px)。
             # 装得下两行以上的框不动 —— 那时候顶对齐是对的,归一反而会把正文拽到中间。
             if lh and rec['h'] > 0 and int(round(rec['h'] / lh)) <= 1:

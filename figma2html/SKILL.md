@@ -24,7 +24,8 @@ scripts/   figma_capture.py(节点树→ui.json+tree.html)· flow_from_figma.py(
 python3 scripts/tests/run_all.py`)
 runtime/   render.js(ui.json→DOM,subtreeOf抽子树)· assemble.js(通用引擎:flow→底屏+弹窗+事件+绑定)· app.tmpl.html
 references/ ui.json-schema.md(含「已知限制:旋转」)· flow-events.md(flow/Events 契约)
-examples/login/ 自足可跑示例:make_fixture.py(合成三屏,走真 capture 管线)+ screen-*.ui.json + flow.json + app.js + net.js(mock)+ app.html + README(起 http.server 即点;Edge 截图已核验)
+examples/login/ 自足可跑示例(**合成**):make_fixture.py 手搭三屏节点树 → 走真 capture 管线 + flow.json + app.js + net.js(mock)+ app.html + README。演管线本身,界面刻意最小
+examples/mail/  自足可跑示例(**真 figma 捕获**):四屏 + 三个弹窗 + 图片填充 + 设计字体子集 + bundle.py。演合成夹具够不着的那半 —— 实例 id 带分号、描边带是预裁环、isMask 圆角、椭圆角,以及 `@in:` 弹窗内按钮与「原地换态」这类只能由 app hook 做的语义
 ```
 
 ## 用法(管线)

@@ -123,7 +123,7 @@ IR 样式值是 **CSS 风格字符串**(`radius="45px"`、`border="2.0px solid r
 
 Unity 的默认导入器是给 3D 表面调的,那套默认值对 UI **条条都不对**。
 `runtime/Editor/FigkitTextureImport.cs` 是个 `AssetPostprocessor`,把 `Assets/Resources/UI/` 下的
-资源改成 UI 该有的样子。其中三条是拿实机像素比出来的(2026-08-05,已领取那屏的白色对勾):
+资源改成 UI 该有的样子。其中三条是拿实机像素比出来的(2026-08-05,示例里那个白色对勾):
 
 - **`mipmapEnabled`** —— UI 是 1:1 贴的,采样却可能落到更低一级 mip,边缘于是**向外渗**。
   白勾比 HTML 每边胖 1px、底部那行被硬切平;同一格里的金色小星反而**向内缩** 1px ——
