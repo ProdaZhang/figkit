@@ -23,7 +23,7 @@ figma REST ──► figma_capture ──►  IR: <screen>.ui.json (pixels) + fl
 
 | backend | offline tests | in-engine verification |
 |---|---|---|
-| figma2html | ✅ 89 | ✅ rendered + interactions, and the runtime's **behaviour** is now asserted in a real browser rather than looked at — 7 checks in [`tools/html-smoke/`](tools/html-smoke/), in CI on windows. It reads numbers out of the page (offsets, row texts, guard outcome), not pixels |
+| figma2html | ✅ 89 | ✅ rendered + interactions, and the runtime's **behaviour** is now asserted in a real browser rather than looked at — 8 checks in [`tools/html-smoke/`](tools/html-smoke/), in CI on windows. It reads numbers out of the page (offsets, row texts, guard outcome, whether each string fits its box), not pixels |
 | figma2dsl | ✅ 19 | ✅ (same render pipeline) |
 | figma2godot | ✅ 30 | ✅ **Godot 4.3**, re-verified on **4.7.1**. Fed a real capture it found what synthesized fixtures cannot reach: Figma instance ids carry `;` while `sub_resource` ids accept only `[A-Za-z0-9_]`, so every StyleBoxFlat on an instanced element failed to register; and `clip_children` **cannot nest**, so a rounded panel inside a rounded panel lost its corners. Mail list vs HTML: **3.46/255**. Open gap: `radius: 50%` still draws as a capsule, not an ellipse. [full log](docs/verification.md#figma2godot--godot) |
 | figma2unity | ✅ 24 | ✅ **Unity 6000.4.8f1** and **2022.3.62f3**, the latter as a real built Windows player rendering 1080×1920 — not just a batchmode import check. That run caught what an import check cannot: **one invalid USS selector voids the entire stylesheet**, so 129 rules applied to nothing and the screen was black. Later passes fixed per-axis radius clamping, Painter2D joining a path's contours into one polygon, and 3D texture-import defaults bleeding UI edges. `paths`, `clip` and outside borders are implemented rather than declared away; gradients are baked to PNG at compile time. Mail list vs HTML: **2.87/255**. Still lost: blurred shadows. [full log](docs/verification.md#figma2unity--unity) |
@@ -72,20 +72,41 @@ The error is split in two, because the halves mean different things. Figma, Chro
 and Cocos each rasterise glyphs their own way and always will; that difference is noise. Everything
 else — geometry, colour, corners, strokes, images — is the actual claim.
 
-**Mean difference from the Figma frame, outside text** (`/255`, whole frame in parentheses):
+**Mean difference from the Figma frame, outside text** (`/255`). The frames are committed in
+[`examples/mail/design/`](figma2html/examples/mail/design), so this table is reproducible from a
+clone:
 
 | screen | HTML | Unity | Godot | Cocos |
 |---|---|---|---|---|
-| list | **0.80** (1.31) | **1.01** (2.85) | **1.21** (3.46) | **1.34** (4.12) |
-| detail, with attachments | **0.53** (1.22) | **0.59** (5.63) | **0.81** (5.38) | **0.57** (5.43) |
-| detail, nothing to claim | **0.59** (1.00) | **0.62** (5.34) | **0.70** (4.93) | **0.63** (5.22) |
+| list | **0.81** | **1.01** | **1.21** | **1.34** |
+| detail, with attachments | **0.53** | **0.59** | **0.64** | **0.57** |
+| detail, nothing to claim | **0.59** | **0.62** | **0.70** | **0.63** |
+
+```bash
+python3 tools/design-diff/check.py figma2html/examples/mail/screen-list.ui.json \
+                                   figma2html/examples/mail/design/screen-list.png
+```
 
 Every backend lands within **1.4/255** of the design once glyph rasterisation is set aside, and on
-the two text-heavy screens the engines are within 0.1–0.3 of HTML. The whole-frame numbers diverge
-much further precisely because those screens are mostly body copy — which is the argument for
-measuring the two halves separately rather than quoting one number.
+the two text-heavy screens the engines are within **0.1** of HTML. Text boxes cover 22% of the list
+frame and account for 52% of its error.
 
-Text boxes cover 22% of the list frame and account for 52% of its error.
+Setting the text half aside is also what lets this comparison survive a translation. The design
+frames are the Chinese originals; the demo ships in English, because a UI kit should be read by
+people who don't read Chinese. A whole-frame number would therefore mostly measure the
+translation — it runs 5–6/255 on these screens and would move again the next time anyone
+relocalised a string, while the layout it is supposed to be judging stayed put. Comparing layout
+rather than ink is exactly what a team does when it checks a localised build, and here it is
+checkable rather than assumed: rebuilding all four backends from the pre-translation IR moves
+eleven of these twelve cells by ≤0.02. The twelfth (Godot, middle screen) reads 0.81 in Chinese
+against 0.64 in English, two thirds of it CJK ink spilling just outside the boxes the mask covers.
+
+That last cell is the caveat stated in general: this only holds while the translated copy still
+**fits the boxes the design captured**. When it doesn't, the overflow lands in the "outside text"
+half and reads as a geometry error — English body copy wrapping one line past its box moved that
+same cell from 0.53 to 0.82 with not one pixel of rendering changed. So it is asserted rather than
+remembered: [`tools/html-smoke/`](tools/html-smoke/) measures every string in the demo against its
+own box in a real browser, and fails on a line that doesn't fit.
 
 Because the engines cannot be built on every push, a second, cheap comparison runs against the HTML
 output instead — same IR, same scale, no Figma file needed. It answers a different question:
@@ -101,9 +122,12 @@ four move together and this table does not budge; if one backend regresses, only
 All four share one subsetted design font. Before that, each backend fell back to its own system
 font and even the line breaks disagreed, so the numbers measured little except glyph noise.
 
-| HTML (Edge) | Unity | Godot | Cocos Creator |
-|---|---|---|---|
-| ![mail rendered in HTML](docs/shots/mail-html.png) | ![mail rendered in Unity](docs/shots/mail-unity.png) | ![mail rendered in Godot](docs/shots/mail-godot.png) | ![mail rendered in Cocos Creator](docs/shots/mail-cocos.png) |
+| Figma (the design) | HTML (Edge) | Unity | Godot | Cocos Creator |
+|---|---|---|---|---|
+| ![the Figma frame this screen was captured from](figma2html/examples/mail/design/screen-list.png) | ![mail rendered in HTML](docs/shots/mail-html.png) | ![mail rendered in Unity](docs/shots/mail-unity.png) | ![mail rendered in Godot](docs/shots/mail-godot.png) | ![mail rendered in Cocos Creator](docs/shots/mail-cocos.png) |
+
+The first column is the baseline the table above measures against — the Figma export itself, in the
+design's own language. The other four are the same capture compiled four ways and translated.
 
 And the login screen, which is synthesized rather than captured:
 

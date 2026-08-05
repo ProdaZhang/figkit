@@ -71,6 +71,29 @@
         report({ anchorFound: !!t, stillOpen: shown('read'), current: window.FigApp.current });
       };
     },
+
+    // ③ 每段文字有没有溢出**设计稿量给它的那个盒子**。
+    //    这条不是排版洁癖,是量尺的完整性:`tools/design-diff` 把误差拆成"文字内/文字外",
+    //    文字那半靠 IR 里每个文字元素的盒子(外扩 4px)遮掉。字一旦长过盒子,溢出来的
+    //    那截就落在"文字外"里,被当成几何误差报出来 —— 实测本示例译成英文后,正文多绕
+    //    了一行,详情屏的"文字外"从 0.53 涨到 0.82,而渲染一个像素都没变。
+    //    (量之前得把各层都亮出来:display:none 的层 scrollHeight 恒为 0,溢出无从谈起。)
+    2: function () {
+      document.querySelectorAll('[data-modal]').forEach(function (l) { l.style.display = 'block'; });
+      var over = [], seen = 0;
+      document.querySelectorAll('[data-id]').forEach(function (d) {
+        var txt = false;
+        d.childNodes.forEach(function (n) { if (n.nodeType === 3 && n.nodeValue.trim()) txt = true; });
+        if (!txt) return;
+        seen++;
+        var dx = d.scrollWidth - d.clientWidth, dy = d.scrollHeight - d.clientHeight;
+        if (dx > 0 || dy > 0) {
+          over.push({ id: d.getAttribute('data-id'), dx: dx, dy: dy,
+                      lh: parseFloat(getComputedStyle(d).lineHeight) || 0 });
+        }
+      });
+      return function () { report({ over: over, seen: seen }); };
+    },
   };
 
   setTimeout(function () {

@@ -2544,7 +2544,7 @@
   },
   {
    "id": "31:2277",
-   "name": "Claimed",
+   "name": "Taken",
    "type": "TEXT",
    "parent": "31:2280",
    "x": 485.0,
@@ -2562,7 +2562,7 @@
    "img": "",
    "imgSize": "",
    "text": {
-    "content": "Claimed",
+    "content": "Taken",
     "color": "rgba(255,255,255,1.0)",
     "size": 36.0,
     "family": "Source Han Sans SC",
@@ -2961,7 +2961,7 @@
   },
   {
    "id": "31:1431",
-   "name": "Body copy runs up to about fifty characters per line here, and this paragraph is long enough to wrap across several lines so that the fixed-width text box is actually exercised. It keeps going for a while, because one short line would not prove that wrapping works.",
+   "name": "Body copy runs up to about fifty characters per line here, and this paragraph is long enough to wrap across several lines so that the fixed-width text box is actually exercised rather than assumed.",
    "type": "TEXT",
    "parent": "31:1382",
    "x": 124.0,
@@ -2979,7 +2979,7 @@
    "img": "",
    "imgSize": "",
    "text": {
-    "content": "Body copy runs up to about fifty characters per line here, and this paragraph is long enough to wrap across several lines so that the fixed-width text box is actually exercised. It keeps going for a while, because one short line would not prove that wrapping works.",
+    "content": "Body copy runs up to about fifty characters per line here, and this paragraph is long enough to wrap across several lines so that the fixed-width text box is actually exercised rather than assumed.",
     "color": "rgba(57,57,57,1.0)",
     "size": 36.0,
     "family": "Source Han Sans SC",

@@ -208,6 +208,33 @@ def _m1(m):
     return bad
 
 
+@check("translated_copy_still_fits_the_boxes_the_design_captured", example="mail")
+def _m2(m):
+    """★ 这条守的是**量尺**,不是排版。
+
+    `tools/design-diff` 把误差拆成"文字内 / 文字外",靠的是 IR 里每个文字元素的盒子
+    (外扩 4px)。字一旦长过自己的盒子,溢出去那截就落在"文字外"那半里,被当成几何误差
+    报出来 —— 而它跟渲染保真毫无关系。本示例译成英文时正好踩到:正文多绕了一行,
+    详情屏的"文字外"从 0.53 涨到 0.82,渲染一个像素都没动。
+
+    两条阈值是分开的,因为两种溢出的性质不同:
+    - **横向**:捕获下来的单行在设计稿里必然装得下自己的盒子,多出一个像素就是文案变了。
+    - **纵向**:行盒本来就可能比 figma 量的字形高几个像素(lh 50 vs h 48,中英文都一样),
+      那是捕获层的系统差、两边都有、比较时抵消。真正要抓的是**多绕出一整行**,
+      所以阈值取半个行高。
+    """
+    bad = []
+    if m["seen"] < 30:
+        bad.append("只量到 %d 个文字元素 —— 层没亮出来的话这条永远是绿的" % m["seen"])
+    for o in m["over"]:
+        if o["dx"] > 0:
+            bad.append("%s 的文字比盒子宽 %dpx —— 换的文案排不进设计给的宽度" % (o["id"], o["dx"]))
+        if o["dy"] >= max(8, (o["lh"] or 16) / 2.0):
+            bad.append("%s 的文字比盒子高 %dpx(行高 %g)—— 多绕了一行,design-diff 会把它算成几何误差"
+                       % (o["id"], o["dy"], o["lh"]))
+    return bad
+
+
 def main():
     browser = find_browser()
     failed, litter = [], []
