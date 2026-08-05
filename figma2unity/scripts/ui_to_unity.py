@@ -671,8 +671,25 @@ def build_uss_props(el, parent, losses, asset_dir=None):
         if lh and (el.get("h") or 0) > lh * 1.5:
             losses.append("%s: 多行的 line-height %spx 丢弃(USS 无 line-height,行距按字体默认)"
                           % (eid, lh))
-        if text.get("stroke"):
-            losses.append("%s: text-stroke '%s' 丢弃(USS 无字形描边)" % (eid, text["stroke"]))
+        # 字形描边:USS **有**这两条属性(`-unity-text-outline-width` / `-color`)——
+        # 早先记成"USS 无字形描边"是错的。但它和 CSS 不是一回事,只能近似:
+        # CSS 的 `-webkit-text-stroke` 骑在字形轮廓上往**外**长(可见的是外侧一半),
+        # 而 TextCore 的 outline 是**往里吃字身**的。实测(底栏页签,描边墨量÷字身墨量 /
+        # 字身白像素数,HTML 参照是 1.90 / 1653):
+        #   1px → 0.41 / 1250 | 2px → 1.17 / 913 | 3px → 2.75 / 651 | 6px → 9.00 / ~180
+        # 字身随描边变粗而**越来越少** —— 想凑够墨量就得把字啃掉,没有哪个宽度能两全。
+        # 所以这里**封顶 1px**:把设计要的那圈暗边点出来,又不至于把字形吃细,
+        # 剩下的差额如实记成降级。
+        st = re.match(r"\s*([\d.]+)px\s+(.+)$", text.get("stroke") or "")
+        if st:
+            want = float(st.group(1)) / 2.0
+            props.append(("-unity-text-outline-width", fmt_num(min(want, 1.0)) + "px"))
+            props.append(("-unity-text-outline-color", st.group(2).strip()))
+            if want > 1.0:
+                losses.append("%s: text-stroke 可见宽度 %spx → 封顶 1px(TextCore 的 outline "
+                              "往里吃字身,再宽就把字形啃细了)" % (eid, fmt_num(want)))
+        elif text.get("stroke"):
+            losses.append("%s: text-stroke '%s' 解析不动,已跳过" % (eid, text["stroke"]))
         # 设计字体:约定 `<FONT_DIR>/FigCJK-Regular.ttf` / `-Bold.ttf` 与 uss 同级。
         # 四端共用同一份字形 —— 否则每端各拿系统默认字体,连**换行位置**都对不上
         # (同一段定宽正文,html 断在第 12 字、unity 断在第 14 字),像素比剩下的全是字形噪声。

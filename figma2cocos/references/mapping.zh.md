@@ -32,7 +32,7 @@
 | `text.alignH / alignV` | `horizontalAlign / verticalAlign` | flex-start/center/flex-end → LEFT·TOP/CENTER/RIGHT·BOTTOM;`textAlign` 与 `alignH` 冲突时取 alignH(Label 只有一套对齐,known-loss) |
 | `text.weight` | `isBold = weight ≥ 600` | 无 500/800 分档(known-loss) |
 | `text.family` | 系统默认字体 | 字体族不还原(known-loss);要还原需 TTFFont 资产 + hook 覆盖 |
-| `text.stroke` | `LabelOutline`(width + color) | |
+| `text.stroke` | `LabelOutline`,**宽度取一半** | IR 里的宽度是 CSS `-webkit-text-stroke` 的口径:骑在字形轮廓上,只有外侧那半看得见。`LabelOutline` 是往外画的,照抄整数就粗一倍 —— 实测描边墨量÷字身墨量 3.00(HTML 参照 1.90),字缝全糊死;取一半后 1.79 |
 | `text.ls`(letterSpacing) | **不渲**(known-loss) | Label 3.x 无字距属性 |
 | 文本溢出 | `Overflow.CLAMP` + `enableWrapText` 取自 `text.wrap` | 跟随 IR,不再一律 nowrap(此前定宽正文会一行冲出面板);系统字体偏宽仍可能截字(known-loss) |
 | `cap.stageBg` | `stage-bg` 子节点(Sprite 或 Graphics) | `url(..)` → Sprite;纯色/渐变 → Graphics(渐变取首色);sibling 0 垫底 |

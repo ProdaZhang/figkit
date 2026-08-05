@@ -56,7 +56,7 @@ tscn 节点名不允许 `. : @ / " %` —— **统一换 `_`**:figma id `1:40` �
 | `color` | `theme_override_colors/font_color` | |
 | `size` | `theme_override_font_sizes/font_size`(int) | |
 | `lh`(行高 px) | `theme_override_constants/line_spacing = lh − size` | 仅 lh>0 时写;可为负 |
-| `stroke`("wpx rgba(...)") | `theme_override_colors/font_outline_color` + `theme_override_constants/outline_size = round(w/2)` | webkit-text-stroke 骑线 + `paint-order:stroke` → 可见≈外侧一半,故取 w/2(近似) |
+| `stroke`("wpx rgba(...)") | `font_outline_color` + `outline_size = round(w × 5/3)` | `-webkit-text-stroke` 骑在字形轮廓上、`paint-order: stroke` 让**外侧那一半**露出来,所以目标是 w/2 px 的可见描边。但 Godot 的 `outline_size` **不是可见像素数** —— 同一份字体实测:`outline_size` 6→0.63、12→1.22、18→1.74、20→1.83(底栏页签的描边墨量÷字身墨量),HTML 参照是 1.90,每单位只显出约 0.3px。所以这个系数是**实测标定**,不是单位换算;原先写的 `round(w/2)` 画出来细到几乎看不见 |
 | `weight` / `family` / `ls` | **不落盘** | 需要字体资源才有意义,见 §6 字体与 §7 known-loss |
 
 ## 6. 图片 / 素材 / 字体
@@ -82,7 +82,7 @@ tscn 节点名不允许 `. : @ / " %` —— **统一换 `_`**:figma id `1:40` �
 | `linear-gradient` + 圆角/描边/阴影同体 | 渐变保真,圆角/描边/阴影**丢** | 节点变 TextureRect 后无 StyleBox;真要 → 手工套 Panel 父 + clip |
 | `text.ls`(字距) | 丢弃 | 需 FontVariation `spacing_glyph`,依赖字体资源 |
 | `text.weight` / `family` | 不落盘 | 见 §6 字体;不配主题时用引擎默认字体渲染 |
-| `text.stroke` 宽度 | `outline_size = round(w/2)` 近似 | 骑线 vs 外描的差,±1px 级 |
+| `text.stroke` 宽度 | `outline_size = round(w × 5/3)`,实测标定 | Godot 的常数不是可见像素;系数是对着 HTML 参照拟合出来的,原则上与字体有关 |
 | CSS 阴影 `blur=0` 硬阴影 | **在下面垫一层实心副本**,不走 `shadow_size` | `shadow_size` 的语义是「往外扩多少像素」,而 `0px 6px 0px` 的语义是「整个形状按位移复制一份、填成阴影色」。按 `shadow_size` 走会被 `max(1, blur+spread)` 夹成 1,设计稿上那块厚投影只剩一圈 1px 边。改为在本体**之前**发一个同四角圆角的 Panel(排在前面 = 画在下面)。带模糊的阴影仍走原生 `shadow_size` —— 那才是它表达得了的东西 |
 | `shadow` 挂在 TEXT/img 元素上 | 丢弃 | box-shadow ≠ 字体阴影;Label 只有 font shadow,语义不同不硬凑 |
 | 全局 `z` 跨父交叉 | 同级排序近似 | 兄弟内正确;跨父穿插(罕见)会平化 |

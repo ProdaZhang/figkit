@@ -62,7 +62,7 @@ which has to be avoided).
 | `color` | `theme_override_colors/font_color` | |
 | `size` | `theme_override_font_sizes/font_size` (int) | |
 | `lh` (line height px) | `theme_override_constants/line_spacing = lh − size` | Written only when lh>0; may be negative |
-| `stroke` ("wpx rgba(...)") | `theme_override_colors/font_outline_color` + `theme_override_constants/outline_size = round(w/2)` | webkit-text-stroke straddles the outline and `paint-order:stroke` makes roughly the outer half visible, hence w/2 (approximate) |
+| `stroke` ("wpx rgba(...)") | `font_outline_color` + `outline_size = round(w × 5/3)` | `-webkit-text-stroke` straddles the glyph outline and `paint-order: stroke` leaves the **outer half** visible, so the target is w/2 px of visible outline. But Godot's `outline_size` is **not visible pixels** — measured on this font: `outline_size` 6 → 0.63, 12 → 1.22, 18 → 1.74, 20 → 1.83 (outline ink ÷ glyph ink on the bottom tabs), against the HTML reference's 1.90, i.e. ~0.3px shows per unit. The factor is therefore a **measured calibration**, not a unit conversion; `round(w/2)` (what this row used to say) draws an outline you can barely see |
 | `weight` / `family` / `ls` | **not written** | Only meaningful with a font resource; see §6 fonts and the §7 known-loss table |
 
 ## 6. Images, assets, fonts
@@ -88,7 +88,7 @@ which has to be avoided).
 | `linear-gradient` together with radius / border / shadow | Gradient preserved; radius, border and shadow **dropped** | Once the node becomes a TextureRect there is no StyleBox. If you need both, wrap it manually in a Panel parent and clip |
 | `text.ls` (letter spacing) | dropped | Needs FontVariation `spacing_glyph`, which depends on a font resource |
 | `text.weight` / `family` | not written | See §6 fonts; without a theme it renders in the engine default font |
-| `text.stroke` width | `outline_size = round(w/2)`, approximate | The straddled-vs-outer difference, on the order of ±1px |
+| `text.stroke` width | `outline_size = round(w × 5/3)`, calibrated by measurement | Godot's constant is not visible pixels; the factor was fitted against the HTML reference and is font-dependent in principle |
 | CSS hard shadow with `blur=0` | **a solid copy panel underneath**, not `shadow_size` | `shadow_size` means "how many pixels to spread outward", while `0px 6px 0px` means "copy the whole shape, offset, filled with the shadow colour". Routed through `shadow_size` it gets clamped to `max(1, blur+spread)` = 1 and the design's chunky drop shadow collapses into a 1px rim. A Panel with the same corner radii is emitted **before** the node itself (earlier sibling = drawn below). Blurred shadows still use the native `shadow_size` — that is what it can actually express |
 | `shadow` on a TEXT or img element | dropped | box-shadow is not a font shadow; a Label only has a font shadow, and the semantics differ too much to fake |
 | Global `z` interleaving across parents | Approximated by sibling ordering | Correct within siblings; cross-parent interleaving (rare) is flattened |

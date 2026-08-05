@@ -180,6 +180,33 @@ def test_blurred_shadows_are_baked_not_dropped():
     assert "带模糊的阴影丢弃" not in body, "还留着'带模糊的阴影丢弃'的 known-loss 告警"
 
 
+def test_zero_length_edges_are_never_emitted():
+    """**胶囊的零长度直边不许发。**
+
+    `radius = h/2` 时相邻两个圆角首尾相接,中间那条直边长度正好 0。照发就是一个
+    **重复点**,而 Graphics 描边默认 MITER 接头,在重复点上算出的方向是退化的 ——
+    沿边线支出一根尖刺。实测:绿色胶囊按钮左端只有中线那 5 行(y 1643–1647)向外
+    鼓了 3px,其余每行都与设计稿逐像素重合。填充看不出来(重复点对三角化无所谓),
+    **只有描边会炸**,所以这类 bug 只在"有 border 的胶囊"上现形。
+    """
+    body = _src("figma-ui.ts")
+    m = re.search(r"function roundRectPath[\s\S]*?\n}", body)
+    assert m, "抓不到 roundRectPath 函数体"
+    fn = m.group(0)
+    assert "g.lineTo(" not in fn.replace("if (Math.abs(nx - cx) > 1e-4 || Math.abs(ny - cy) > 1e-4) g.lineTo(nx, ny);", ""), \
+        "roundRectPath 里还有裸 g.lineTo —— 零长度直边会被原样发出去"
+    assert "1e-4" in fn, "没有零长度判据"
+
+
+def test_text_stroke_is_halved():
+    """IR 的描边宽度是 CSS `-webkit-text-stroke` 的口径:骑线、内外各半,里侧被字身盖住。
+    `LabelOutline.width` 是往外画的,照抄整数就粗一倍(实测底栏页签墨量比 3.00,
+    HTML 参照 1.90;取一半后 1.79)。"""
+    body = _src("figma-ui.ts")
+    assert re.search(r"outline\.width\s*=\s*st\.width\s*/\s*2", body), \
+        "LabelOutline 宽度没取一半"
+
+
 def _run():
     ok = True
     for n, f in sorted(globals().items()):

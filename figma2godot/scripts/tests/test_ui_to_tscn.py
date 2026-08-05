@@ -118,6 +118,20 @@ def _run():
     check('type="Panel"' in t4b and 'bg_color = Color(0.5, 0, 0.5, 1)' in t4b,
           'conic 等仍走平均色 Panel 回退')
 
+    # 8b. 字形描边:IR 给的是 CSS `-webkit-text-stroke` 的宽度(骑线、可见的是外侧一半),
+    #     而 Godot 的 outline_size **不是可见像素数** —— 同一份字体上实测每单位只显出
+    #     约 0.3px(底栏页签的描边墨量÷字身墨量:size 6→0.63、12→1.22、18→1.74、20→1.83,
+    #     HTML 参照 1.90)。所以按实测标定 ×5/3,而不是照 stroke/2 给(那样细到看不见)。
+    tstroke = M.convert({'frame': 'X', 'w': 200, 'h': 60, 'stageBg': '', 'els': [
+        dict(_el('9:1', w=200.0, h=60.0),
+             text={'content': 'x', 'color': 'rgba(255,255,255,1)', 'size': 36, 'family': 'F',
+                   'weight': 400, 'lh': 48, 'ls': 0, 'alignH': 'center', 'alignV': 'center',
+                   'textAlign': 'center', 'wrap': False,
+                   'stroke': '12.0px rgba(74,74,74,1.0)'})]}, 'stroke-case')
+    check('outline_size = 20' in tstroke
+          and 'font_outline_color = Color(0.2902, 0.2902, 0.2902, 1)' in tstroke,
+          '12px 描边 → outline_size 20(实测标定 ×5/3),颜色照发')
+
     # 9. 四角圆角简写 + 阴影(StyleBoxFlat 原生 shadow,别丢)
     cap5 = {'frame': 'X', 'w': 200, 'h': 200, 'stageBg': '', 'els': [
         _el('5:1', fill='rgba(0,0,0,1)', radius='1px 2px 3px 4px',

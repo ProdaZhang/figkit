@@ -53,7 +53,7 @@ IR 样式值是 **CSS 风格字符串**(`radius="45px"`、`border="2.0px solid r
 | `ls` | `letter-spacing: <n>px` | — |
 | `lh` | **丢弃** | USS 无 line-height;记 known-loss |
 | `family` | `-unity-font-definition: url("fonts/FigCJK-<Regular\|Bold>.ttf")` | 转换器只写引用,**两个 .ttf 由集成方放到 .uss 同级**(`subset_font.py` 从可变字体实例化 + 子集化)。两个坑都不吭声:文件**缺失**会在导入期报错、看得见;而文件在、**子集却盖不住这屏用到的字**,Unity 只是**悄悄退回另一张字体**,版面还挺像样。这件事按定义在「文字外」那半量不出来 —— 会动的是「文字内」那半。第二个坑:真 Bold 加载之后必须**停发 `-unity-font-style: bold`**,否则 Unity 会在它上面再合成一层粗 |
-| `stroke` | **丢弃** | USS 无字形描边(TextMeshProUGUI 才有);记 known-loss |
+| `stroke` | `-unity-text-outline-width` / `-color`,**封顶 1px** | USS 其实有这两条(原先写"USS 无字形描边"是错的),但 TextCore 的 outline 是**往里吃字身**的,CSS 的是往外长。底栏页签实测(描边墨量÷字身墨量 / 字身白像素,HTML 参照 1.90 / 1653):1px→0.41/1250、2px→1.17/913、3px→2.75/651、6px→9.00/~180 —— 描边越粗字身越少,没有哪个宽度能还原。封顶 1px:暗边在、字形还在,差额如实记降级 |
 | 换行策略 | 含 `\n` → `white-space: normal`;单行 → `nowrap` | 同 render.js:防字体回退偏宽被迫折行 |
 | — | Label 额外 `margin:0; padding:0` | 压平 `.unity-label` 内建 padding,保 IR 几何 |
 
@@ -64,7 +64,7 @@ IR 样式值是 **CSS 风格字符串**(`radius="45px"`、`border="2.0px solid r
 | `shadow` | 跳过 | 需要阴影可在 Unity 里加 9-slice 阴影图 |
 | `blur` | 跳过 | 无 filter |
 | 解析不了的渐变 | 第一停靠色纯色回退 | 只有径向 / 非 `<角度>deg` 的写法会落到这里;线性渐变已经烘图 |
-| `text.stroke` | 跳过 | 可改用 TextMeshPro 组件承载 |
+| 超过 1px 的 `text.stroke` | 封顶 | TextCore 的 outline 往里吃字身,详见文字那张表 |
 | `text.lh`(行高) | 跳过 | USS 无 line-height |
 | `text.family` | 不映射 | 需手配 FontAsset(见上表) |
 | 数值字重(500/800 等) | 近似 normal/bold | USS 只有两档 |

@@ -43,7 +43,7 @@ is the implementation contract for `runtime/*.ts`.
 | `text.alignH / alignV` | `horizontalAlign / verticalAlign` | flex-start/center/flex-end → LEFT·TOP/CENTER/RIGHT·BOTTOM; when `textAlign` and `alignH` disagree, alignH wins (a Label has only one alignment, known-loss) |
 | `text.weight` | `isBold = weight ≥ 600` | No 500/800 gradations (known-loss) |
 | `text.family` | System default font | The family is not reproduced (known-loss); reproducing it needs a TTFFont asset plus a hook override |
-| `text.stroke` | `LabelOutline` (width + color) | |
+| `text.stroke` | `LabelOutline`, **width halved** | The IR width is CSS `-webkit-text-stroke`: it straddles the glyph outline, so only the outer half shows. `LabelOutline` grows outward, so copying the number whole draws it twice as thick — measured 3.00 outline-ink ÷ glyph-ink against HTML's 1.90, with the letter gaps filled solid. Halved it lands at 1.79 |
 | `text.ls` (letterSpacing) | **not rendered** (known-loss) | Label 3.x has no letter-spacing property |
 | Text overflow | `Overflow.CLAMP` + `enableWrapText` from `text.wrap` | Follows the IR instead of forcing nowrap (a fixed-width body used to run off its panel on one line); a wider system font may still clip (known-loss) |
 | `cap.stageBg` | A `stage-bg` child (Sprite or Graphics) | `url(..)` → Sprite; solid or gradient → Graphics (gradient takes the first colour); sibling 0, underneath |

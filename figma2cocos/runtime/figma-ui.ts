@@ -137,23 +137,37 @@ function roundRectPath(g: Graphics, x: number, y: number, w: number, h: number, 
   const s = (v: Corner): Corner => ({ x: Math.max(0, v.x * f), y: Math.max(0, v.y * f) });
   const tl = s(c.tl), tr = s(c.tr), br = s(c.br), bl = s(c.bl);
   const k = KAPPA;
+  // **零长度的直边一律不发。** 胶囊(radius = h/2)相邻两个圆角是首尾相接的,中间那条
+  // 直边长度正好是 0 —— 照发就是一个**重复点**,而 Graphics 描边默认走 MITER 接头,
+  // 在重复点上算出的接头方向是退化的,于是沿边线**支出一根尖刺**:实测绿色胶囊按钮
+  // 左端在中线那 5 行(y 1643–1647)向外鼓了 3px,其余每一行都与设计稿逐像素重合。
+  // (填充看不出来 —— 重复点对三角化无所谓;只有描边会炸。)
+  let cx = x + bl.x, cy = y;
+  g.moveTo(cx, cy);
+  const line = (nx: number, ny: number): void => {
+    if (Math.abs(nx - cx) > 1e-4 || Math.abs(ny - cy) > 1e-4) g.lineTo(nx, ny);
+    cx = nx; cy = ny;
+  };
+  const curve = (a: number, b: number, c2: number, d: number, ex: number, ey: number): void => {
+    g.bezierCurveTo(a, b, c2, d, ex, ey);
+    cx = ex; cy = ey;
+  };
   // 局部系 y 向上:(x,y) 是左下角,逆时针走一圈。每个角是**椭圆弧**(rx≠ry 时不是圆)
-  g.moveTo(x + bl.x, y);
-  g.lineTo(x + w - br.x, y);
+  line(x + w - br.x, y);
   if (br.x > 0 || br.y > 0) {
-    g.bezierCurveTo(x + w - br.x + k * br.x, y, x + w, y + br.y - k * br.y, x + w, y + br.y);
+    curve(x + w - br.x + k * br.x, y, x + w, y + br.y - k * br.y, x + w, y + br.y);
   }
-  g.lineTo(x + w, y + h - tr.y);
+  line(x + w, y + h - tr.y);
   if (tr.x > 0 || tr.y > 0) {
-    g.bezierCurveTo(x + w, y + h - tr.y + k * tr.y, x + w - tr.x + k * tr.x, y + h, x + w - tr.x, y + h);
+    curve(x + w, y + h - tr.y + k * tr.y, x + w - tr.x + k * tr.x, y + h, x + w - tr.x, y + h);
   }
-  g.lineTo(x + tl.x, y + h);
+  line(x + tl.x, y + h);
   if (tl.x > 0 || tl.y > 0) {
-    g.bezierCurveTo(x + tl.x - k * tl.x, y + h, x, y + h - tl.y + k * tl.y, x, y + h - tl.y);
+    curve(x + tl.x - k * tl.x, y + h, x, y + h - tl.y + k * tl.y, x, y + h - tl.y);
   }
-  g.lineTo(x, y + bl.y);
+  line(x, y + bl.y);
   if (bl.x > 0 || bl.y > 0) {
-    g.bezierCurveTo(x, y + bl.y - k * bl.y, x + bl.x - k * bl.x, y, x + bl.x, y);
+    curve(x, y + bl.y - k * bl.y, x + bl.x - k * bl.x, y, x + bl.x, y);
   }
   g.close();
 }
@@ -496,7 +510,11 @@ function buildText(node: Node, t: CapText): void {
     const st = parseTextStroke(t.stroke);
     if (st) {
       const outline = node.addComponent(LabelOutline);
-      outline.width = st.width;
+      // IR 里的宽度是 **CSS `-webkit-text-stroke` 的口径:骑在字形轮廓上**,内外各一半,
+      // 里侧那半被字身盖住 —— 所以**看得见的只有一半**。`LabelOutline.width` 是往外画的,
+      // 照抄整数就粗一倍:实测底栏页签,描边墨量/字身墨量 html 1.90、cocos 直接给 3.00,
+      // 字缝全糊死。取一半后落在同一档。
+      outline.width = st.width / 2;
       outline.color = toColor(st.color, 1);
     }
   }

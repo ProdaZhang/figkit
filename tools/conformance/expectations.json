@@ -157,8 +157,8 @@
       "el": "k:text-stroke",
       "field": "text",
       "doc": "stroke",
-      "godot": "render",
-      "unity": "known-loss"
+      "godot": "approx",
+      "unity": "approx"
     }
   }
 }

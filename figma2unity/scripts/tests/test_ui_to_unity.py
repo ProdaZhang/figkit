@@ -217,6 +217,22 @@ def _run():
                       lh=48, ls=0, alignH="center", alignV="center", textAlign="center",
                       wrap=False, stroke=""))]}, "one")[2]))
 
+    # 8b. 字形描边:USS 有 `-unity-text-outline-*`(早先记成"USS 无字形描边"是错的),
+    #     但 TextCore 的 outline 是**往里吃字身**的,和 CSS 往外长不是一回事。实测
+    #     (底栏页签,墨量比/字身白像素;HTML 参照 1.90/1653):1px→0.41/1250、
+    #     2px→1.17/913、3px→2.75/651、6px→9.00/~180 —— 想凑墨量就得把字啃掉。
+    #     所以**封顶 1px**:暗边点出来,字形不吃细,差额如实记降级。
+    tscap = mod.convert({"frame": "T", "w": 200, "h": 60, "stageBg": "", "els": [dict(
+        lcap["els"][0], id="t:1", w=200.0, h=60.0, shadow="", blur="", fill="",
+        text=dict(content="x", color="rgba(255,255,255,1)", size=36, family="F", weight=400,
+                  lh=48, ls=0, alignH="center", alignV="center", textAlign="center",
+                  wrap=False, stroke="12.0px rgba(74,74,74,1.0)"))]}, "stroke")
+    r = _rule(tscap[1], "el-t_1")
+    check("字形描边:发 outline 且封顶 1px",
+          "-unity-text-outline-width: 1px;" in r
+          and "-unity-text-outline-color: rgba(74,74,74,1.0);" in r
+          and any("封顶 1px" in x for x in tscap[2]))
+
     # 9. 给了素材目录之后:带模糊的阴影与径向渐变都**烘成图**,不再是 known-loss。
     #    USS 既没有 box-shadow 也没有渐变属性,但"垫一个底是图片的盒子"它完全表达得了。
     tmp = tempfile.mkdtemp(prefix="figkit_uy_")

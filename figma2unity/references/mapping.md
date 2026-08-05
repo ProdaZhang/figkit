@@ -57,7 +57,7 @@ IR style values are **CSS-flavoured strings** (`radius="45px"`, `border="2.0px s
 | `ls` | `letter-spacing: <n>px` | — |
 | `lh` | **dropped** | USS has no line-height; recorded as known-loss |
 | `family` | `-unity-font-definition: url("fonts/FigCJK-<Regular\|Bold>.ttf")` | The converter writes the reference; **you place the two .ttf files next to the .uss** (`subset_font.py` instances and subsets them from a variable source). Two traps, both silent: a *missing* file is an import error you will see, but a file whose **subset does not cover the characters on screen** is not — Unity just falls back to another face, and the layout stays plausible. It is invisible in the outside-text metric by construction; what moves is the in-text half. Second trap: with a real Bold face loaded, stop emitting `-unity-font-style: bold` or Unity synthesises a second bold on top of it |
-| `stroke` | **dropped** | USS has no glyph outline (only TextMeshProUGUI does); recorded as known-loss |
+| `stroke` | `-unity-text-outline-width` / `-color`, **capped at 1px** | USS does have these two (the old "USS has no glyph outline" was wrong), but TextCore's outline eats **into** the glyph while CSS's grows outward. Measured on the bottom tabs (outline ink ÷ glyph ink / glyph pixels, against HTML's 1.90 / 1653): 1px → 0.41 / 1250, 2px → 1.17 / 913, 3px → 2.75 / 651, 6px → 9.00 / ~180 — the glyph shrinks as the outline grows, so no width reproduces the stroke. Capped at 1px: the dark edge is there, the letterform survives, and the shortfall is logged |
 | Wrapping | contains `\n` → `white-space: normal`; single line → `nowrap` | Same as render.js: stops a wider font fallback from forcing a wrap |
 | — | Labels also get `margin:0; padding:0` | Flattens `.unity-label`'s built-in padding so the IR geometry survives |
 
@@ -68,7 +68,7 @@ IR style values are **CSS-flavoured strings** (`radius="45px"`, `border="2.0px s
 | blurred `shadow` | **baked to a PNG** and shown under the element | Only when there is no asset dir to write into does it become a real loss |
 | `blur` | skipped | No filter |
 | gradient that will not parse | falls back to the first stop as a solid | Linear **and radial** are baked to a PNG (radial as CSS's default `ellipse at center` / `farthest-corner`); only conic and malformed forms land here |
-| `text.stroke` | skipped | Carry the text on a TextMeshPro component instead |
+| `text.stroke` beyond 1px | capped | TextCore's outline erodes the glyph; see the text table |
 | `text.lh` (line height) | skipped | USS has no line-height |
 | `text.family` | not mapped | Needs a FontAsset configured by hand (see the table above) |
 | numeric weights (500/800…) | approximated to normal/bold | USS has only the two |

@@ -742,8 +742,15 @@ def _emit_el(em, e, parent_path, parent_rec, used, rounded_clips=frozenset()):
         sm = re.match(r'\s*([0-9.]+)px\s+(rgba?\([^)]*\))', stroke)
         if sm and parse_rgba(sm.group(2)):
             L.append('theme_override_colors/font_outline_color = ' + color_str(parse_rgba(sm.group(2))))
-            # webkit-text-stroke 骑线(内外各半)+ paint-order:stroke → 可见≈外侧一半
-            L.append('theme_override_constants/outline_size = %d' % max(1, int(round(float(sm.group(1)) / 2))))
+            # IR 的宽度是 CSS `-webkit-text-stroke` 的口径:骑在字形轮廓上、内外各半,
+            # 里侧那半被字身盖住 —— 可见的是**外侧一半**。
+            # 而 Godot 的 `outline_size` **不是可见像素数**:同一份字体上实测(底栏页签,
+            # 描边墨量 ÷ 字身墨量,与 HTML 参照实现比),
+            #   size  6 → 0.63 | 12 → 1.22 | 18 → 1.74 | 20 → 1.83,而 HTML 是 1.90。
+            # 也就是每个单位只显出 ~0.3px。所以这里按**实测标定**换算(≈ 宽度 × 5/3),
+            # 而不是照抄一个"看起来该对"的数 —— 照 stroke/2 给,描边细到几乎看不见。
+            L.append('theme_override_constants/outline_size = %d'
+                     % max(1, int(round(float(sm.group(1)) * 5.0 / 3.0))))
         lh, size = t.get('lh') or 0, t.get('size') or 0
         if lh and size:
             L.append('theme_override_constants/line_spacing = %d' % int(round(lh - size)))
@@ -831,6 +838,9 @@ def collect_losses(cap):
         if e.get('shadow'):
             out.append("%s: 阴影用 shadow_size 近似 CSS 的 blur+spread(且最小 1,"
                        "Godot size=0 不绘制,硬阴影会消失)" % eid)
+        if ((e.get('text') or {}).get('stroke') or ''):
+            out.append("%s: 字形描边按**实测标定**换算(Godot 的 outline_size 不是可见像素数,"
+                       "每单位只显出约 0.3px),≈ CSS 口径而非精确等价" % eid)
         fill = e.get('fill') or ''
         if '-gradient(' in fill and not fill.startswith(('linear-gradient', 'radial-gradient')):
             out.append("%s: 这种渐变(conic 等)降级为色标平均色" % eid)
