@@ -165,13 +165,6 @@ backends still understand the IR the same way.**
 All four share one subsetted design font. Before that each backend fell back to its own system font
 and even the line breaks disagreed, so the numbers measured little except glyph noise.
 
-And the login screen, which is synthesized rather than captured — same compiler output, same
-`flow.json`:
-
-| HTML (Edge) | Godot 4.3 |
-|---|---|
-| ![login rendered in HTML](docs/shots/login-html.png) | ![login rendered in Godot](docs/shots/login-godot.png) |
-
 The mail example's fourth screen is deliberately absent from the design comparison: its export is a
 **later variant** of the frame, so it measures 4.22 and measures nothing about fidelity. That's the
 first thing to suspect when the tool returns a bad number, and it's written down in

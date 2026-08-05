@@ -10,11 +10,11 @@ python3 tools/docs-assets/shoot_gif.py figma2html/examples/mail  docs/shots/demo
 还有一支拍**静态对照图**的(`--topbar` 见脚本头:自带 `fit()` 的页面传 0):
 
 ```bash
-python3 tools/docs-assets/shoot_stage.py figma2html/examples/login docs/shots/login-html.png
 python3 tools/docs-assets/shoot_stage.py figma2html/examples/mail  docs/shots/mail-html.png --topbar 0
+python3 tools/docs-assets/shoot_stage.py figma2html/examples/login out/login-html.png
 ```
 
-它解决的是一个一直没人发现的问题:README 那对「HTML vs Godot」**从来不是同一个尺度**。
+它解决的是一个一直没人发现的问题:HTML 那张与引擎那张**从来不是同一个尺度**。
 `--screenshot` 拍窗口、页面画在视口里,窗口 540×960 时视口只有 516 宽,舞台按视口缩放,
 于是同一份 IR 在浏览器落到 0.409、在 Godot 落到 0.5。两张图都是 540×960、内容也都居中,
 **肉眼看不出来**,逐像素一比却差 15.9/255。`shoot_stage.py` 用 `--hide-scrollbars` +
