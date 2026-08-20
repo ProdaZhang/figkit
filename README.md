@@ -185,7 +185,9 @@ Every step above is runnable with no Figma account: `examples/login/nodes.json` 
 
 Each skill folder is a self-contained agent skill — a `SKILL.md` carrying YAML frontmatter plus the scripts it names, no build step and no dependencies beyond Python. Four hosts are verified: Claude Code, DeepSeek Harness, Codex, and ZCode. All four discover a skill the same way — one `<name>/SKILL.md` under a skills root — which is what lets a single folder serve all of them unchanged.
 
-**Install all six.** Each is a `SKILL.md` and a handful of scripts, and a session pays only for their frontmatter until one of them actually fires. If you do want a subset, they are not interchangeable: **`figma2unity`, `figma2godot` and `figma2cocos` carry no capture of their own** — they compile what `figma2html` produced, so pair them with it rather than instead of it. `figma2html` and `figma2dsl` each carry a capture and stand alone; `figkit-motion` is a reference catalog that needs nothing. The commands below spell the six names out instead of globbing `figma2*`, which would also match `figma2unreal/` — that folder ships scripts but no `SKILL.md`, so it is not a skill yet.
+**Install all six.** Each is a `SKILL.md` and a handful of scripts, and a session pays only for their frontmatter until one of them actually fires. If you do want a subset, they are not interchangeable: **`figma2unity`, `figma2godot` and `figma2cocos` carry no capture of their own** — they compile what `figma2html` produced, so pair them with it rather than instead of it. `figma2html` and `figma2dsl` each carry a capture and stand alone; `figkit-motion` is a reference catalog that needs nothing.
+
+Codex scans its skills root recursively, so it can take the repo whole in one command. DeepSeek Harness and ZCode read exactly one level — `<name>/SKILL.md` — so their sections lift the six folders out instead. That is the only reason the commands below differ.
 
 ### Claude Code
 
@@ -204,21 +206,19 @@ The repo doubles as a plugin marketplace:
 Prefer no plugin machinery? Copy the folders into a skills root instead — user-wide, or scoped to one project:
 
 ```shell
-SKILLS="figma2html figma2dsl figma2unity figma2godot figma2cocos figkit-motion"
-cp -r $SKILLS ~/.claude/skills/                  # user-wide
-cp -r $SKILLS <projectRoot>/.claude/skills/      # this project only
+cp -r figma2* figkit-motion ~/.claude/skills/                  # user-wide
+cp -r figma2* figkit-motion <projectRoot>/.claude/skills/      # this project only
 ```
 
-Both routes are verified: `claude plugin details figma2html@figkit` reports `Skills (1)`, so the `SKILL.md` at each plugin's root is picked up as a skill — a layout Claude Code accepts and Codex does not, which is why the sections below differ.
+Both routes are verified: `claude plugin details figma2html@figkit` reports `Skills (1)`, so the `SKILL.md` sitting at each plugin's root is picked up as a skill. Codex does not accept that same layout — see its section below.
 
 ### DeepSeek Harness
 
 Copy the folders into either skill root — user-wide, or scoped to one project:
 
 ```shell
-SKILLS="figma2html figma2dsl figma2unity figma2godot figma2cocos figkit-motion"
-cp -r $SKILLS ~/.dsh/skills/                  # user-wide
-cp -r $SKILLS <projectRoot>/.dsh/skills/      # this project only; outranks the user root
+cp -r figma2* figkit-motion ~/.dsh/skills/                  # user-wide
+cp -r figma2* figkit-motion <projectRoot>/.dsh/skills/      # this project only; outranks the user root
 ```
 
 No restart needed: the local provider watches both roots and attaches to one you create while it is running. Invoke with `/figma2html` in the composer — DSH injects the skill body together with a `Base directory for this skill: <path>` hint, which is what makes the relative script paths written throughout each `SKILL.md` resolve.
@@ -227,15 +227,15 @@ Verified against DSH `0.1.0-rc.8`: all six skills discovered and listed with the
 
 ### Codex
 
-Copy the folders into Codex's user skill root, beside the `.system/` skills it ships with:
+Clone the repo into Codex's user skill root, beside the `.system/` skills it ships with. Codex walks that root recursively, so one directory delivers all six under their plain names:
 
 ```shell
-cp -r figma2html figma2dsl figma2unity figma2godot figma2cocos figkit-motion ~/.codex/skills/
+git clone https://github.com/ProdaZhang/figkit ~/.codex/skills/figkit
 ```
 
-**Do not install these through `codex plugin add`.** Adding the repo as a marketplace and installing from it reports success and then lists the plugin as `installed, enabled` — and the skill still never appears in a session. Codex's plugin loader looks for skills at `<plugin>/skills/<name>/SKILL.md`, while a FigKit plugin folder carries its `SKILL.md` at the root, the layout Claude Code accepts. A silent no-op is worse than a refusal, so take the folder copy.
+**Do not install these through `codex plugin add`.** Adding the repo as a marketplace and installing from it reports success and then lists the plugin as `installed, enabled` — and the skill still never appears in a session. Codex's plugin loader looks for skills at `<plugin>/skills/<name>/SKILL.md`, while a FigKit plugin folder carries its `SKILL.md` at the root, the layout Claude Code accepts. A silent no-op is worse than a refusal, so take the clone above.
 
-Verified against `codex-cli 0.147.0-alpha.6.5`: all six skills enumerated in-session, and `figma2html` loaded, resolved its own base directory, and ran its suite from there.
+Verified against `codex-cli 0.147.0-alpha.6.5` and `0.148.0-alpha.15`: all six skills enumerated in-session under their plain names from the nested clone, and `figma2html` loaded, reported its base directory as `~/.codex/skills/figkit/figma2html`, and ran its suite from there.
 
 Two caveats there are Codex's rather than FigKit's, both about its sandbox. It runs as a separate low-privilege account that cannot read a Python installed under the user profile, so it quietly falls back to any interpreter it *can* reach — hand it an explicit interpreter path, or watch the suite fail on `math.dist` under a pre-3.8 fallback. And `test_bundle_is_fresh` rewrites a fixture in place to prove the bundle is current, which a read-only sandbox denies; grant write access to the skill directory for that one run. The test restores the file itself, so nothing is left changed.
 
@@ -244,7 +244,7 @@ Two caveats there are Codex's rather than FigKit's, both about its sandbox. It r
 The same folder drop, into ZCode's user skill root:
 
 ```shell
-cp -r figma2html figma2dsl figma2unity figma2godot figma2cocos figkit-motion ~/.zcode/skills/
+cp -r figma2* figkit-motion ~/.zcode/skills/
 ```
 
 `zcode skills list` prints what it found — name, scope, description, and the absolute `SKILL.md` path — which is the quickest way to confirm an install without opening a session. Skills are scanned at startup, so restart a desktop client that was already running when you copied.
