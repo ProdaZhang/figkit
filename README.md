@@ -185,26 +185,40 @@ Every step above is runnable with no Figma account: `examples/login/nodes.json` 
 
 Each skill folder is a self-contained agent skill — a `SKILL.md` carrying YAML frontmatter plus the scripts it names, no build step and no dependencies beyond Python. Four hosts are verified: Claude Code, DeepSeek Harness, Codex, and ZCode. All four discover a skill the same way — one `<name>/SKILL.md` under a skills root — which is what lets a single folder serve all of them unchanged.
 
+**Install all six.** Each is a `SKILL.md` and a handful of scripts, and a session pays only for their frontmatter until one of them actually fires. If you do want a subset, they are not interchangeable: **`figma2unity`, `figma2godot` and `figma2cocos` carry no capture of their own** — they compile what `figma2html` produced, so pair them with it rather than instead of it. `figma2html` and `figma2dsl` each carry a capture and stand alone; `figkit-motion` is a reference catalog that needs nothing. The commands below spell the six names out instead of globbing `figma2*`, which would also match `figma2unreal/` — that folder ships scripts but no `SKILL.md`, so it is not a skill yet.
+
 ### Claude Code
 
 The repo doubles as a plugin marketplace:
 
 ```shell
 /plugin marketplace add ProdaZhang/figkit
-/plugin install figma2godot@figkit      # or figma2html / figma2dsl / figma2unity / figma2cocos / figkit-motion
+/plugin install figma2html@figkit
+/plugin install figma2dsl@figkit
+/plugin install figma2unity@figkit
+/plugin install figma2godot@figkit
+/plugin install figma2cocos@figkit
+/plugin install figkit-motion@figkit
 ```
 
-Prefer no plugin machinery? Just copy a folder into `.claude/skills/`.
+Prefer no plugin machinery? Copy the folders into a skills root instead — user-wide, or scoped to one project:
+
+```shell
+SKILLS="figma2html figma2dsl figma2unity figma2godot figma2cocos figkit-motion"
+cp -r $SKILLS ~/.claude/skills/                  # user-wide
+cp -r $SKILLS <projectRoot>/.claude/skills/      # this project only
+```
 
 Both routes are verified: `claude plugin details figma2html@figkit` reports `Skills (1)`, so the `SKILL.md` at each plugin's root is picked up as a skill — a layout Claude Code accepts and Codex does not, which is why the sections below differ.
 
 ### DeepSeek Harness
 
-Copy a folder into either skill root — user-wide, or scoped to one project:
+Copy the folders into either skill root — user-wide, or scoped to one project:
 
 ```shell
-cp -r figma2html ~/.dsh/skills/                  # user-wide
-cp -r figma2html <projectRoot>/.dsh/skills/      # this project only; outranks the user root
+SKILLS="figma2html figma2dsl figma2unity figma2godot figma2cocos figkit-motion"
+cp -r $SKILLS ~/.dsh/skills/                  # user-wide
+cp -r $SKILLS <projectRoot>/.dsh/skills/      # this project only; outranks the user root
 ```
 
 No restart needed: the local provider watches both roots and attaches to one you create while it is running. Invoke with `/figma2html` in the composer — DSH injects the skill body together with a `Base directory for this skill: <path>` hint, which is what makes the relative script paths written throughout each `SKILL.md` resolve.
@@ -213,10 +227,10 @@ Verified against DSH `0.1.0-rc.8`: all six skills discovered and listed with the
 
 ### Codex
 
-Copy a folder into Codex's user skill root, beside the `.system/` skills it ships with:
+Copy the folders into Codex's user skill root, beside the `.system/` skills it ships with:
 
 ```shell
-cp -r figma2html ~/.codex/skills/
+cp -r figma2html figma2dsl figma2unity figma2godot figma2cocos figkit-motion ~/.codex/skills/
 ```
 
 **Do not install these through `codex plugin add`.** Adding the repo as a marketplace and installing from it reports success and then lists the plugin as `installed, enabled` — and the skill still never appears in a session. Codex's plugin loader looks for skills at `<plugin>/skills/<name>/SKILL.md`, while a FigKit plugin folder carries its `SKILL.md` at the root, the layout Claude Code accepts. A silent no-op is worse than a refusal, so take the folder copy.
@@ -230,7 +244,7 @@ Two caveats there are Codex's rather than FigKit's, both about its sandbox. It r
 The same folder drop, into ZCode's user skill root:
 
 ```shell
-cp -r figma2html ~/.zcode/skills/
+cp -r figma2html figma2dsl figma2unity figma2godot figma2cocos figkit-motion ~/.zcode/skills/
 ```
 
 `zcode skills list` prints what it found — name, scope, description, and the absolute `SKILL.md` path — which is the quickest way to confirm an install without opening a session. Skills are scanned at startup, so restart a desktop client that was already running when you copied.
