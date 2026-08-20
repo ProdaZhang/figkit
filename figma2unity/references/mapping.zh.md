@@ -35,6 +35,7 @@ IR 样式值是 **CSS 风格字符串**(`radius="45px"`、`border="2.0px solid r
 | `fill`(纯色) | `background-color` | rgba 字符串 USS 原生支持 |
 | `fill`(渐变) | `background-image` = **编译期烘的 PNG** | USS 没有渐变属性,转换器自己烘一张 64² 纹理:每个纹素按该元素**真实 w/h** 投影到渐变轴再插值,任意角度都准(不是只处理 0/90°)。放在编译期做,集成方不用多加运行时代码,产物也保持逐字节确定。解析不了的渐变仍退首色 |
 | `img` | `background-image: url("...")` + `background-size`(imgSize,默认 cover)+ `background-position: center` + `background-repeat: no-repeat` | background-size 等需 Unity 2022.2+ |
+| `imgPos`(v1.4) | **丢弃** —— `background-position` 恒为 `center` | USS 没有 `background-position` 可写偏移,figma 的裁剪位移表达不了;尺寸仍由 `imgSize` 过来,只丢偏移。逐元素记 known-loss |
 | `stageBg` | 帧根 `.screen-root`:url→背景图,色→背景色,渐变→首停靠色 | — |
 | `shadow` | 兄弟**垫层**盒子:硬阴影 `2px 6px 0 c` 就是同一个圆角盒子按位移填色;**带模糊**的则在编译期烘一张 PNG(`soft_shadow_asset`)当垫层的底 | USS 既没有 `box-shadow` 也没有模糊,但"底下多垫一个盒子"把两者都表达得了。模糊那半 = 圆角矩形覆盖率(逐轴椭圆角、带一像素抗锯齿)过**三次盒滤波 ≈ σ=blur/2 的高斯**,这正是 CSS 自己的定义;画布按 3σ 外扩,免得拖尾被裁。产物按内容哈希命名,六张一样的卡共用一张图。只有在**没有可写素材目录**时才退回 known-loss |
 | `blur` | **丢弃** | USS 无 filter;记 known-loss |

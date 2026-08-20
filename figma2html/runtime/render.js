@@ -92,7 +92,9 @@ function applyRecStyle(el, div, assetBase) {
   } else if (el.img) {
     s.backgroundImage    = "url('" + (assetBase || '') + el.img + "')";
     s.backgroundSize     = el.imgSize || 'cover';
-    s.backgroundPosition = 'center';
+    // v1.4:figma 的裁剪填充(scaleMode STRETCH + imageTransform)把图放在格子里的
+    // 某个位置、并不铺满,capture 已把它算成 px。缺这个字段的旧产物照旧居中。
+    s.backgroundPosition = el.imgPos || 'center';
     s.backgroundRepeat   = 'no-repeat';
   } else if (el.fill) {
     s.background = el.fill;
@@ -123,10 +125,21 @@ function renderScreen(cap, mountEl, assetBase) {
   }
 
   // pass2：绝对几何 → 父相对，按 parent 嵌套挂载
+  //
+  // 父级带 INSIDE 描边时，绝对定位的子元素是从父级的**内边距盒**起算的，而 border
+  // 恰好把内边距盒往里推了一整个描边宽 —— 于是父级只要有描边，整棵子树就被顶偏。
+  // 实测返回按钮那圈 8px 描边把里面的箭头右下各推了 8px，而按钮本身分毫不差
+  // （所以肉眼只会觉得"图标没对齐"，不会想到是描边）。这里减回去。
+  // figma_capture.py 的 rec_to_css 有同一段补偿，改一处必同步。
+  const insetOf = (rec) => {
+    const m = /^\s*([\d.]+)px/.exec((rec && rec.border) || '');
+    return m ? parseFloat(m[1]) : 0;
+  };
   for (const el of els) {
     const div = divById.get(el.id);
     const p   = el.parent ? recById.get(el.parent) : null;
-    const px  = p ? p.x : 0, py = p ? p.y : 0;
+    const bi  = p ? insetOf(p) : 0;
+    const px  = p ? p.x + bi : 0, py = p ? p.y + bi : 0;
     div.style.left   = (el.x - px) + 'px';
     div.style.top    = (el.y - py) + 'px';
     div.style.width  = el.w + 'px';

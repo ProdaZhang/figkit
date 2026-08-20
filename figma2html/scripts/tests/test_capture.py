@@ -5,11 +5,12 @@
 所有 PNG 视为缺失,正好覆盖"资产感知折叠缺图回退透明"这条核心规则。
 对标 figma2dsl 的 test_baseline —— 守住 capture(全保真捕获)这个核,改坏即红。
 """
-import sys, os, math
+import sys, os, io, math
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import figma_capture as fc
 
 NOASSET = os.path.join(os.path.dirname(os.path.abspath(__file__)), '__noassets__')  # 不存在 → 所有 PNG 缺失
+_HERE = os.path.dirname(os.path.abspath(__file__))
 ASSET_REL = '_assets/test'
 
 
@@ -611,6 +612,174 @@ def test_a_band_that_does_not_split_cleanly_falls_back_to_the_clip_hint():
     p = {e["id"]: e for e in cap["els"]}["c:2"]["paths"][1]
     assert p["clip"] == "inside", "劈不开的带子应退回 clip 提示:%r" % p["clip"]
     assert p["d"] == "M-8 -8L108 -8L108 48L-8 48Z", "退回时不许改动原路径"
+
+
+def test_crop_fill_reads_the_image_transform_instead_of_stretching():
+    """`scaleMode: STRETCH` 不是"拉满",是 **figma 的裁剪模式**,几何在 imageTransform 里。
+
+    一律按 `100% 100%` 处理的话,小图标会被撑满整格 —— 实测底部主按钮价格条里那个
+    35×45 的闪电图标(a=1.854 / d=1.442,设计上只占 33×43)被拉成 62×62,
+    从药丸里溢出来大半个。这条守住"矩阵读了、且换算成 px"。
+    """
+    import tempfile, shutil
+    d = tempfile.mkdtemp()
+    try:
+        open(os.path.join(d, "ref9.png"), "wb").close()      # capture 只 os.path.exists
+        n = _rect("m:1", 110, 210, 62, 62,
+                  size={"x": 62.0, "y": 62.0},
+                  fills=[{"type": "IMAGE", "visible": True, "scaleMode": "STRETCH",
+                          "imageRef": "ref9",
+                          "imageTransform": [[1.853820562362671, 0.0, -0.4338839650154114],
+                                             [0.0, 1.4418604373931885, -0.2260674238204956]]}])
+        cap, _ = fc.capture(_frame([n]), d, ASSET_REL)
+        e = {x["id"]: x for x in cap["els"]}["m:1"]
+        assert e["img"].endswith("ref9.png"), e["img"]
+        # 62/1.8538 = 33.44, 62/1.4419 = 43.00
+        assert e["imgSize"] == "33.44px 43.00px", e["imgSize"]
+        # 左 = -tx/a*w = 0.43388/1.85382*62 = 14.51,上 = 0.22607/1.44186*62 = 9.72
+        assert e["imgPos"] == "14.51px 9.72px", e["imgPos"]
+
+        # 单位矩阵 = 真的就是拉满,不该写出一串等价的 px(否则每张图都多两个字段)
+        n2 = _rect("m:2", 110, 210, 40, 40, size={"x": 40.0, "y": 40.0},
+                   fills=[{"type": "IMAGE", "visible": True, "scaleMode": "STRETCH",
+                           "imageRef": "ref9",
+                           "imageTransform": [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]}])
+        cap2, _ = fc.capture(_frame([n2]), d, ASSET_REL)
+        e2 = {x["id"]: x for x in cap2["els"]}["m:2"]
+        assert e2["imgSize"] == "100% 100%" and e2["imgPos"] == "", (e2["imgSize"], e2["imgPos"])
+
+        # 带旋转/斜切的裁剪 CSS 背景表达不了 —— 要**吭声**退回拉满,不许闷声猜
+        n3 = _rect("m:3", 110, 210, 40, 40, size={"x": 40.0, "y": 40.0},
+                   fills=[{"type": "IMAGE", "visible": True, "scaleMode": "STRETCH",
+                           "imageRef": "ref9",
+                           "imageTransform": [[1.0, 0.3, 0.0], [0.2, 1.0, 0.0]]}])
+        cap3, miss3 = fc.capture(_frame([n3]), d, ASSET_REL)
+        e3 = {x["id"]: x for x in cap3["els"]}["m:3"]
+        assert e3["imgSize"] == "100% 100%", e3["imgSize"]
+        assert any(k == "IMG-CROP-SKEW" for _, _, k in miss3), miss3
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def test_children_are_not_pushed_by_their_parents_inside_stroke():
+    """父级带 INSIDE 描边 → CSS 的绝对定位子元素从**内边距盒**起算 → 整棵子树被顶偏。
+
+    实测返回按钮那圈 8px 描边把里面的箭头右下各推了 8px,而按钮自己分毫不差
+    (于是肉眼只会觉得"图标没对齐",想不到是描边)。记录里的 x/y 是相对帧的绝对值、
+    本来就对;错在两个序列化器把它转成父相对时没减掉描边宽,所以这条测 rec_to_css
+    的产物,并盯住 render.js 里那段同构补偿还在。
+    """
+    inner = _rect("s:2", 150, 250, 40, 20)
+    box = {"id": "s:1", "type": "FRAME", "visible": True,
+           "absoluteBoundingBox": {"x": 140, "y": 240, "width": 100, "height": 60},
+           "fills": [{"type": "SOLID", "visible": True, "color": {"r": .2, "g": .2, "b": .2, "a": 1}}],
+           "strokes": [{"type": "SOLID", "visible": True, "color": {"r": 1, "g": 1, "b": 1, "a": 1}}],
+           "strokeWeight": 8.0, "strokeAlign": "INSIDE",
+           "children": [inner]}
+    cap, _ = fc.capture(_frame([box]), NOASSET, ASSET_REL)
+    by = {e["id"]: e for e in cap["els"]}
+    assert by["s:1"]["border"].startswith("8.0px"), by["s:1"]["border"]
+    # 绝对几何:父 (40,40) 子 (50,50) —— 相对帧原点 (100,200)
+    assert (by["s:1"]["x"], by["s:1"]["y"]) == (40.0, 40.0), by["s:1"]
+    assert (by["s:2"]["x"], by["s:2"]["y"]) == (50.0, 50.0), by["s:2"]
+    # 子相对父:naive 是 10/10,那会被 8px 描边再推一次 → 屏上落在 18/18
+    css = fc.rec_to_css(by["s:2"], by["s:1"])
+    assert "left:2.0px" in css and "top:2.0px" in css, css
+
+    # render.js 的 pass2 有同一段补偿,parity 靠人守不住 —— 至少盯住它没被删
+    rjs = io.open(os.path.join(_HERE, "..", "..", "runtime", "render.js"),
+                  encoding="utf-8").read()
+    assert "insetOf" in rjs and "p.x + bi" in rjs, "render.js 的描边补偿没了,预览和运行时会分家"
+
+
+def test_a_paintless_containers_shadow_moves_onto_the_rounded_child():
+    """figma 的 DROP_SHADOW 投的是**渲染出来的内容**;CSS 的 box-shadow 投的是**盒子**。
+
+    按钮实例自己无填充无描边(形状在里面那个圆角矩形上),照盒子投就是一条直角黑杠 ——
+    实测底部主按钮下面多出一条 361px 宽、左右各支棱出 4~7px 的黑边。
+    旧办法是把子的圆角借给父级,只在子恰好铺满父级时成立;真按钮的子比父窄 11px,
+    借完照样露馅。现在直接把阴影挪到那个圆角子身上。
+    """
+    child = _rect("b:2", 146, 240, 78, 60, cornerRadius=30)     # 比父窄 4px(两侧各 2)
+    holder = {"id": "b:1", "type": "INSTANCE", "visible": True,
+              "absoluteBoundingBox": {"x": 144, "y": 240, "width": 82, "height": 60},
+              "fills": [], "strokes": [],
+              "effects": [{"type": "DROP_SHADOW", "visible": True, "radius": 0,
+                           "offset": {"x": 2, "y": 6},
+                           "color": {"r": 0, "g": 0, "b": 0, "a": 1}}],
+              "children": [child]}
+    cap, _ = fc.capture(_frame([holder]), NOASSET, ASSET_REL)
+    by = {e["id"]: e for e in cap["els"]}
+    assert by["b:1"]["shadow"] == "", "无涂装容器不该自己投影(会投成直角):%r" % by["b:1"]["shadow"]
+    assert by["b:2"]["shadow"] == "2px 6px 0px rgba(0,0,0,1.0)", by["b:2"]["shadow"]
+    assert by["b:2"]["radius"] == "30px", by["b:2"]["radius"]
+
+    # 反面:容器自己**画了东西**,那阴影本来就是投给它自己形状的,不许动
+    holder2 = dict(holder, id="c:1",
+                   fills=[{"type": "SOLID", "visible": True,
+                           "color": {"r": 1, "g": 0, "b": 0, "a": 1}}],
+                   children=[_rect("c:2", 146, 240, 78, 60, cornerRadius=30)])
+    cap2, _ = fc.capture(_frame([holder2]), NOASSET, ASSET_REL)
+    by2 = {e["id"]: e for e in cap2["els"]}
+    assert by2["c:1"]["shadow"], "有填充的容器,阴影是它自己的,不该被挪走"
+    assert by2["c:2"]["shadow"] == "", by2["c:2"]["shadow"]
+
+
+def test_layer_blur_radius_is_halved_into_a_css_sigma():
+    """**figma 的模糊半径不是 CSS 的 σ。**
+
+    CSS `filter: blur(L)` 里 L 就是标准差;figma 的 Layer blur 半径约等于 2σ。
+    一比一照抄会糊出两倍范围 —— 实测某项目那五团光晕(figma 半径 60.6)照抄时
+    光晕区平均差 5.80/255,折半后 1.84/255,好 3.1 倍(拿 figma 自己导出的
+    那一帧当地面真值量的)。
+    """
+    n = _rect("g:1", 140, 240, 100, 100,
+              effects=[{"type": "LAYER_BLUR", "visible": True, "radius": 60.6}])
+    cap, _ = fc.capture(_frame([n]), NOASSET, ASSET_REL)
+    e = {x["id"]: x for x in cap["els"]}["g:1"]
+    assert e["blur"] == "blur(30px)", ("照抄 figma 半径就是两倍模糊:%r" % e["blur"])
+
+
+def test_a_stroke_only_vector_still_gets_its_band_clipped():
+    """**裁带子要的是填充几何,不是填充涂装。**
+
+    闸门以前挂在"有没有画出来的填充色"上,于是只有一圈边、里面不填色的图标
+    (空槽位那种)一律整条照画 —— figma 的 strokeGeometry 是 ±w 的预裁带,
+    整条画出来就是**粗一倍**(实测 2.9px 的环画成 5.8px,七个空槽位全中)。
+
+    劈得开就发劈好的那半;劈不开退回 clip 提示 —— 但那时还得补一条**透明的形状路径**
+    当裁剪参照,否则"参照形状 = 所有不带 clip 的路径"是空的,环会被裁得一干二净
+    (比粗一倍更糟:整个消失,而且看着像设计如此)。
+    """
+    # 带子劈得开:一条 100x40 矩形的 8px INSIDE 描边,±8 的带子
+    ok = _vec("k:1", 110, 210, 100, 40,
+              fills=[],
+              fillGeometry=[{"path": "M0 0L100 0L100 40L0 40Z", "windingRule": "NONZERO"}],
+              strokes=[{"type": "SOLID", "visible": True,
+                        "color": {"r": 0, "g": 0, "b": 1, "a": 1}}],
+              strokeWeight=8.0, strokeAlign="INSIDE",
+              strokeGeometry=[{"path": "M0 0L8 8L92 8L92 32L8 32L8 8L0 0"
+                                       "L-8 -8L108 -8L108 48L-8 48L-8 -8L0 0Z",
+                               "windingRule": "NONZERO"}])
+    cap, _ = fc.capture(_frame([ok]), NOASSET, ASSET_REL)
+    ps = {e["id"]: e for e in cap["els"]}["k:1"]["paths"]
+    assert len(ps) == 1 and ps[0]["clip"] == "" and ps[0]["rule"] == "evenodd", ps
+    assert ps[0]["d"] == "M0 0L100 0L100 40L0 40ZM8 8L92 8L92 32L8 32L8 8Z", ps[0]["d"]
+
+    # 带子劈不开:必须留下一条透明形状路径当裁剪参照,否则裁完什么都不剩
+    bad = _vec("k:2", 110, 210, 100, 40,
+               fills=[],
+               fillGeometry=[{"path": "M0 0L100 0L100 40L0 40Z", "windingRule": "NONZERO"}],
+               strokes=[{"type": "SOLID", "visible": True,
+                         "color": {"r": 0, "g": 0, "b": 1, "a": 1}}],
+               strokeWeight=8.0, strokeAlign="INSIDE",
+               strokeGeometry=[{"path": "M-8 -8L108 -8L108 48L-8 48Z", "windingRule": "NONZERO"}])
+    cap2, _ = fc.capture(_frame([bad]), NOASSET, ASSET_REL)
+    ps2 = {e["id"]: e for e in cap2["els"]}["k:2"]["paths"]
+    assert len(ps2) == 2, ("劈不开时要补裁剪参照:%r" % ps2)
+    assert ps2[0]["clip"] == "" and ps2[0]["fill"] == "rgba(0,0,0,0)", ps2[0]
+    assert ps2[0]["d"] == "M0 0L100 0L100 40L0 40Z", ps2[0]["d"]
+    assert ps2[1]["clip"] == "inside", ps2[1]
 
 
 if __name__ == "__main__":

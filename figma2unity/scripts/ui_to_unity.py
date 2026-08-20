@@ -702,6 +702,9 @@ def build_uss_props(el, parent, losses, asset_dir=None):
     elif el.get("img"):
         props.append(("background-image", 'url("%s")' % el["img"]))
         props.append(("background-size", el.get("imgSize") or "cover"))
+        if el.get("imgPos"):
+            losses.append("%s: 裁剪填充的位移 imgPos '%s' 丢弃(USS 无 background-position,"
+                          "图恒居中)" % (eid, el["imgPos"]))
         props.append(("background-position", "center"))
         props.append(("background-repeat", "no-repeat"))
     elif el.get("fill"):
@@ -889,12 +892,12 @@ def convert_file(in_path, outdir):
     return uxml_path, uss_path
 
 
-IR_SPEC_SUPPORTED = '1.3'
+IR_SPEC_SUPPORTED = '1.4'
 
 # 本后端**认识**的 els 字段。少于输入文件里实际出现的键 = 有东西被静默跳过。
 IR_FIELDS_KNOWN = frozenset((
     'id', 'name', 'type', 'parent', 'x', 'y', 'w', 'h', 'z', 'rot', 'opacity',
-    'radius', 'border', 'shadow', 'blur', 'fill', 'img', 'imgSize',
+    'radius', 'border', 'shadow', 'blur', 'fill', 'img', 'imgSize', 'imgPos',
     'clip', 'paths', 'viewBox', 'borderAlign', 'vec', 'text',
 ))
 

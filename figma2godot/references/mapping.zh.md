@@ -67,6 +67,7 @@ tscn 节点名不允许 `. : @ / " %` —— **统一换 `_`**:figma id `1:40` �
 | `imgSize: cover`(或空) | `expand_mode = 1` + `stretch_mode = 6`(KEEP_ASPECT_COVERED) | 等比铺满裁切 |
 | `imgSize: contain` | `expand_mode = 1` + `stretch_mode = 5`(KEEP_ASPECT_CENTERED) | 等比完整居中 |
 | 其它 imgSize 值 | `stretch_mode = 0`(SCALE) | 拉伸兜底 |
+| `imgPos`(v1.4) | **丢弃** —— 图仍居中 | figma 的裁剪填充会把位图放在格子里某个任意 px 偏移处;TextureRect 的 `stretch_mode` 只有整格铺法,没有「画在这个偏移上」这一档。要精确得改用 AtlasTexture 的 region 或自己 `_draw`。逐元素记 known-loss |
 | `vec: true` 且无 PNG | 无填充 → `Control`(透明占位) | 对齐 render.js"缺图回退透明,不平涂黑" |
 | 字体 | 工程级配置:在 Godot 主题(或 `theme_override_fonts/font`)挂 CJK 字体(如思源黑体),按 `weight` 备 Regular/Medium/Bold 几档 | 转换器不产字体资源;figma2html 的 `subset_font.py` 产的 woff2 Godot 不直接吃,用 ttf/otf |
 

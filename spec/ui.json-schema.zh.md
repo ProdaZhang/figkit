@@ -17,7 +17,7 @@
 
 ```jsonc
 {
-  "spec": "1.3",                          // 本次捕获遵循的 IR 契约版本(见 spec/)
+  "spec": "1.4",                          // 本次捕获遵循的 IR 契约版本(见 spec/)
   "frame": "46:8241", "w": 1080, "h": 1920,
   "stageBg": "url(_assets/s17/bg.png) center/cover no-repeat",   // 帧底图(纯色/渐变亦可)
   "els": [{
@@ -27,7 +27,8 @@
     "rot": 0, "opacity": 1,
     "radius": "37px", "border": "4.0px solid rgba(219,208,184,1)", "shadow": "0px 4px 0px rgba(0,0,0,0.6)", "blur": "",
     "fill": "rgba(255,251,242,1)",        // 纯色含透明 / 线性·径向渐变 css / 空
-    "img": "", "imgSize": "",             // 图片填充(按 imageRef 命名,跨屏复用)
+    "img": "", "imgSize": "", "imgPos": "",   // 图片填充(按 imageRef 命名,跨屏复用);
+                                          // v1.4:figma 裁剪填充在这里给 px 尺寸 + px 偏移,否则 "cover"/""(居中)
     "clip": false,                        // v1.1:true = 裁剪子节点(figma isMask 兄弟折进来的;遮罩圆角落在 radius)
     "paths": [], "viewBox": "",            // v1.2:矢量按 figma 几何绘制 —— [{d, rule, fill}] + svg viewBox(按 renderBounds 定框)
     "borderAlign": "",                     // v1.2:"inside" | "outside" | "center" —— 描边落在哪侧;outside/center 另计入 shadow

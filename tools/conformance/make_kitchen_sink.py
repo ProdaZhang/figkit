@@ -100,6 +100,12 @@ def build_tree():
         _n("k:img-tile", "img-tile", "RECTANGLE", 400, 520, 160, 120,
            fills=[{"type": "IMAGE", "visible": True, "scaleMode": "TILE", "imageRef": "ks-c"}]),
 
+        # img-crop(v1.4):figma 的 scaleMode STRETCH 是**裁剪**,几何在 imageTransform 里 ——
+        # 图只占格子的一部分、还带偏移。不读矩阵就会被拉满整格(实测小图标溢出它所在的药丸)。
+        _n("k:img-crop", "img-crop", "RECTANGLE", 580, 520, 160, 120,
+           fills=[{"type": "IMAGE", "visible": True, "scaleMode": "STRETCH", "imageRef": "ks-d",
+                   "imageTransform": [[2.0, 0.0, -0.25], [0.0, 4.0, -1.5]]}]),
+
         # text:基础 + 描边(-webkit-text-stroke)+ 多行(换行策略)
         _n("k:text", "text", "TEXT", 40, 680, 400, 60, characters="Plain text",
            fills=solid(C(0, 0, 0)),
@@ -167,7 +173,7 @@ def build_tree():
 _PNG_1x1 = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk"
     "+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==")
-ASSET_NAMES = ("ks-a.png", "ks-b.png", "ks-c.png", "nk_vec.png")
+ASSET_NAMES = ("ks-a.png", "ks-b.png", "ks-c.png", "ks-d.png", "nk_vec.png")
 
 
 def _write_assets(d):

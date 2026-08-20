@@ -22,7 +22,7 @@ import sys, json, io, os, math, html, re
 # 将来 v1.1 的 capture 产物喂给旧后端时**两边都无从察觉** —— 消费者连"我看不懂这个"
 # 都说不出口。带上之后,后端至少能在主版本对不上时告警(而不是静默按旧规矩解释)。
 # 缺失该字段的旧产物一律按 "1.0" 处理,向后兼容。
-IR_SPEC = '1.3'
+IR_SPEC = '1.4'
 
 VEC = {'VECTOR', 'BOOLEAN_OPERATION', 'STAR', 'LINE', 'REGULAR_POLYGON'}
 
@@ -118,11 +118,47 @@ def gradient_css(f):
     return 'linear-gradient(%.1fdeg, %s)' % (ang, cs)
 
 
+def crop_css(f, w, h, lost=None, nid='', name=''):
+    """figma 的 `scaleMode: STRETCH` 其实是**裁剪(crop)**模式,真正的几何在 `imageTransform`
+    里:那是一个 2×3 矩阵,把**节点归一化坐标**映射到**图片归一化坐标** ——
+
+        img_u = a·u + b·v + tx        img_v = c·u + d·v + ty
+
+    于是图片自己占的那块节点区域是 u ∈ [-tx/a, (1-tx)/a]:宽 w/a、左边距 -tx/a·w。
+    不读这个矩阵、一律按 `100% 100%` 拉满的话,小图标会被撑满整格 —— 实测一个
+    35×45 的闪电图标(a=1.85 / d=1.44,设计上只占 33×43)被拉成 62×62,溢出它所在的价格药丸。
+
+    带旋转/斜切(b 或 c 非 0)的裁剪,CSS 背景表达不了。那时**吭声**并退回拉满,
+    别假装还原了 —— 猜错的图和对的图长得一样,只有量过才知道。
+    """
+    m = f.get('imageTransform')
+    if not m or w <= 0 or h <= 0:
+        return '100% 100%', ''
+    (a, b, tx), (c, d, ty) = m[0], m[1]
+    if abs(b) > 1e-6 or abs(c) > 1e-6:
+        if lost is not None:
+            lost.append((nid, name, 'IMG-CROP-SKEW'))
+        return '100% 100%', ''
+    if abs(a) < 1e-6 or abs(d) < 1e-6:
+        return '100% 100%', ''
+    iw, ih = w / a, h / d
+    left, top = -tx / a * w, -ty / d * h
+    if abs(iw - w) < 0.05 and abs(ih - h) < 0.05 and abs(left) < 0.05 and abs(top) < 0.05:
+        return '100% 100%', ''          # 单位矩阵 = 就是拉满,别写一串等价的 px
+    return '%.2fpx %.2fpx' % (iw, ih), '%.2fpx %.2fpx' % (left, top)
+
+
 def img_fill(node, asset_dir, asset_rel, missing):
     for f in node.get('fills') or []:
         if f.get('visible', True) and f.get('type', '').startswith('IMAGE'):
             sm = f.get('scaleMode', 'FILL')
             size = {'FILL': 'cover', 'FIT': 'contain', 'STRETCH': '100% 100%', 'TILE': 'auto'}.get(sm, 'cover')
+            pos = ''
+            if sm == 'STRETCH':
+                sz = node.get('size') or {}
+                bb = node.get('absoluteBoundingBox') or {}
+                size, pos = crop_css(f, sz.get('x', bb.get('width', 0)), sz.get('y', bb.get('height', 0)),
+                                     missing, node['id'], node.get('name', ''))
             # 候选名:优先 <imageRef>.png(图片填充天然键,跨屏可复用、可直接喂 figma 导出),
             # 回退节点 id 名 n<id>.png(向后兼容旧素材)
             cands = []
@@ -132,10 +168,10 @@ def img_fill(node, asset_dir, asset_rel, missing):
             cands.append('n' + node['id'].replace(':', '_').replace(';', '__') + '.png')
             for fn in cands:
                 if os.path.exists(os.path.join(asset_dir, fn)):
-                    return '%s/%s' % (asset_rel, fn), size
+                    return '%s/%s' % (asset_rel, fn), size, pos
             missing.append((node['id'], node.get('name', ''), 'IMG'))
-            return None, None
-    return None, None
+            return None, None, None
+    return None, None, None
 
 
 def vec_asset(node, asset_dir, asset_rel, missing):
@@ -436,8 +472,13 @@ def vector_paths(node, lost, backdrop=None):
     # 布尔裁剪不再是入场券(Painter2D 这类没有裁剪的后端以前只能整条照画,粗一倍)。
     # 劈不开才退回"原样 + clip 提示"的老路子,由拿得到 clipPath/mask 的后端自己裁。
     align = (node.get('strokeAlign') or 'CENTER').upper()
-    mode = {'INSIDE': 'inside', 'OUTSIDE': 'outside'}.get(align, '') if has_fill_geom else ''
     shape_d = ' '.join(g['path'] for g in (node.get('fillGeometry') or []) if g.get('path'))
+    # 裁/劈这条带子要的是**填充几何**(当参照形状),不是填充**涂装**。
+    # 以前这里的闸门错挂在"有没有画出来的填充"上,于是**只有描边、没有填充色**的矢量
+    # 一律整条照画 —— 实测那七个空槽位的八边形环粗了一倍(2.9px 画成 5.8px),
+    # 而它们恰恰是最典型的"只有一圈边"的图标。
+    mode = {'INSIDE': 'inside', 'OUTSIDE': 'outside'}.get(align, '') if shape_d else ''
+    clip_src = False
     for g in (node.get('strokeGeometry') or []):
         if sc and g.get('path'):
             d, clip = g['path'], mode
@@ -447,6 +488,14 @@ def vector_paths(node, lost, backdrop=None):
                 if ring:
                     # 环 = 形状 + 内缩/外扩轮廓两条,靠 evenodd 把中间那圈留出来
                     d, clip, rule = ring, '', 'evenodd'
+                elif not has_fill_geom:
+                    # 劈不开 → 退回"原样 + clip 提示",由后端自己裁。但裁的**参照形状**
+                    # 是"所有不带 clip 的路径"合起来 —— 本节点没有填充涂装,那份形状是空的,
+                    # 提示就成了"裁到什么都不剩",环会**整个消失**(比粗一倍更糟)。
+                    # 所以补一条**透明的形状路径**当参照:画出来什么都没有,裁剪却有据可依。
+                    if not clip_src:
+                        out.append(dict(d=shape_d, rule='nonzero', fill='rgba(0,0,0,0)', clip=''))
+                        clip_src = True
             out.append(dict(d=d, rule=rule, fill=sc, clip=clip))
     return out
 
@@ -465,20 +514,59 @@ def radius(node):
     return None
 
 
-def child_radius_for_shadow(node):
-    """节点自身无圆角但带 DROP_SHADOW 时(如按钮实例,圆角在子矩形上)，
-    取铺满它的圆角子矩形的圆角,让 box-shadow 跟随圆角形状而非方框。"""
-    bb = node.get('absoluteBoundingBox') or {}
-    nw, nh = bb.get('width', 0), bb.get('height', 0)
-    if nw <= 0 or nh <= 0:
-        return None
-    for c in node.get('children') or []:
-        cb = c.get('absoluteBoundingBox') or {}
-        if abs(cb.get('width', 0) - nw) <= 2 and abs(cb.get('height', 0) - nh) <= 2:
-            r = radius(c)
-            if r:
-                return r
-    return None
+def border_inset(rec):
+    """rec 的 INSIDE 描边宽度(px)。
+
+    为什么要单独取它:CSS 里绝对定位的子元素是从父级的**内边距盒**起算的,而
+    `border` 恰恰把内边距盒往里推了一整个描边宽。于是父级只要带描边,**整棵子树
+    就被顶偏**一个描边宽 —— 实测返回按钮那圈 8px 描边把里面的箭头右下各推了 8px,
+    而按钮本身分毫不差(所以肉眼只会觉得"图标没对齐",不会想到是描边)。
+    子级定位时把这段减回去。OUTSIDE / CENTER 的外扩部分走 box-shadow,不占布局,
+    不在此列。"""
+    m = re.match(r'\s*([\d.]+)px', rec.get('border') or '')
+    return float(m.group(1)) if m else 0.0
+
+
+def relocate_container_shadows(records):
+    """把「自己什么都不画的容器」的投影挪到**真正被投影的那个圆角子**身上。
+
+    figma 的 DROP_SHADOW 投的是节点**渲染出来的内容**;CSS 的 box-shadow 投的是**盒子**。
+    两者在按钮这种结构上会分道扬镳:按钮实例自身无填充无描边,形状在里面那个圆角矩形上,
+    于是 CSS 照着实例的方框投出一条**直角黑杠**。实测底部主按钮下方多出一条 361px 宽、
+    左右各支棱出来 4~7px 的黑边,而设计稿里是贴着圆角药丸的一圈厚边。
+
+    旧办法是把子的圆角**借**给父级(`child_radius_for_shadow`),只在子恰好铺满父级时成立;
+    这里的按钮子比父窄 11px,借完仍然左右露馅。改成直接**挪走**:父级不画东西,谁被投影
+    就挂到谁身上,形状与位置一次对齐。子恰好铺满的老情形是它的特例,行为不变。
+
+    只在父级确实"什么都不画"时才挪(无填充/图片/文字/矢量/描边/圆角),否则那阴影
+    本来就是投给父级自己的形状的,不能动。
+    """
+    by_parent = {}
+    for r in records:
+        by_parent.setdefault(r['parent'], []).append(r)
+    for r in records:
+        if not r['shadow'] or r['radius'] or r['border'] or r['borderAlign'] or \
+                r['fill'] or r['img'] or r['text'] or r['paths']:
+            continue
+        area = r['w'] * r['h']
+        if area <= 0:
+            continue
+        best = None
+        for c in by_parent.get(r['id'], []):
+            if not c['radius'] or c['rot']:
+                continue
+            if c['x'] < r['x'] - 1 or c['y'] < r['y'] - 1 or \
+                    c['x'] + c['w'] > r['x'] + r['w'] + 1 or c['y'] + c['h'] > r['y'] + r['h'] + 1:
+                continue
+            if c['w'] * c['h'] < area * 0.85:
+                continue
+            if best is None or c['w'] * c['h'] > best['w'] * best['h']:
+                best = c
+        if best is not None:
+            best['shadow'] = ', '.join(x for x in (best['shadow'], r['shadow']) if x)
+            r['shadow'] = ''
+    return records
 
 
 def capture(root, asset_dir, asset_rel):
@@ -542,7 +630,7 @@ def capture(root, asset_dir, asset_rel):
                     x=round(ax, 1), y=round(ay, 1), w=round(bb.get('width', 0), 1), h=round(bb.get('height', 0), 1),
                     z=order[0], rot=0, opacity=round(node.get('opacity', 1), 3),
                     radius='', border='', shadow='', blur='',
-                    fill='', img=u, imgSize='contain', text=None, clip=False, paths=[], viewBox='', borderAlign='', vec=True))
+                    fill='', img=u, imgSize='contain', imgPos='', text=None, clip=False, paths=[], viewBox='', borderAlign='', vec=True))
                 return
             # 缺图:能走到这儿的一定是**纯矢量簇**(needs_image 已经保证簇内没有可渲染形状),
             # 留个透明占位等图,别递归出几百个空 div。
@@ -557,7 +645,7 @@ def capture(root, asset_dir, asset_rel):
                 x=round(ax, 1), y=round(ay, 1), w=round(bb.get('width', 0), 1), h=round(bb.get('height', 0), 1),
                 z=order[0], rot=0, opacity=round(node.get('opacity', 1), 3),
                 radius='', border='', shadow='', blur='',
-                fill='', img='', imgSize='', text=None, clip=False, paths=[], viewBox='', borderAlign='', vec=True))
+                fill='', img='', imgSize='', imgPos='', text=None, clip=False, paths=[], viewBox='', borderAlign='', vec=True))
             return
         order[0] += 1
         rec = dict(
@@ -565,7 +653,7 @@ def capture(root, asset_dir, asset_rel):
             x=round(x, 1), y=round(y, 1), w=round(w, 1), h=round(h, 1),
             z=order[0], rot=(round(rot, 2) if abs(rot) > 0.5 else 0),
             opacity=round(node.get('opacity', 1), 3),
-            radius='', border='', shadow='', blur='', fill='', img='', imgSize='', text=None,
+            radius='', border='', shadow='', blur='', fill='', img='', imgSize='', imgPos='', text=None,
             clip=False, paths=[], viewBox='', borderAlign='', vec=False)
         rad = radius(node)
         if rad:
@@ -604,14 +692,20 @@ def capture(root, asset_dir, asset_rel):
                 shadows.append('%.0fpx %.0fpx %.0fpx %s' % (
                     o.get('x', 0), o.get('y', 0), r, col(ef.get('color', {'r': 0, 'g': 0, 'b': 0, 'a': .3}))))
             elif ef['type'] == 'LAYER_BLUR':
-                rec['blur'] = 'blur(%.0fpx)' % r
+                # **figma 的模糊半径不是 CSS 的 σ。** CSS `filter: blur(L)` 里 L 就是标准差,
+                # 而 figma 的 Layer blur 半径约等于 2σ —— 一比一照抄会糊出**两倍**的范围:
+                # 实测本项目那五团光晕(figma 半径 60.6),照抄时光晕区平均差 5.80/255,
+                # 折半后 1.84/255(好 3.1 倍)。
+                # 诚实交代:同一组实测扫下来最优比例落在 **≈0.42**(1.57/255),不是整 0.5;
+                # 但本帧五个元素**只有 60.6 这一个半径**,分不开"σ=kR"与"σ=R/2 再加个常数修正",
+                # 拿一个样本去拟合常数是过拟合。所以取有据可循的 R/2,并把这段测量留在这里 ——
+                # 将来有第二个半径的样本再定夺。
+                rec['blur'] = 'blur(%.0fpx)' % (r / 2.0)
         if rings or shadows:
             rec['shadow'] = ', '.join(rings + shadows)   # 环在前:更靠近元素,不被投影盖住
-        # 阴影方框修正:自身无圆角但有阴影 → 继承铺满圆角子的圆角(阴影跟随圆角形状)
-        if rec['shadow'] and not rec['radius']:
-            r2 = child_radius_for_shadow(node)
-            if r2:
-                rec['radius'] = r2
+        # 阴影方框修正见 relocate_container_shadows():记录全部产出后再统一挪,
+        # 那时才知道每个容器下面到底挂了些什么(emit 期只看得见 figma 节点,看不见
+        # 折叠/下沉之后真正留下来的那批记录)。
         if typ == 'TEXT':
             s = node.get('style', {})
             lh = s.get('lineHeightPx')
@@ -743,9 +837,9 @@ def capture(root, asset_dir, asset_rel):
                 rec['shadow'] = ', '.join(shadows)   # 只留真投影,丢掉描边环
                 records.append(rec)
                 return
-        iu, isize = img_fill(node, asset_dir, asset_rel, missing)
+        iu, isize, ipos = img_fill(node, asset_dir, asset_rel, missing)
         if iu:
-            rec['img'] = iu; rec['imgSize'] = isize
+            rec['img'] = iu; rec['imgSize'] = isize; rec['imgPos'] = ipos
         else:
             grad = next((f for f in (node.get('fills') or [])
                          if f.get('visible', True) and f.get('type', '').startswith('GRADIENT')), None)
@@ -775,7 +869,7 @@ def capture(root, asset_dir, asset_rel):
                         w=round(mb2.get('width', 0), 1), h=round(mb2.get('height', 0), 1),
                         z=order[0], rot=0, opacity=1,
                         radius=(mr2 or ''), border='', shadow='', blur='', fill='',
-                        img='', imgSize='', text=None, clip=True, paths=[], viewBox='',
+                        img='', imgSize='', imgPos='', text=None, clip=True, paths=[], viewBox='',
                         borderAlign='', vec=False))
                 continue
             emit(ch, holder, sib_bg)
@@ -792,9 +886,9 @@ def capture(root, asset_dir, asset_rel):
             os.path.exists(os.path.join(asset_dir, 'bg.png')):
         stage_bg = 'url(%s/bg.png) center/cover no-repeat' % asset_rel
     else:
-        iu, isize = img_fill(root, asset_dir, asset_rel, missing)
+        iu, isize, ipos = img_fill(root, asset_dir, asset_rel, missing)
         if iu:
-            stage_bg = 'url(%s) center/%s no-repeat' % (iu, isize)
+            stage_bg = 'url(%s) %s/%s no-repeat' % (iu, ipos or 'center', isize)
         elif solid(root.get('fills')):
             stage_bg = solid(root.get('fills'))
         else:
@@ -805,6 +899,7 @@ def capture(root, asset_dir, asset_rel):
     root_bg = opaque_rgb(root.get('fills'))
     for ch in root.get('children') or []:
         emit(ch, '', root_bg)
+    relocate_container_shadows(records)
     return dict(spec=IR_SPEC, frame=root.get('id'), w=SW, h=SH,
                 stageBg=stage_bg, els=records), missing
 
@@ -849,8 +944,11 @@ def svg_markup(rec):
 
 
 def rec_to_css(rec, parent=None):
-    px = parent['x'] if parent else 0
-    py = parent['y'] if parent else 0
+    # 父级带 INSIDE 描边时,绝对定位的子元素从内边距盒起算 → 整棵子树被顶偏一个描边宽。
+    # 见 border_inset()。render.js 的 pass2 有同一段补偿,改一处必同步。
+    bi = border_inset(parent) if parent else 0.0
+    px = (parent['x'] + bi) if parent else 0
+    py = (parent['y'] + bi) if parent else 0
     sty = ['position:absolute', 'left:%.1fpx' % (rec['x'] - px), 'top:%.1fpx' % (rec['y'] - py),
            'width:%.1fpx' % rec['w'], 'height:%.1fpx' % rec['h'], 'z-index:%d' % rec['z']]
     if rec['rot']:
@@ -885,7 +983,8 @@ def rec_to_css(rec, parent=None):
     elif rec.get('paths'):
         inner = svg_markup(rec)
     elif rec['img']:
-        sty.append('background:url(%s) center/%s no-repeat' % (html.escape(rec['img']), rec['imgSize'] or 'cover'))
+        sty.append('background:url(%s) %s/%s no-repeat' % (html.escape(rec['img']),
+                                                            rec.get('imgPos') or 'center', rec['imgSize'] or 'cover'))
     elif rec['fill']:
         sty.append('background:' + rec['fill'])
     return '<div data-id="%s" title="%s" style="%s">%s' % (

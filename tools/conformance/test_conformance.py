@@ -166,6 +166,9 @@ GODOT_SIGNALS = {
     # clip 有两条路:无圆角走 clip_contents(矩形剪刀),有圆角走 clip_children
     # (拿本节点画出来的形状当子节点的模子)。信号取两者的公共前缀。
     "paths": ".svg", "clip": "clip_", "border-outside": "expand_margin",
+    # v1.4 imgPos:本后端不实现 —— 信号取「图不居中」那类设置(区域/偏移),
+    # 必须找不到。别拿 "texture" 当信号,那是 img 本身的,一定在。
+    "img-crop": "region_rect",
 }
 UNITY_SIGNALS = {
     "radius-px": "radius", "radius-pct": "radius", "radius-pct-oblong": "radius",
@@ -181,6 +184,11 @@ UNITY_SIGNALS = {
     # (UI Toolkit 的 overflow 跟随 border-radius,圆角裁剪天然就对);
     # OUTSIDE 描边环 = 垫在本体下面、四边各外扩 N 的额外盒子(USS 无 box-shadow)
     "paths": "FigVector", "clip": "overflow", "border-outside": "-ring",
+    # v1.4 imgPos:USS 没有 background-position 可写偏移,本后端不实现 —— 必须找不到。
+    # 信号不能只写 "background-position":本后端给每张图都无条件写了 `: center`,
+    # 拿它当信号一定撞上(第一版就这么误报了)。取**这个元素真该有的偏移量**,
+    # 实现了才会出现。
+    "img-crop": "background-position: 20",
 }
 
 

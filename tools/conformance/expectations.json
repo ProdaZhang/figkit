@@ -1,164 +1,171 @@
 {
-  "_why": [
-    "跨后端一致性的声明表。每个特性由 kitchen-sink 里的一个元素承载,每个后端必须为它",
-    "声明一种处置方式,测试再去产物里核对声明是否属实。",
-    "此前没有这层:各后端只跟自己手写的期望比,谁都不知道别人怎么解同一份 IR ——",
-    "capture 对每个 ELLIPSE 都产的 radius:'50%' 因此在 godot 被整个丢掉、在 cocos 被",
-    "当成 50px,而两边的测试都是绿的。"
-  ],
-  "_status_meaning": {
-    "render": "产物用引擎自己的词汇表达了它 —— 检测器必须在产物里找到信号",
-    "approx": "表达了,但是有记录在案的近似 —— 必须找到信号,且必须有降级说明",
-    "known-loss": "刻意不表达 —— 产物里必须找不到信号,且必须有降级说明留痕"
+ "_why": [
+  "跨后端一致性的声明表。每个特性由 kitchen-sink 里的一个元素承载,每个后端必须为它",
+  "声明一种处置方式,测试再去产物里核对声明是否属实。",
+  "此前没有这层:各后端只跟自己手写的期望比,谁都不知道别人怎么解同一份 IR ——",
+  "capture 对每个 ELLIPSE 都产的 radius:'50%' 因此在 godot 被整个丢掉、在 cocos 被",
+  "当成 50px,而两边的测试都是绿的。"
+ ],
+ "_status_meaning": {
+  "render": "产物用引擎自己的词汇表达了它 —— 检测器必须在产物里找到信号",
+  "approx": "表达了,但是有记录在案的近似 —— 必须找到信号,且必须有降级说明",
+  "known-loss": "刻意不表达 —— 产物里必须找不到信号,且必须有降级说明留痕"
+ },
+ "_scope": [
+  "在测范围内的是三个**产物型**后端(godot/unity)。figma2html 与 figma2cocos 是",
+  "**解释器**:直接在运行时吃 .ui.json,没有可静态检查的产物,不在本套内 ——",
+  "它们分别由自己的渲染测试与 runtime 源码守卫覆盖。这是本套已知的覆盖边界。"
+ ],
+ "_structural_why": [
+  "身份与几何 —— 没有'各后端怎么处置'的余地,不需要逐后端声明。",
+  "**新增 IR 字段要么进 _structural,要么进 features 并配一个真用得上它的 kitchen-sink 元素**;",
+  "两边都没有 = test_every_ir_field_is_accounted_for 直接红。v1.2 的 paths/clip/borderAlign",
+  "当初就是从这个缝里掉下去的:字段加了、夹具里全是空值、无人声明,于是四个后端集体",
+  "静默丢弃,而全套测试一路绿灯。"
+ ],
+ "_structural": [
+  "id",
+  "name",
+  "type",
+  "parent",
+  "x",
+  "y",
+  "w",
+  "h",
+  "z"
+ ],
+ "features": {
+  "radius-px": {
+   "el": "k:radius-px",
+   "field": "radius",
+   "doc": "radius",
+   "godot": "render",
+   "unity": "render"
   },
-  "_scope": [
-    "在测范围内的是三个**产物型**后端(godot/unity)。figma2html 与 figma2cocos 是",
-    "**解释器**:直接在运行时吃 .ui.json,没有可静态检查的产物,不在本套内 ——",
-    "它们分别由自己的渲染测试与 runtime 源码守卫覆盖。这是本套已知的覆盖边界。"
-  ],
-  "_structural_why": [
-    "身份与几何 —— 没有'各后端怎么处置'的余地,不需要逐后端声明。",
-    "**新增 IR 字段要么进 _structural,要么进 features 并配一个真用得上它的 kitchen-sink 元素**;",
-    "两边都没有 = test_every_ir_field_is_accounted_for 直接红。v1.2 的 paths/clip/borderAlign",
-    "当初就是从这个缝里掉下去的:字段加了、夹具里全是空值、无人声明,于是四个后端集体",
-    "静默丢弃,而全套测试一路绿灯。"
-  ],
-  "_structural": [
-    "id",
-    "name",
-    "type",
-    "parent",
-    "x",
-    "y",
-    "w",
-    "h",
-    "z"
-  ],
-  "features": {
-    "radius-px": {
-      "el": "k:radius-px",
-      "field": "radius",
-      "doc": "radius",
-      "godot": "render",
-      "unity": "render"
-    },
-    "radius-pct": {
-      "el": "k:radius-pct",
-      "field": "radius",
-      "doc": "50%",
-      "godot": "render",
-      "unity": "render"
-    },
-    "radius-pct-oblong": {
-      "el": "k:radius-pct-oblong",
-      "field": "radius",
-      "doc": "50%",
-      "godot": "render",
-      "unity": "render"
-    },
-    "border": {
-      "el": "k:border",
-      "field": "border",
-      "doc": "border",
-      "godot": "render",
-      "unity": "render"
-    },
-    "shadow": {
-      "el": "k:shadow",
-      "field": "shadow",
-      "doc": "shadow",
-      "godot": "approx",
-      "unity": "approx"
-    },
-    "blur": {
-      "el": "k:blur",
-      "field": "blur",
-      "doc": "blur",
-      "godot": "known-loss",
-      "unity": "known-loss"
-    },
-    "rot": {
-      "el": "k:rot",
-      "field": "rot",
-      "doc": "rot",
-      "godot": "render",
-      "unity": "render"
-    },
-    "opacity": {
-      "el": "k:opacity",
-      "field": "opacity",
-      "doc": "opacity",
-      "godot": "render",
-      "unity": "render"
-    },
-    "img": {
-      "el": "k:img-cover",
-      "field": [
-        "img",
-        "imgSize"
-      ],
-      "doc": "img",
-      "godot": "render",
-      "unity": "render"
-    },
-    "vec": {
-      "el": "k:vec",
-      "field": "vec",
-      "doc": "vec",
-      "godot": "render",
-      "unity": "render"
-    },
-    "gradient-linear": {
-      "el": "k:gradient-linear",
-      "field": "fill",
-      "doc": "gradient",
-      "godot": "render",
-      "unity": "approx"
-    },
-    "gradient-radial": {
-      "el": "k:gradient-radial",
-      "field": "fill",
-      "doc": "gradient",
-      "godot": "render",
-      "unity": "approx"
-    },
-    "text": {
-      "el": "k:text",
-      "field": "text",
-      "doc": "content",
-      "godot": "render",
-      "unity": "render"
-    },
-    "paths": {
-      "el": "k:paths",
-      "field": [
-        "paths",
-        "viewBox"
-      ],
-      "doc": "paths",
-      "godot": "render",
-      "unity": "approx"
-    },
-    "clip": {
-      "el": "k:clip",
-      "field": "clip",
-      "doc": "clip",
-      "godot": "render",
-      "unity": "render"
-    },
-    "border-outside": {
-      "el": "k:border-outside",
-      "field": "borderAlign",
-      "doc": "borderAlign",
-      "godot": "render",
-      "unity": "render"
-    },
-    "text-stroke": {
-      "el": "k:text-stroke",
-      "field": "text",
-      "doc": "stroke",
-      "godot": "approx",
-      "unity": "approx"
-    }
+  "radius-pct": {
+   "el": "k:radius-pct",
+   "field": "radius",
+   "doc": "50%",
+   "godot": "render",
+   "unity": "render"
+  },
+  "radius-pct-oblong": {
+   "el": "k:radius-pct-oblong",
+   "field": "radius",
+   "doc": "50%",
+   "godot": "render",
+   "unity": "render"
+  },
+  "border": {
+   "el": "k:border",
+   "field": "border",
+   "doc": "border",
+   "godot": "render",
+   "unity": "render"
+  },
+  "shadow": {
+   "el": "k:shadow",
+   "field": "shadow",
+   "doc": "shadow",
+   "godot": "approx",
+   "unity": "approx"
+  },
+  "blur": {
+   "el": "k:blur",
+   "field": "blur",
+   "doc": "blur",
+   "godot": "known-loss",
+   "unity": "known-loss"
+  },
+  "rot": {
+   "el": "k:rot",
+   "field": "rot",
+   "doc": "rot",
+   "godot": "render",
+   "unity": "render"
+  },
+  "opacity": {
+   "el": "k:opacity",
+   "field": "opacity",
+   "doc": "opacity",
+   "godot": "render",
+   "unity": "render"
+  },
+  "img": {
+   "el": "k:img-cover",
+   "field": [
+    "img",
+    "imgSize"
+   ],
+   "doc": "img",
+   "godot": "render",
+   "unity": "render"
+  },
+  "vec": {
+   "el": "k:vec",
+   "field": "vec",
+   "doc": "vec",
+   "godot": "render",
+   "unity": "render"
+  },
+  "gradient-linear": {
+   "el": "k:gradient-linear",
+   "field": "fill",
+   "doc": "gradient",
+   "godot": "render",
+   "unity": "approx"
+  },
+  "gradient-radial": {
+   "el": "k:gradient-radial",
+   "field": "fill",
+   "doc": "gradient",
+   "godot": "render",
+   "unity": "approx"
+  },
+  "text": {
+   "el": "k:text",
+   "field": "text",
+   "doc": "content",
+   "godot": "render",
+   "unity": "render"
+  },
+  "paths": {
+   "el": "k:paths",
+   "field": [
+    "paths",
+    "viewBox"
+   ],
+   "doc": "paths",
+   "godot": "render",
+   "unity": "approx"
+  },
+  "clip": {
+   "el": "k:clip",
+   "field": "clip",
+   "doc": "clip",
+   "godot": "render",
+   "unity": "render"
+  },
+  "border-outside": {
+   "el": "k:border-outside",
+   "field": "borderAlign",
+   "doc": "borderAlign",
+   "godot": "render",
+   "unity": "render"
+  },
+  "text-stroke": {
+   "el": "k:text-stroke",
+   "field": "text",
+   "doc": "stroke",
+   "godot": "approx",
+   "unity": "approx"
+  },
+  "img-crop": {
+   "el": "k:img-crop",
+   "field": "imgPos",
+   "doc": "imgPos",
+   "godot": "known-loss",
+   "unity": "known-loss"
   }
+ }
 }

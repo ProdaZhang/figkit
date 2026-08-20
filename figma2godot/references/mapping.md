@@ -73,6 +73,7 @@ which has to be avoided).
 | `imgSize: cover` (or empty) | `expand_mode = 1` + `stretch_mode = 6` (KEEP_ASPECT_COVERED) | Fills proportionally and crops |
 | `imgSize: contain` | `expand_mode = 1` + `stretch_mode = 5` (KEEP_ASPECT_CENTERED) | Fits proportionally and centres |
 | Any other imgSize | `stretch_mode = 0` (SCALE) | Stretch fallback |
+| `imgPos` (v1.4) | **dropped** — the image stays centred | Figma's crop fill places the bitmap at an arbitrary px offset inside the box; TextureRect's `stretch_mode` only offers whole-box fits, so there is no "draw it at this offset" setting. Exact placement would need an AtlasTexture region or custom `_draw`. Recorded as known-loss per element |
 | `vec: true` with no PNG | No fill → `Control` (transparent placeholder) | Matches render.js: a missing image falls back to transparent, never a black fill |
 | Fonts | Project-level configuration: attach a CJK font (e.g. Source Han Sans) in the Godot theme (or `theme_override_fonts/font`), with Regular/Medium/Bold cuts to serve `weight` | The converter emits no font resources. The woff2 that figma2html's `subset_font.py` produces is not directly usable by Godot; use ttf/otf |
 

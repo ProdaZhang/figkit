@@ -835,6 +835,10 @@ def collect_losses(cap):
         if e.get('blur'):
             out.append("%s: blur '%s' 丢弃(Godot 无逐控件模糊;需要的话自建 "
                        "BackBufferCopy + 着色器)" % (eid, e['blur']))
+        if e.get('imgPos'):
+            out.append("%s: 裁剪填充的位移 imgPos '%s' 丢弃(TextureRect 的 stretch_mode 只有"
+                       "整格铺法,没有「图放在格子里某个偏移处」这一档;要精确得改用 "
+                       "atlas/region 或自己画)" % (eid, e['imgPos']))
         if e.get('shadow'):
             out.append("%s: 阴影用 shadow_size 近似 CSS 的 blur+spread(且最小 1,"
                        "Godot size=0 不绘制,硬阴影会消失)" % eid)
@@ -952,12 +956,12 @@ def _emit_stage_bg(em, bg, w, h):
                     ['color = ' + color_str(c)])
 
 
-IR_SPEC_SUPPORTED = '1.3'
+IR_SPEC_SUPPORTED = '1.4'
 
 # 本后端**认识**的 els 字段。少于输入文件里实际出现的键 = 有东西被静默跳过。
 IR_FIELDS_KNOWN = frozenset((
     'id', 'name', 'type', 'parent', 'x', 'y', 'w', 'h', 'z', 'rot', 'opacity',
-    'radius', 'border', 'shadow', 'blur', 'fill', 'img', 'imgSize',
+    'radius', 'border', 'shadow', 'blur', 'fill', 'img', 'imgSize', 'imgPos',
     'clip', 'paths', 'viewBox', 'borderAlign', 'vec', 'text',
 ))
 

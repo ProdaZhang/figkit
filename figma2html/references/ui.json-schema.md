@@ -5,7 +5,7 @@ A full-fidelity structured snapshot of one Figma frame: every visible node plus 
 
 ```jsonc
 {
-  "spec": "1.3",                          // IR contract version this capture follows (see spec/)
+  "spec": "1.4",                          // IR contract version this capture follows (see spec/)
   "frame": "46:8241", "w": 1080, "h": 1920,
   "stageBg": "url(_assets/s17/bg.png) center/cover no-repeat",   // frame backdrop (solid colour / gradient also allowed)
   "els": [{
@@ -15,7 +15,8 @@ A full-fidelity structured snapshot of one Figma frame: every visible node plus 
     "rot": 0, "opacity": 1,
     "radius": "37px", "border": "4.0px solid rgba(219,208,184,1)", "shadow": "0px 4px 0px rgba(0,0,0,0.6)", "blur": "",
     "fill": "rgba(255,251,242,1)",        // solid incl. alpha / linear or radial gradient css / empty
-    "img": "", "imgSize": "",             // image fill (named after imageRef, shared across screens)
+    "img": "", "imgSize": "", "imgPos": "",   // image fill (named after imageRef, shared across screens);
+                                          // v1.4: figma crop fills carry px size + px offset here, else "cover"/"" (centred)
     "clip": false,                         // v1.1: true = clip children to this box (a figma isMask sibling folded in; its radius lands in `radius`)
     "paths": [], "viewBox": "",            // v1.2: vector drawn from figma geometry — [{d, rule, fill}] + the svg viewBox (sized by renderBounds)
     "borderAlign": "",                     // v1.2: "inside" | "outside" | "center" — where the stroke sits; outside/centre also land in `shadow`

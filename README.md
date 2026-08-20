@@ -58,7 +58,7 @@ row — every defect a real engine run found, in the order it was found — is i
 
 | backend | offline tests | in-engine verification |
 |---|---|---|
-| figma2html | ✅ 89 | ✅ rendered + interactions, with the runtime's **behaviour** asserted in a real browser rather than looked at: 8 checks in [`tools/html-smoke/`](tools/html-smoke/), in CI on windows. They read numbers out of the page — offsets, row texts, guard outcome, whether each string fits its box — not pixels. **0.81/255** |
+| figma2html | ✅ 94 | ✅ rendered + interactions, with the runtime's **behaviour** asserted in a real browser rather than looked at: 8 checks in [`tools/html-smoke/`](tools/html-smoke/), in CI on windows. They read numbers out of the page — offsets, row texts, guard outcome, whether each string fits its box — not pixels. **0.81/255** |
 | figma2dsl | ✅ 19 | ✅ (same render pipeline) |
 | figma2godot | ✅ 34 | ✅ **Godot 4.3**, re-verified on **4.7.1**. A real capture found what fixtures cannot reach: instance ids carry `;` while `sub_resource` ids accept only `[A-Za-z0-9_]`, so every StyleBoxFlat on an instanced element silently failed to register; and `clip_children` **cannot nest**. `radius: 50%` on a non-square box used to come out a capsule — `corner_radius` is a scalar — and now compiles to an `.svg` with true elliptical corners. **1.13/255** |
 | figma2unity | ✅ 31 | ✅ **Unity 6000.4.8f1** and **2022.3.62f3**, the latter as a real built Windows player at 1080×1920, not a batchmode import check — which is how it caught that **one invalid USS selector voids the entire stylesheet** (129 rules applied to nothing, screen black). `paths`, `clip`, outside borders, gradients and now blurred shadows are implemented rather than declared away; the last two bake to PNG at compile time. **0.81/255** — level with HTML |
@@ -181,18 +181,39 @@ first thing to suspect when the tool returns a bad number, and it's written down
 
 Every step above is runnable with no Figma account: `examples/login/nodes.json` is a real-shaped REST response, and importing it reproduces the demo's `stage` / `caps` / `base` / `modals` exactly — the remaining `list`, `bindings` and guards are precisely the application semantics you write by hand.
 
-## Install as Claude Code plugins
+## Install as agent skills
 
-Each skill folder doubles as a [Claude Code](https://code.claude.com/docs) skill, and the repo is a plugin marketplace:
+Each skill folder is a self-contained agent skill — a `SKILL.md` carrying YAML frontmatter plus the scripts it names, no build step and no dependencies beyond Python. Two hosts are verified.
+
+### Claude Code
+
+The repo doubles as a plugin marketplace:
 
 ```shell
 /plugin marketplace add ProdaZhang/figkit
 /plugin install figma2godot@figkit      # or figma2html / figma2dsl / figma2unity / figma2cocos / figkit-motion
 ```
 
-Prefer no plugin machinery? Just copy a folder into `.claude/skills/` — each one is self-contained. Per-skill usage lives in its `SKILL.md`.
+Prefer no plugin machinery? Just copy a folder into `.claude/skills/`.
 
-> **Language note (honest version)**: English covers **this README, `CONTRIBUTING.md`, and the [`spec/`](spec/) IR contract** — the parts you need to understand or extend the format. Still **zh-CN**: the seven `SKILL.md` usage docs, every `references/mapping.md` (including the known-loss tables), and all of `figkit-motion/`. Always language-independent: all code, all tests, all JSON/field names. The zh original of the spec is mirrored at `spec/*.zh.md`, and `tools/spec_parity.py` compares the two so the schema can't drift apart. Translating one backend's `mapping.md` is the highest-value PR — see [Translation in CONTRIBUTING](CONTRIBUTING.md#translation).
+### DeepSeek Harness
+
+Copy a folder into either skill root — user-wide, or scoped to one project:
+
+```shell
+cp -r figma2html ~/.dsh/skills/                  # user-wide
+cp -r figma2html <projectRoot>/.dsh/skills/      # this project only; outranks the user root
+```
+
+No restart needed: the local provider watches both roots and attaches to one you create while it is running. Invoke with `/figma2html` in the composer — DSH injects the skill body together with a `Base directory for this skill: <path>` hint, which is what makes the relative script paths written throughout each `SKILL.md` resolve.
+
+Verified against DSH `0.1.0-rc.8`: all six skills discovered and listed with their descriptions, and `figma2html`'s own suite (94 assertions, 6 modules) run green from inside a session.
+
+Per-skill usage lives in its `SKILL.md`.
+
+**What a skill install leaves behind.** [`tools/`](tools/) — `design-diff` (pixel-diff against a Figma export), `html-smoke`, `conformance`, `spec_parity` — sits at the repo root, outside every skill folder, so a skill-only install does not get it. Clone the repo when you want to measure fidelity rather than just produce it. One portability note: every `SKILL.md` spells the interpreter `python3`, which usually does not exist on Windows — use `python` there.
+
+> **Language note (honest version)**: English covers **this README, `CONTRIBUTING.md`, and the [`spec/`](spec/) IR contract** — the parts you need to understand or extend the format. Still **zh-CN**: the six `SKILL.md` usage docs, every `references/mapping.md` (including the known-loss tables), and all of `figkit-motion/`. Always language-independent: all code, all tests, all JSON/field names. The zh original of the spec is mirrored at `spec/*.zh.md`, and `tools/spec_parity.py` compares the two so the schema can't drift apart. Translating one backend's `mapping.md` is the highest-value PR — see [Translation in CONTRIBUTING](CONTRIBUTING.md#translation).
 
 ## Design principles
 
