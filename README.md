@@ -183,7 +183,7 @@ Every step above is runnable with no Figma account: `examples/login/nodes.json` 
 
 ## Install as agent skills
 
-Each skill folder is a self-contained agent skill — a `SKILL.md` carrying YAML frontmatter plus the scripts it names, no build step and no dependencies beyond Python. Two hosts are verified.
+Each skill folder is a self-contained agent skill — a `SKILL.md` carrying YAML frontmatter plus the scripts it names, no build step and no dependencies beyond Python. Four hosts are verified: Claude Code, DeepSeek Harness, Codex, and ZCode. All four discover a skill the same way — one `<name>/SKILL.md` under a skills root — which is what lets a single folder serve all of them unchanged.
 
 ### Claude Code
 
@@ -195,6 +195,8 @@ The repo doubles as a plugin marketplace:
 ```
 
 Prefer no plugin machinery? Just copy a folder into `.claude/skills/`.
+
+Both routes are verified: `claude plugin details figma2html@figkit` reports `Skills (1)`, so the `SKILL.md` at each plugin's root is picked up as a skill — a layout Claude Code accepts and Codex does not, which is why the sections below differ.
 
 ### DeepSeek Harness
 
@@ -208,6 +210,32 @@ cp -r figma2html <projectRoot>/.dsh/skills/      # this project only; outranks t
 No restart needed: the local provider watches both roots and attaches to one you create while it is running. Invoke with `/figma2html` in the composer — DSH injects the skill body together with a `Base directory for this skill: <path>` hint, which is what makes the relative script paths written throughout each `SKILL.md` resolve.
 
 Verified against DSH `0.1.0-rc.8`: all six skills discovered and listed with their descriptions, and `figma2html`'s own suite (94 assertions, 6 modules) run green from inside a session.
+
+### Codex
+
+Copy a folder into Codex's user skill root, beside the `.system/` skills it ships with:
+
+```shell
+cp -r figma2html ~/.codex/skills/
+```
+
+**Do not install these through `codex plugin add`.** Adding the repo as a marketplace and installing from it reports success and then lists the plugin as `installed, enabled` — and the skill still never appears in a session. Codex's plugin loader looks for skills at `<plugin>/skills/<name>/SKILL.md`, while a FigKit plugin folder carries its `SKILL.md` at the root, the layout Claude Code accepts. A silent no-op is worse than a refusal, so take the folder copy.
+
+Verified against `codex-cli 0.147.0-alpha.6.5`: all six skills enumerated in-session, and `figma2html` loaded, resolved its own base directory, and ran its suite from there.
+
+Two caveats there are Codex's rather than FigKit's, both about its sandbox. It runs as a separate low-privilege account that cannot read a Python installed under the user profile, so it quietly falls back to any interpreter it *can* reach — hand it an explicit interpreter path, or watch the suite fail on `math.dist` under a pre-3.8 fallback. And `test_bundle_is_fresh` rewrites a fixture in place to prove the bundle is current, which a read-only sandbox denies; grant write access to the skill directory for that one run. The test restores the file itself, so nothing is left changed.
+
+### ZCode
+
+The same folder drop, into ZCode's user skill root:
+
+```shell
+cp -r figma2html ~/.zcode/skills/
+```
+
+`zcode skills list` prints what it found — name, scope, description, and the absolute `SKILL.md` path — which is the quickest way to confirm an install without opening a session. Skills are scanned at startup, so restart a desktop client that was already running when you copied.
+
+Verified against ZCode desktop `3.8.1` (bundled CLI `0.16.3`): all six discovered at scope `user/zcode`, and `/Figma2html` invoked in the desktop client ran the suite green from the skill's own directory.
 
 Per-skill usage lives in its `SKILL.md`.
 
