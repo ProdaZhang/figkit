@@ -2,11 +2,11 @@
 > 改动先落英文,再镜像到这里。`tools/spec_parity.py` 会比对两边**代码块去注释后**的结构,
 > 只改一边会红(散文可以有出入,schema 不行)。
 
-> **FigKit IR Spec v1.0 — FROZEN 2026-07-03**
-> 本文件是五后端(html/dsl/unity/godot/cocos)共享 IR 契约的**权威版本**;
+> **FigKit IR Spec v1.5 — 2026-09-21**（v1.0 冻结于 2026-07-03）
+> 本文件是五后端(html/dsl/unity/godot/cocos)共享 IR 契约的中文镜像，英文为权威版本;
 > `figma2html/references/` 下的同名文件是随 skill 分发的工作副本(内容同源)。
 > 冻结纪律:v1.0 起**只允许 additive**(新增可选字段/枚举值),不改既有字段形状;
-> 下一次结构性改动须由某个后端撞出的真实缺口触发,并升 v1.1 记录于本头部变更行。
+> 后续结构性改动须由后端遇到的真实缺口触发，升级次版本并记录变更。
 > 变更史:v1.0(2026-07-03)冻结 —— 经 5 后端互证(html 渲染/dsl 转写/unity 编译+导入/godot 实机渲染/cocos 校验器)。
 > v1.3(2026-08-05）—— 不加字段,把三件**只有 figma 答得上来的事**收进捕获层,免得每个后端各猜各的。`text.wrap`(additive,读 `textAutoResize`):定宽的折行、随字撑宽的不折 —— 以前 html 靠运行时 hook 猜,引擎侧没有等价物。**文本几何改为行盒**:figma 把高 `lh` 的行块按 `textAlignVertical` 放进文本框,而拿 `absoluteRenderBounds` 实测,行块高过框时是**居中溢出**而非顶对齐;godot 的 Label 与 Unity 的 UI Toolkit 都没有 line-height,所以单行文本的 `y`/`h` 现在直接给行盒、`alignV` 恒为 `center`,后端只要「在盒子里居中」就精确一致(此前 godot 低 12px、unity 高 8.5px)。多行框不动。**描边带改发预裁的环**:figma 的 `strokeGeometry` 是骑在边线上的 ±w 带子,原样发 + `clip` 提示等于把布尔裁剪当入场券 —— 没有它的后端(Painter2D)只能整条照画、粗一倍。捕获层现在把带子劈开,发「形状 + 内缩/外扩轮廓」两条闭合轮廓、按 evenodd 当环填,`clip` 清空;劈不开的退回原样 + 提示,所以路径上的 `clip` 仍留在契约里。
 
@@ -17,7 +17,7 @@
 
 ```jsonc
 {
-  "spec": "1.4",                          // 本次捕获遵循的 IR 契约版本(见 spec/)
+  "spec": "1.5",                          // 本次捕获遵循的 IR 契约版本(见 spec/)
   "frame": "46:8241", "w": 1080, "h": 1920,
   "stageBg": "url(_assets/s17/bg.png) center/cover no-repeat",   // 帧底图(纯色/渐变亦可)
   "els": [{
@@ -25,6 +25,8 @@
     "parent": "46:8263",                  // figma 父 id(render 据此嵌套;同键空间可与 DSL/flow join)
     "x": 199, "y": 538, "w": 684, "h": 802, "z": 26,   // 相对帧绝对 px + 层级
     "rot": 0, "opacity": 1,
+    "matrix": [1, 0, 0, 1, 199, 538],      // 可选:局部盒子到帧的仿射矩阵,优先于 x/y/rot
+    "vectorShadows": [],                   // 可选:[{x,y,blur,spread,color}],blur 为高斯标准差
     "radius": "37px", "border": "4.0px solid rgba(219,208,184,1)", "shadow": "0px 4px 0px rgba(0,0,0,0.6)", "blur": "",
     "fill": "rgba(255,251,242,1)",        // 纯色含透明 / 线性·径向渐变 css / 空
     "img": "", "imgSize": "", "imgPos": "",   // 图片填充(按 imageRef 命名,跨屏复用);
@@ -34,7 +36,8 @@
     "borderAlign": "",                     // v1.2:"inside" | "outside" | "center" —— 描边落在哪侧;outside/center 另计入 shadow
     "vec": false,                          // true=矢量簇折叠图(缺 PNG 回退透明,不平涂黑)
     "text": null                           // 仅 TEXT:{content,color,size,family,weight,lh,ls,alignH,alignV,textAlign,wrap,stroke}
-  }]
+  }],
+  "losses": []                             // 可选:[{nodeId,property,code,disposition,message}]
 }
 ```
 
@@ -45,7 +48,16 @@
 - `subtreeOf(cap, 根id | 根id数组)` 抽子树(弹窗叠加用)。
 - 完整字段语义见 figma2dsl 的 `references/界面DSL规范-figma2dsl扩展.md §C/§0`。
 
-## 已知限制:旋转(rot)
+## v1.5 补充（2026-09-21）
+
+- 可选 `matrix` = CSS/SVG 六数矩阵，局部盒子→帧。HTML 用父矩阵的逆乘子矩阵恢复父相对坐标，原点为 0 0，描边内缩只扣一次；有矩阵时优先于 x/y/rot，w/h 为局部尺寸，抽子树不丢位置。缺失字段仍按老规则。
+- `text.decoration` = none / underline / line-through；先按 UTF-16 单位合并字符覆盖。整段一致写在父文本；混合样式用 `text.runs`：有序的 {content,decoration,color,size,family,weight,ls}，文字拼接等于 text.content，HTML 用同一行包装内的 inline span。
+- `vectorShadows` = [{x,y,blur,spread,color}]，局部像素单位，blur 为 sigma（Figma radius / 2）。矢量按 SourceAlpha 做扩散/模糊/偏移再合成；保留旧 shadow 供旧后端回退，HTML 不重复画两份。
+- 单种子 RELATIVE LINEAR 水平/垂直重复在 capture 展开，支持嵌套、稳定且不冲突的生成 ID；count 最多1024、展开最多20000节点，超限或不支持则报告。
+- 顶层 `losses` 报告已知捕获折损，不代表完整性证明。CUSTOM、多重填充、不支持的 effects/repeats、缺失变换会留痕。CLI 加 --strict 后有折损/缺素材返回1，仍保留诊断产物。
+- HTML 支持这些新渲染字段；DSL 的 IR 旁路保留、语义 markdown 丢弃；Unity/Godot/Cocos 暂不支持，须告警并按 mapping 明示降级。未做本版本引擎像素验收。
+
+## 已知限制:源数据缺失旋转(rot)
 
 `rot` 由 `geom()` 从节点的 `relativeTransform` 反解(`atan2(m[1][0], m[0][0])`)。**figma REST 对组件实例(INSTANCE/COMPONENT)内部子节点常不返回 `relativeTransform`**——这类节点的 `rot` 会**回退为 0**(整簇折叠成图时内部角度同样丢失)。这是 figma API 的特性,**不是 capture 的 bug**,无法在捕获层补救。
 

@@ -1,8 +1,9 @@
-> **FigKit IR Spec v1.4 — 2026-08-19** (v1.0 frozen 2026-07-03)
+> **FigKit IR Spec v1.5 — 2026-09-21** (v1.0 frozen 2026-07-03)
+> v1.5 additive: matrix, vectorShadows, text.decoration/runs and capture losses. Linear repeats expand before serialisation; gradient paint alpha and shadow spread are retained. New rendering semantics are HTML-only until engine mappings implement them.
 > This file is the **authoritative** copy of the IR contract shared by the five backends (html/dsl/unity/godot/cocos);
 > the same-named file under `figma2html/references/` is the working copy shipped with the skill (same content).
 > Freeze discipline: from v1.0 on, changes are **additive only** (new optional fields / enum values); existing field shapes do not change.
-> The next structural change must be triggered by a real gap hit by some backend, bump to v1.1, and be recorded in the changelog line below.
+> Each structural change must be triggered by a real backend gap, bump the minor version, and be recorded below.
 > Changelog: v1.0 (2026-07-03) frozen — cross-validated by 5 backends (html render / dsl transcription / unity compile+import / godot in-engine render / cocos checker).
 > v1.1 (2026-08-04) additive: **`clip`** — a Figma `isMask` layer is a clipping *shape*, not a layer of paint. Capture used to emit it as an ordinary node: a gradient rectangle whose only job was to give its siblings a rounded outline got painted over the panel it was masking, and the decoration it was supposed to clip (a 2143×680 ellipse) spilled across the whole screen. Now a mask that is a rectangle/ellipse covering its parent's box folds into the parent as `clip: true` + the mask's radius, and is not painted; anything else degrades loudly (`[capture][known-loss]` on stderr) rather than pretending. **Honoured by html only so far** — the other four backends ignore the field, which is exactly the behaviour they had before, so nothing regresses; each should declare render/approximate/drop in its `mapping.md` when it gets there.
 > v1.2 (2026-08-04) additive, three fields, all from the same discovery: **things Figma does not store as images must not become images.** `paths` + `viewBox` — with `geometry=paths` on the REST call Figma hands back every vector's SVG path (`fillGeometry` / `strokeGeometry`), so a vector is *drawn*, not downloaded: no `/v1/images` render quota (which does get exhausted — 11 backoffs, 41 clusters, zero delivered), resolution-independent, recolourable without re-exporting, and downstream engines receive geometry instead of a bitmap. `strokeGeometry` is Figma's stroke already converted to a fillable outline, so it is painted as a fill in the stroke colour and needs no stroke-width maths; because the round caps of a stroke overflow `absoluteBoundingBox`, an element carrying paths is sized by `absoluteRenderBounds` with `viewBox` shifted back by the difference. `borderAlign` — Figma strokes are `INSIDE` / `OUTSIDE` / `CENTER` and CSS `border` only draws inward; mapping all three to `border` drew every OUTSIDE stroke in the wrong direction (eating N px of fill instead of adding N px outside — a 10px stroke was off by 20px). Inside stays `border`, outside becomes a `0 0 0 Npx` entry at the head of `shadow` (box-shadow follows `border-radius`, `outline` does not), centre splits. `clip` also now carries Figma's `clipsContent`, not just masks. **Honoured by html only so far**; the other four ignore all three, which is the behaviour they already had.
@@ -17,7 +18,7 @@ A full-fidelity structured snapshot of one Figma frame: every visible node plus 
 
 ```jsonc
 {
-  "spec": "1.4",                          // IR contract version this capture follows (see spec/)
+  "spec": "1.5",                          // IR contract version this capture follows (see spec/)
   "frame": "46:8241", "w": 1080, "h": 1920,
   "stageBg": "url(_assets/s17/bg.png) center/cover no-repeat",   // frame backdrop (solid colour / gradient also allowed)
   "els": [{
@@ -25,6 +26,8 @@ A full-fidelity structured snapshot of one Figma frame: every visible node plus 
     "parent": "46:8263",                  // figma parent id (render nests by it; same key space, joinable with DSL/flow)
     "x": 199, "y": 538, "w": 684, "h": 802, "z": 26,   // absolute px within the frame + stacking order
     "rot": 0, "opacity": 1,
+    "matrix": [1, 0, 0, 1, 199, 538],      // optional: local box -> frame affine transform, supersedes x/y/rot
+    "vectorShadows": [],                   // optional: [{x,y,blur,spread,color}], blur = Gaussian sigma
     "radius": "37px", "border": "4.0px solid rgba(219,208,184,1)", "shadow": "0px 4px 0px rgba(0,0,0,0.6)", "blur": "",
     "fill": "rgba(255,251,242,1)",        // solid incl. alpha / linear or radial gradient css / empty
     "img": "", "imgSize": "", "imgPos": "",   // image fill (named after imageRef, shared across screens);
@@ -34,7 +37,8 @@ A full-fidelity structured snapshot of one Figma frame: every visible node plus 
     "borderAlign": "",                     // v1.2: "inside" | "outside" | "center" — where the stroke sits; outside/centre also land in `shadow`
     "vec": false,                          // true = collapsed vector cluster (missing PNG degrades to transparent, never a flat black)
     "text": null                           // TEXT only: {content,color,size,family,weight,lh,ls,alignH,alignV,textAlign,wrap,stroke}
-  }]
+  }],
+  "losses": []                             // optional: [{nodeId,property,code,disposition,message}]
 }
 ```
 
@@ -44,7 +48,16 @@ A full-fidelity structured snapshot of one Figma frame: every visible node plus 
 - `subtreeOf(cap, rootId | [rootId, ...])` extracts a subtree (used for modal overlays).
 - Full per-field semantics live in figma2dsl's `references/界面DSL规范-figma2dsl扩展.md` §C/§0 (still zh-CN).
 
-## Known limitation: rotation (rot)
+## v1.5 fidelity additions
+
+- `matrix` is an optional six-number CSS/SVG affine matrix mapping the record's local box to the **frame**, not its parent. HTML derives the relative transform as inverse(parent matrix) times child matrix, with transform-origin 0 0 and one border-inset correction. It supersedes `x/y/rot`; `w/h` remain local box dimensions. Missing matrix means legacy geometry. Subtree extraction keeps frame placement. Transformed branches require source transforms; missing ones are reported.
+- `text.decoration`: optional `none`, `underline`, or `line-through`. Uniform character overrides are resolved on the parent. Optional `text.runs` is an ordered array of full styles `{content,decoration,color,size,family,weight,ls}`; concatenated content equals `text.content`. Override offsets are UTF-16 code units. Mixed text uses inline spans inside one line wrapper, not sibling flex items.
+- `vectorShadows` replaces rectangular `shadow` for path nodes in HTML. Each entry is `{x,y,blur,spread,color}` in local px; blur is sigma (Figma radius / 2), spread uses alpha morphology. Multiple shadows independently sample SourceAlpha and merge behind SourceGraphic. The old shadow string remains for legacy consumers; do not draw both.
+- One-seed RELATIVE LINEAR horizontal/vertical repeats are expanded into regular records, including nested repeats. Original seed IDs remain; generated IDs are deterministic and collision-checked. Max count 1024, max expanded records 20000; unsupported/oversized modifiers are reported, not guessed.
+- `losses` lists known capture degradations; it is **not** a completeness certificate. CUSTOM paint, multiple fills, unsupported effects/repeats and missing transforms are reported. CLI `--strict` returns 1 on known losses or missing assets, while keeping diagnostic outputs.
+- HTML renders matrix, decoration/runs and vectorShadows. DSL keeps these in the capture sidecar but its semantic markdown drops them. Unity/Godot/Cocos currently **drop** these new semantics and must report them; expanded repeats use ordinary records, but transformed repeats still need matrix support. See each backend's mapping. No engine pixel acceptance is implied.
+
+## Known limitation: missing source rotation (rot)
 
 `rot` is recovered by `geom()` from the node's `relativeTransform` (`atan2(m[1][0], m[0][0])`). **The Figma REST API often omits `relativeTransform` for nodes inside a component instance (INSTANCE/COMPONENT)** — for those nodes `rot` **falls back to 0** (and when a whole cluster is collapsed into an image, its interior angles are lost the same way). This is a property of the Figma API, **not a capture bug**, and cannot be repaired at the capture layer.
 

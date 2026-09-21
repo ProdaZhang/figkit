@@ -1,5 +1,12 @@
 # design-diff — 拿 figma 导出的那一帧当地面真值
 
+## 可选失败门槛（2026-09-21）
+
+用已有原尺寸截图验收，可加 `--rendered shot.png --max-mean 6 --max-text-mean 15 --max-nontext-mean 2`。
+三个门槛分别约束全帧、文字内、文字外的平均差（0..255）；任一超限返回1，未指定仍只报告。
+数值必须按同字体、同内容的基准校准，以上仅用法示例，不是通用合格线。
+文字差异不能一概当噪声：删除线、下划线、文字颜色和内容也会错；应配合捕获属性/DOM回归测试。
+
 ```bash
 python3 tools/design-diff/check.py <screen.ui.json> <figma-export.png> [--heat out.png]
 ```

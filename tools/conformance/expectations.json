@@ -35,6 +35,12 @@
   "z"
  ],
  "features": {
+  "matrix": {
+   "el": "k:rot", "field": "matrix", "doc": "matrix", "godot": "known-loss", "unity": "known-loss"
+  },
+  "vectorShadows": {
+   "el": "k:paths", "field": "vectorShadows", "doc": "vectorShadows", "godot": "known-loss", "unity": "known-loss"
+  },
   "radius-px": {
    "el": "k:radius-px",
    "field": "radius",

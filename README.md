@@ -44,7 +44,7 @@ figma REST ──► figma_capture ──►  IR: <screen>.ui.json (pixels) + fl
 
 | backend | offline tests | in-engine | vs design |
 |---|---|---|---|
-| figma2html | ✅ 94 | Edge, plus 8 behavioural checks in [`tools/html-smoke/`](tools/html-smoke/) that read numbers out of the live page — offsets, row texts, guard outcome, whether each string fits its box | **0.81** |
+| figma2html | ✅ 106 | Edge, plus 8 behavioural checks in [`tools/html-smoke/`](tools/html-smoke/) that read numbers out of the live page — offsets, row texts, guard outcome, whether each string fits its box | **0.81** |
 | figma2dsl | ✅ 19 | same render pipeline | — |
 | figma2unity | ✅ 31 | **Unity 6000.4.8f1** and **2022.3.62f3**, the latter a real built Windows player at 1080×1920 | **0.81** |
 | figma2godot | ✅ 34 | **Godot 4.3**, re-verified on **4.7.1** | **1.13** |

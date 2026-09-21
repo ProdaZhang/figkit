@@ -147,6 +147,7 @@ def _unity_chunk(text, eid):
 
 
 GODOT_SIGNALS = {
+    "matrix": "transform = Transform2D", "vectorShadows": "filterUnits",
     "radius-px": "corner_radius", "radius-pct": "corner_radius",
     # 非正方形上的百分比圆角**不再**走 corner_radius(那是标量,只能折成胶囊):
     # 纯实色的这类元素改成编译期吐一份带椭圆角的 .svg,由 ThorVG 栅格化。
@@ -171,6 +172,7 @@ GODOT_SIGNALS = {
     "img-crop": "region_rect",
 }
 UNITY_SIGNALS = {
+    "matrix": "transform: matrix", "vectorShadows": "filterUnits",
     "radius-px": "radius", "radius-pct": "radius", "radius-pct-oblong": "radius",
     "border": "border-width", "shadow": "shadow", "blur": "blur",
     "rot": "rotate", "opacity": "opacity", "img": "background-image",

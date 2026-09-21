@@ -1,9 +1,9 @@
 {
- "spec": "1.4",
+ "spec": "1.5",
  "frame": "k:frame",
  "w": 800,
  "h": 940,
- "stageBg": "linear-gradient(180.0deg, rgba(13,26,38,1.0) 0.0%, rgba(38,51,64,1.0) 100.0%)",
+ "stageBg": "linear-gradient(180.0deg, rgba(13,26,38,1) 0.0%, rgba(38,51,64,1) 100.0%)",
  "els": [
   {
    "id": "k:radius-px",
@@ -192,7 +192,15 @@
    "paths": [],
    "viewBox": "",
    "borderAlign": "",
-   "vec": false
+   "vec": false,
+   "matrix": [
+    0.70710678,
+    0.70710678,
+    -0.70710678,
+    0.70710678,
+    40,
+    360
+   ]
   },
   {
    "id": "k:opacity",
@@ -237,7 +245,7 @@
    "border": "",
    "shadow": "",
    "blur": "",
-   "fill": "linear-gradient(135.0deg, rgba(255,0,0,1.0) 0.0%, rgba(0,0,255,1.0) 100.0%)",
+   "fill": "linear-gradient(135.0deg, rgba(255,0,0,1) 0.0%, rgba(0,0,255,1) 100.0%)",
    "img": "",
    "imgSize": "",
    "imgPos": "",
@@ -264,7 +272,7 @@
    "border": "",
    "shadow": "",
    "blur": "",
-   "fill": "radial-gradient(rgba(255,255,255,1.0) 0.0%, rgba(0,0,0,1.0) 100.0%)",
+   "fill": "radial-gradient(rgba(255,255,255,1) 0.0%, rgba(0,0,0,1) 100.0%)",
    "img": "",
    "imgSize": "",
    "imgPos": "",
@@ -544,7 +552,7 @@
    "opacity": 1,
    "radius": "",
    "border": "",
-   "shadow": "",
+   "shadow": "0px 4px 4px 1px rgba(0,0,0,0.3)",
    "blur": "",
    "fill": "",
    "img": "",
@@ -568,7 +576,16 @@
    ],
    "viewBox": "0 0 120.00 120.00",
    "borderAlign": "",
-   "vec": true
+   "vec": true,
+   "vectorShadows": [
+    {
+     "x": 0,
+     "y": 4,
+     "blur": 2.0,
+     "spread": 1,
+     "color": "rgba(0,0,0,0.3)"
+    }
+   ]
   },
   {
    "id": "k:clip",

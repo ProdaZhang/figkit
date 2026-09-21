@@ -832,6 +832,12 @@ def collect_losses(cap):
     out = []
     for e in els:
         eid = e.get('id', '?')
+        for field in ('matrix', 'vectorShadows'):
+            if e.get(field):
+                out.append('%s: %s (IR v1.5) dropped; legacy geometry/shadow fallback.' % (eid, field))
+        for field in ('decoration', 'runs'):
+            if (e.get('text') or {}).get(field):
+                out.append('%s: text.%s (IR v1.5) dropped.' % (eid, field))
         if e.get('blur'):
             out.append("%s: blur '%s' 丢弃(Godot 无逐控件模糊;需要的话自建 "
                        "BackBufferCopy + 着色器)" % (eid, e['blur']))

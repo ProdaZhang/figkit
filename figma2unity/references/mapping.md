@@ -1,5 +1,14 @@
 # IR → Unity UI Toolkit: the full mapping (the authority `ui_to_unity.py` implements)
 
+## IR v1.5 compatibility
+
+`matrix`, `vectorShadows`, `text.decoration`, `text.runs`: **known-loss / drop**.
+This backend reports these fields and keeps legacy x/y/rot/shadow/plain-text rendering.
+HTML supports them; engine rendering has not been implemented or pixel-validated.
+Reflections, rich text and vector-silhouette shadows are not faithfully rendered here yet.
+Capture expands repeats into regular records; transformed repeats still require matrix support.
+Capture `losses` lists known degradations, not a completeness certificate; use capture --strict as a gate.
+
 > The zh-CN original is kept alongside as `mapping.zh.md`. English is the authority: land edits
 > here first, then mirror. `tools/conformance` compares the two structurally (row counts and code
 > blocks), so a one-sided edit goes red.

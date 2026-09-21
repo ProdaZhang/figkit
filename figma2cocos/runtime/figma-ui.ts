@@ -26,9 +26,13 @@ export interface CapText {
   content: string; color: string; size: number; family: string; weight: number;
   lh: number; ls: number; alignH: string; alignV: string; textAlign: string; stroke: string;
   wrap?: boolean;                                    // v1.3:定宽折行 / 随字撑宽不折
+  decoration?: string;                              // v1.5: reported, not rendered yet
+  runs?: unknown[];
 }
 export interface CapPath { d: string; rule: string; fill: string; clip?: string }
 export interface CapEl {
+  matrix?: number[];                                // v1.5: legacy fallback + warning
+  vectorShadows?: unknown[];
   id: string; name: string; type: string; parent: string;
   x: number; y: number; w: number; h: number; z: number;
   rot: number; opacity: number;
@@ -823,6 +827,9 @@ export class FigmaUI extends Component {
     // pass1:建节点 + UITransform(锚/尺寸)+ 视觉组件
     for (const el of sorted) {
       const node = adopt(new Node(el.name || el.id), mount);
+      if (el.matrix) console.warn('[figma-ui][known-loss] matrix dropped:', el.id);
+      if (el.vectorShadows) console.warn('[figma-ui][known-loss] vectorShadows dropped:', el.id);
+      if (el.text && (el.text.decoration || el.text.runs)) console.warn('[figma-ui][known-loss] text.decoration/runs dropped:', el.id);
       const ut = node.addComponent(UITransform);
       const [ax, ay] = anchorOf(el);
       ut.setAnchorPoint(ax, ay);

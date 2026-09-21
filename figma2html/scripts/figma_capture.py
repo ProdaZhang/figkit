@@ -15,14 +15,14 @@
   <out_basepath>.ui.json   全保真节点记录(render.js / aigd 消费)
   <out_basepath>.tree.html 高保真静态预览(等价旧 tree.html)
 """
-import sys, json, io, os, math, html, re
+import sys, json, io, os, math, html, re, copy, hashlib
 
 # 产物写进 .ui.json 顶层的 `spec` 字段 = 本次捕获遵循的 IR 契约版本(见 spec/)。
 # 为什么要写:契约是 v1.0 FROZEN、只允许 additive,但产物里若不带版本,
 # 将来 v1.1 的 capture 产物喂给旧后端时**两边都无从察觉** —— 消费者连"我看不懂这个"
 # 都说不出口。带上之后,后端至少能在主版本对不上时告警(而不是静默按旧规矩解释)。
 # 缺失该字段的旧产物一律按 "1.0" 处理,向后兼容。
-IR_SPEC = '1.4'
+IR_SPEC = '1.5'
 
 VEC = {'VECTOR', 'BOOLEAN_OPERATION', 'STAR', 'LINE', 'REGULAR_POLYGON'}
 
@@ -106,7 +106,7 @@ def opaque_rgb(paints):
 
 def gradient_css(f):
     stops = f.get('gradientStops') or []
-    cs = ', '.join('%s %.1f%%' % (col(s['color']), s['position'] * 100) for s in stops)
+    cs = ', '.join('%s %.1f%%' % (col(s['color'], f.get('opacity', 1)), s['position'] * 100) for s in stops)
     h = f.get('gradientHandlePositions') or []
     if f['type'] == 'GRADIENT_RADIAL':
         return 'radial-gradient(%s)' % cs
@@ -569,12 +569,161 @@ def relocate_container_shadows(records):
     return records
 
 
+def text_styles(node):
+    """Resolve UTF-16 character overrides; keep uniform text replaceable by app hooks."""
+    base = dict(node.get('style') or {})
+    base['fills'] = node.get('fills') or []
+    overrides = node.get('characterStyleOverrides') or []
+    table = node.get('styleOverrideTable') or {}
+    runs, offset = [], 0
+    for char in node.get('characters', ''):
+        key = str(overrides[offset]) if offset < len(overrides) else '0'
+        style = dict(base)
+        style.update(table.get(key) or {})
+        if runs and runs[-1][1] == style:
+            runs[-1][0] += char
+        else:
+            runs.append([char, style])
+        offset += len(char.encode('utf-16-le')) // 2
+    return (runs[0][1], []) if len(runs) == 1 else (base, runs)
+
+
+def decoration(style):
+    return {'STRIKETHROUGH': 'line-through', 'UNDERLINE': 'underline'}.get(style.get('textDecoration'), 'none')
+
+
+def matrix_mul(a, b):
+    """CSS/SVG order [a,b,c,d,e,f], local points to frame coordinates."""
+    return [a[0]*b[0]+a[2]*b[1], a[1]*b[0]+a[3]*b[1],
+            a[0]*b[2]+a[2]*b[3], a[1]*b[2]+a[3]*b[3],
+            a[0]*b[4]+a[2]*b[5]+a[4], a[1]*b[4]+a[3]*b[5]+a[5]]
+
+
+def matrix_inverse(m):
+    det = m[0]*m[3]-m[1]*m[2]
+    if abs(det) < 1e-10:
+        return None
+    a,b,c,d = m[3]/det, -m[1]/det, -m[2]/det, m[0]/det
+    return [a,b,c,d,-a*m[4]-c*m[5],-b*m[4]-d*m[5]]
+
+
+def rec_matrix(rec):
+    return rec.get('matrix') or [1, 0, 0, 1, rec['x'], rec['y']]
+
+
+def resolve_geometry(root, records, losses):
+    """Preserve absolute affine matrices on transformed branches, not double rotations.
+
+    Matrix maps the record's local box to the frame, so extracting a subtree is safe.
+    Missing transforms in transformed branches degrade explicitly to absolute boxes.
+    """
+    source, world, affected = {}, {}, set()
+    fx, fy = root['absoluteBoundingBox']['x'], root['absoluteBoundingBox']['y']
+    def visit(n, parent_matrix, active=False, is_root=False):
+        source[n['id']] = n
+        rt = n.get('relativeTransform')
+        if is_root:
+            m = [1,0,0,1,0,0]
+        elif rt:
+            m = matrix_mul(parent_matrix, [rt[0][0],rt[1][0],rt[0][1],rt[1][1],rt[0][2],rt[1][2]])
+        else:
+            bb = n.get('absoluteBoundingBox') or {}
+            m = [1,0,0,1,bb.get('x',fx)-fx,bb.get('y',fy)-fy]
+            if active:
+                losses.append(dict(nodeId=n['id'], property='relativeTransform', code='MISSING-TRANSFORM',
+                                   disposition='approximate', message='Missing transform under a transformed ancestor; using absolute box.'))
+        nonidentity = any(abs(m[i]-[1,0,0,1][i]) > 1e-6 for i in range(4))
+        if active or nonidentity:
+            affected.add(n['id'])
+        world[n['id']] = m
+        for c in n.get('children') or []:
+            visit(c, m, active or nonidentity)
+    visit(root, [1,0,0,1,0,0], is_root=True)
+    for r in records:
+        n = source.get(r['id'])
+        if not n or r['id'] not in affected:
+            continue
+        if r.get('img') and r.get('vec') and not r.get('paths'):
+            r['matrix'] = [1,0,0,1,r['x'],r['y']]  # exported bitmaps are already oriented
+            continue
+        m = world[r['id']][:]
+        if not matrix_inverse(m):
+            losses.append(dict(nodeId=r['id'], property='relativeTransform', code='SINGULAR-TRANSFORM',
+                               disposition='approximate', message='Singular transform; using legacy geometry.'))
+            continue
+        size = n.get('size') or {}
+        w, h = size.get('x',r['w']), size.get('y',r['h'])
+        if r.get('text'):
+            lh = r['text'].get('lh')
+            if lh and h > 0 and int(round(h/lh)) <= 1:
+                align = (n.get('style') or {}).get('textAlignVertical','TOP')
+                dy = (h-lh)/2 if lh > h else {'TOP':0,'CENTER':(h-lh)/2,'BOTTOM':h-lh}.get(align,0)
+                m[4] += m[2]*dy; m[5] += m[3]*dy
+                h = lh
+        r['w'], r['h'] = round(w,4), round(h,4)
+        r['matrix'] = [round(v,8) for v in m]
+        if r.get('paths'):
+            r['viewBox'] = '0 0 %.2f %.2f' % (w or 1,h or 1)
+    return source, world
+
+
+def expand_repeats(records, source, world, losses, limit=20000):
+    """Bake bounded one-seed RELATIVE LINEAR repeats into normal records, inside out."""
+    used = {r['id'] for r in records}
+    for group in list(reversed(records)):
+        n = source.get(group['id'], {})
+        mods = n.get('transformModifiers') or []
+        if not mods:
+            continue
+        m = mods[0]; children = n.get('children') or []
+        count = m.get('count',0)
+        valid = (len(mods)==1 and m.get('type')=='REPEAT' and m.get('repeatType')=='LINEAR'
+                 and m.get('axis') in ('HORIZONTAL','VERTICAL') and m.get('unitType')=='RELATIVE'
+                 and isinstance(count,int) and not isinstance(count,bool) and 1 <= count <= 1024
+                 and len(children)==1)
+        if valid:
+            seed = children[0]; axis = 0 if m['axis']=='HORIZONTAL' else 1
+            extent = (seed.get('size') or {}).get('x' if axis==0 else 'y')
+            valid = (isinstance(extent,(int,float)) and isinstance(m.get('offset'),(int,float))
+                     and math.isfinite(extent) and math.isfinite(m['offset']))
+        branch = {group['id']}; descendants = []
+        for r in records:
+            if r['parent'] in branch:
+                branch.add(r['id']); descendants.append(r)
+        if not valid or not descendants or len(records)+len(descendants)*(count-1)>limit:
+            losses.append(dict(nodeId=group['id'], property='transformModifiers', code='UNSUPPORTED-REPEAT',
+                               disposition='drop', message='Only bounded one-seed RELATIVE LINEAR horizontal/vertical repeats are supported.'))
+            continue
+        step = extent*m['offset']; gm = world[group['id']]
+        dx,dy = (gm[0]*step,gm[1]*step) if axis==0 else (gm[2]*step,gm[3]*step)
+        copies = []
+        for index in range(1,count):
+            ids = {}
+            for r in descendants:
+                cid = '%s::repeat:%s:%d' % (r['id'],group['id'],index)
+                while cid in used:
+                    cid += '_'
+                used.add(cid); ids[r['id']] = cid
+            for r in descendants:
+                c = copy.deepcopy(r); c['id'] = ids[r['id']]
+                c['parent'] = ids.get(r['parent'],r['parent'])
+                c['x'] = round(c['x']+dx*index,4); c['y'] = round(c['y']+dy*index,4)
+                if c.get('matrix'):
+                    c['matrix'][4] += dx*index; c['matrix'][5] += dy*index
+                copies.append(c)
+        at = max(records.index(r) for r in descendants)+1
+        records[at:at] = copies
+    for index,r in enumerate(records,1):
+        r['z'] = index
+
+
 def capture(root, asset_dir, asset_rel):
     """root = d['nodes'][frame_id]['document'];返回 (cap_dict, missing[])。"""
     FB = root['absoluteBoundingBox']
     FX, FY = FB['x'], FB['y']
     SW, SH = round(FB['width']), round(FB['height'])
     missing = []
+    losses = []
     records = []
     order = [0]
     mask_done = set()      # 遮罩节点本身:只提供形状,任何情况下都不画成一层
@@ -598,6 +747,14 @@ def capture(root, asset_dir, asset_rel):
     def emit(node, parent_id, backdrop=None):
         if not node.get('visible', True):
             return
+        paints = [p for p in node.get('fills') or [] if p.get('visible',True)]
+        for paint in paints:
+            if paint.get('type') == 'CUSTOM':
+                losses.append(dict(nodeId=node['id'], property='fills', code='CUSTOM-FILL', disposition='drop',
+                                   message='No adapter for custom effect: '+str(paint.get('customEffectId','unknown'))))
+        if len(paints)>1:
+            losses.append(dict(nodeId=node['id'], property='fills', code='MULTIPLE-FILLS', disposition='approximate',
+                               message='Only one paint is rendered; layered paints are not composited.'))
         bb = node.get('absoluteBoundingBox') or {}
         if not bb or bb.get('width', 0) <= 0 or bb.get('height', 0) <= 0:
             # **一条水平线的 absoluteBoundingBox 高度就是 0** —— 它是零厚度的几何,
@@ -689,8 +846,9 @@ def capture(root, asset_dir, asset_rel):
                 continue
             o = ef.get('offset', {'x': 0, 'y': 0}); r = ef.get('radius', 0)
             if ef['type'] == 'DROP_SHADOW':
-                shadows.append('%.0fpx %.0fpx %.0fpx %s' % (
-                    o.get('x', 0), o.get('y', 0), r, col(ef.get('color', {'r': 0, 'g': 0, 'b': 0, 'a': .3}))))
+                spread = (' %gpx' % ef['spread']) if ef.get('spread') else ''
+                shadows.append('%gpx %gpx %gpx%s %s' % (
+                    o.get('x', 0), o.get('y', 0), r, spread, col(ef.get('color', {'r': 0, 'g': 0, 'b': 0, 'a': .3}))))
             elif ef['type'] == 'LAYER_BLUR':
                 # **figma 的模糊半径不是 CSS 的 σ。** CSS `filter: blur(L)` 里 L 就是标准差,
                 # 而 figma 的 Layer blur 半径约等于 2σ —— 一比一照抄会糊出**两倍**的范围:
@@ -701,19 +859,22 @@ def capture(root, asset_dir, asset_rel):
                 # 拿一个样本去拟合常数是过拟合。所以取有据可循的 R/2,并把这段测量留在这里 ——
                 # 将来有第二个半径的样本再定夺。
                 rec['blur'] = 'blur(%.0fpx)' % (r / 2.0)
+            else:
+                losses.append(dict(nodeId=node['id'], property='effects', code='UNSUPPORTED-EFFECT',
+                                   disposition='drop', message='Unsupported effect: '+ef['type']))
         if rings or shadows:
             rec['shadow'] = ', '.join(rings + shadows)   # 环在前:更靠近元素,不被投影盖住
         # 阴影方框修正见 relocate_container_shadows():记录全部产出后再统一挪,
         # 那时才知道每个容器下面到底挂了些什么(emit 期只看得见 figma 节点,看不见
         # 折叠/下沉之后真正留下来的那批记录)。
         if typ == 'TEXT':
-            s = node.get('style', {})
+            s, runs = text_styles(node)
             lh = s.get('lineHeightPx')
             ah = {'LEFT': 'flex-start', 'CENTER': 'center', 'RIGHT': 'flex-end',
                   'JUSTIFIED': 'space-between'}.get(s.get('textAlignHorizontal', 'LEFT'), 'flex-start')
             av = {'TOP': 'flex-start', 'CENTER': 'center', 'BOTTOM': 'flex-end'}.get(s.get('textAlignVertical', 'TOP'), 'flex-start')
             t = dict(content=node.get('characters', ''),
-                     color=(solid(node.get('fills')) or '#000'),
+                     color=(solid(s.get('fills')) or '#000'),
                      size=round(s.get('fontSize', 14), 1),
                      family=s.get('fontFamily', 'sans-serif'),
                      weight=s.get('fontWeight', 400),
@@ -729,6 +890,14 @@ def capture(root, asset_dir, asset_rel):
                      wrap=(s.get('textAutoResize', 'NONE') or 'NONE').upper()
                      != 'WIDTH_AND_HEIGHT',
                      stroke='')
+            if decoration(s) != 'none':
+                t['decoration'] = decoration(s)
+            if runs:
+                t['runs'] = [dict(content=content, decoration=decoration(rs),
+                                 color=solid(rs.get('fills')) or t['color'],
+                                 size=rs.get('fontSize',t['size']), family=rs.get('fontFamily',t['family']),
+                                 weight=rs.get('fontWeight',t['weight']), ls=rs.get('letterSpacing',t['ls']))
+                             for content,rs in runs]
             if has_stroke:
                 # -webkit-text-stroke 是**居中**描边:一半在字外、一半吃进字面。
                 # figma 的文字描边默认 OUTSIDE(全在字外),所以宽度要 ×2 才等效,
@@ -835,6 +1004,12 @@ def capture(root, asset_dir, asset_rel):
                 rec['radius'] = ''
                 rec['borderAlign'] = ''
                 rec['shadow'] = ', '.join(shadows)   # 只留真投影,丢掉描边环
+                if shadows:
+                    rec['vectorShadows'] = [dict(x=e.get('offset',{}).get('x',0), y=e.get('offset',{}).get('y',0),
+                                                blur=e.get('radius',0)/2, spread=e.get('spread',0),
+                                                color=col(e.get('color',{'r':0,'g':0,'b':0,'a':.3})))
+                                            for e in node.get('effects') or []
+                                            if e.get('visible',True) and e['type']=='DROP_SHADOW']
                 records.append(rec)
                 return
         iu, isize, ipos = img_fill(node, asset_dir, asset_rel, missing)
@@ -900,8 +1075,12 @@ def capture(root, asset_dir, asset_rel):
     for ch in root.get('children') or []:
         emit(ch, '', root_bg)
     relocate_container_shadows(records)
-    return dict(spec=IR_SPEC, frame=root.get('id'), w=SW, h=SH,
-                stageBg=stage_bg, els=records), missing
+    source, world = resolve_geometry(root, records, losses)
+    expand_repeats(records, source, world, losses)
+    cap = dict(spec=IR_SPEC, frame=root.get('id'), w=SW, h=SH, stageBg=stage_bg, els=records)
+    if losses:
+        cap['losses'] = losses
+    return cap, missing
 
 
 # ---- 序列化器 ----
@@ -916,7 +1095,7 @@ def svg_markup(rec):
     preserveAspectRatio="none":路径坐标就是节点自身包围盒,viewBox 与 div 尺寸
     天生一致,不许它再自作主张地等比缩放居中(那正是位图时代"错半格"的老毛病)。
     """
-    uid = re.sub(r'[^A-Za-z0-9_-]', '_', rec['id'])
+    uid = hashlib.sha256(rec['id'].encode('utf-8')).hexdigest()[:24]
     shape = ' '.join(q['d'] for q in rec['paths'] if not q.get('clip'))   # 填充形状 = 描边的裁剪依据
     need = {q.get('clip') for q in rec['paths']} - {''}
     defs = ''
@@ -937,6 +1116,24 @@ def svg_markup(rec):
             att = ' mask="url(#cout_%s)"' % uid
         ps += '<path d="%s" fill="%s" fill-rule="%s"%s/>' % (
             html.escape(q['d']), q['fill'], q['rule'], att)
+    if rec.get('vectorShadows'):
+        vb = [float(v) for v in (rec.get('viewBox') or '0 0 %g %g' % (rec['w'],rec['h'])).split()]
+        shadows = rec['vectorShadows']
+        pad = max([1]+[max(abs(e['x']),abs(e['y']))+abs(e['spread'])+4*e['blur'] for e in shadows])
+        flt = '<filter id="shadow_%s" filterUnits="userSpaceOnUse" x="%g" y="%g" width="%g" height="%g" color-interpolation-filters="sRGB">' % (uid,vb[0]-pad,vb[1]-pad,vb[2]+2*pad,vb[3]+2*pad)
+        for i,e in enumerate(shadows):
+            inp = 'SourceAlpha'
+            if e['spread']:
+                flt += '<feMorphology in="SourceAlpha" operator="%s" radius="%g" result="spread%d"/>' % ('dilate' if e['spread']>0 else 'erode',abs(e['spread']),i)
+                inp = 'spread%d' % i
+            flt += ('<feGaussianBlur in="%s" stdDeviation="%g" result="blur%d"/>'
+                    '<feOffset in="blur%d" dx="%g" dy="%g" result="offset%d"/>'
+                    '<feFlood flood-color="%s" result="color%d"/>'
+                    '<feComposite in="color%d" in2="offset%d" operator="in" result="shadow%d"/>'
+                    % (inp,e['blur'],i,i,e['x'],e['y'],i,html.escape(e['color']),i,i,i,i))
+        flt += '<feMerge>'+''.join('<feMergeNode in="shadow%d"/>' % i for i in reversed(range(len(shadows))))+'<feMergeNode in="SourceGraphic"/></feMerge></filter>'
+        defs += flt
+        ps = '<g filter="url(#shadow_%s)">%s</g>' % (uid,ps)
     return ('<svg viewBox="%s" preserveAspectRatio="none" '
             'style="width:100%%;height:100%%;display:block;overflow:visible">%s%s</svg>'
             % (rec.get('viewBox') or ('0 0 %.1f %.1f' % (rec['w'] or 1, rec['h'] or 1)),
@@ -951,7 +1148,11 @@ def rec_to_css(rec, parent=None):
     py = (parent['y'] + bi) if parent else 0
     sty = ['position:absolute', 'left:%.1fpx' % (rec['x'] - px), 'top:%.1fpx' % (rec['y'] - py),
            'width:%.1fpx' % rec['w'], 'height:%.1fpx' % rec['h'], 'z-index:%d' % rec['z']]
-    if rec['rot']:
+    if rec.get('matrix') or (parent and parent.get('matrix')):
+        matrix = matrix_mul(matrix_inverse(rec_matrix(parent)),rec_matrix(rec)) if parent else rec_matrix(rec)[:]
+        matrix[4] -= bi; matrix[5] -= bi
+        sty.append('left:0;top:0;transform:matrix(%s);transform-origin:0 0' % ','.join('%g' % (0 if abs(v)<1e-10 else v) for v in matrix))
+    elif rec['rot']:
         sty.append('transform:rotate(%.2fdeg);transform-origin:center center' % rec['rot'])
     if rec['opacity'] != 1:
         sty.append('opacity:%.3f' % rec['opacity'])
@@ -961,7 +1162,7 @@ def rec_to_css(rec, parent=None):
         sty.append('overflow:hidden')
     if rec['border']:
         sty.append('box-sizing:border-box;border:' + rec['border'])
-    if rec['shadow']:
+    if rec['shadow'] and not (rec.get('paths') and rec.get('vectorShadows')):
         sty.append('box-shadow:' + rec['shadow'])
     if rec['blur']:
         sty.append('filter:' + rec['blur'])
@@ -980,6 +1181,13 @@ def rec_to_css(rec, parent=None):
         if t['stroke']:
             sty.append('-webkit-text-stroke:%s;paint-order:stroke fill' % t['stroke'])
         inner = html.escape(t['content'])
+        if t.get('decoration') and not t.get('runs'):
+            sty.append('text-decoration-line:'+t['decoration'])
+        if t.get('runs'):
+            inner = '<span style="min-width:0;max-width:100%">'+''.join(
+                '<span style="text-decoration-line:%s;color:%s;font-size:%gpx;font-weight:%s;letter-spacing:%gpx;font-family:FigCJK,%s,sans-serif">%s</span>'
+                % (r['decoration'],html.escape(r['color']),r['size'],r['weight'],r['ls'],html.escape(r['family']),html.escape(r['content']))
+                for r in t['runs'])+'</span>'
     elif rec.get('paths'):
         inner = svg_markup(rec)
     elif rec['img']:
@@ -1055,3 +1263,7 @@ if __name__ == '__main__':
           % (len(cap['els']), out_base, cap['w'], cap['h'], len(missing)))
     for mid, mn, mt in missing[:40]:
         print('  miss:', mid, mt, (mn or '')[:16])
+    for loss in cap.get('losses',[]):
+        print('[capture][known-loss] '+json.dumps(loss,ensure_ascii=True), file=sys.stderr)
+    if '--strict' in sys.argv[7:] and (missing or cap.get('losses')):
+        sys.exit(1)

@@ -35,6 +35,7 @@ import argparse
 import http.server
 import io
 import json
+import math
 import os
 import socketserver
 import subprocess
@@ -122,8 +123,20 @@ def text_mask(cap, size, margin=4):
         n += 1
         x, y = e.get("x") or 0, e.get("y") or 0
         w, h = e.get("w") or 0, e.get("h") or 0
-        d.rectangle([x - margin, y - margin, x + w + margin, y + h + margin], fill=255)
+        if e.get('matrix'):
+            a,b,c,dd,tx,ty = e['matrix']
+            corners = [(-margin,-margin),(w+margin,-margin),(w+margin,h+margin),(-margin,h+margin)]
+            d.polygon([(a*px+c*py+tx,b*px+dd*py+ty) for px,py in corners],fill=255)
+        else:
+            d.rectangle([x - margin, y - margin, x + w + margin, y + h + margin], fill=255)
     return m, n
+
+
+def nonnegative(value):
+    n = float(value)
+    if not math.isfinite(n) or n < 0:
+        raise argparse.ArgumentTypeError('threshold must be finite and nonnegative')
+    return n
 
 
 def main():
@@ -135,6 +148,9 @@ def main():
                     help="已经渲好的 PNG(引擎产物);给了就不再自己渲 HTML")
     ap.add_argument("--label", default="", help="报告里显示的这一端的名字")
     ap.add_argument("--shot", default="")
+    ap.add_argument('--max-mean', type=nonnegative, help='Fail if whole-frame mean exceeds this value (0..255 scale).')
+    ap.add_argument('--max-text-mean', type=nonnegative, help='Fail if text-region mean exceeds this value; text is NOT exempt.')
+    ap.add_argument('--max-nontext-mean', type=nonnegative, help='Fail if non-text mean exceeds this value.')
     args = ap.parse_args()
 
     cap_path = os.path.abspath(args.cap)
@@ -217,14 +233,23 @@ def report(ref, got, cap, args):
     print("文字盒  %d 个,覆盖 %.1f%% 画面" % (ntext, 100.0 * ntx / n))
     print("全帧    mean %.2f/255   >24 的像素 %.1f%%" % (total / (3.0 * n), 100.0 * over / n))
     print("文字内  mean %.2f/255" % (intext / (3.0 * max(ntx, 1))))
-    print("文字外  mean %.2f/255   >24 的像素 %.1f%%   ← 几何/颜色/圆角/描边/图片,"
-          "真正说明问题的是这个"
+    print("文字外  mean %.2f/255   >24 的像素 %.1f%%   ← 几何/颜色/圆角/描边/图片;"
+          "文字装饰仍须单独验收"
           % ((total - intext) / (3.0 * max(n - ntx, 1)),
              100.0 * over_out / max(n - ntx, 1)))
     if args.heat:
         diff.point(lambda v: min(255, v * 4)).save(args.heat)
         print("热图    %s(差异 ×4,黑=一致)" % args.heat)
-    return 0
+    metrics = {'max_mean':total/(3.0*n), 'max_text_mean':intext/(3.0*max(ntx,1)),
+               'max_nontext_mean':(total-intext)/(3.0*max(n-ntx,1))}
+    failed = []
+    for name,value in metrics.items():
+        threshold = getattr(args,name,None)
+        if threshold is not None and value > threshold:
+            failed.append('%s: %.4f > %g' % (name,value,threshold))
+    for message in failed:
+        print('[design-diff][FAIL] '+message, file=sys.stderr)
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

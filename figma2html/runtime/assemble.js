@@ -340,6 +340,7 @@ function assetBaseOf(capPath) {
       const ease = st ? (this.easeCss(st.easing) || 'ease-out') : null;
       items.forEach((item, idx) => {
         const row = tpl.cloneNode(true);
+        namespaceSvgIds(row);
         row.style.top = (baseTop + idx * step) + 'px';
         row.dataset.row = '1';
         rowFn(row, item, idx);

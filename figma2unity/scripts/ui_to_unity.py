@@ -574,6 +574,12 @@ def build_uss_props(el, parent, losses, asset_dir=None):
     """单个 IR 元素 → USS 属性列表(有序、确定性)。losses 收集丢弃/降级项。"""
     props = []
     eid = el.get("id", "?")
+    for field in ('matrix', 'vectorShadows'):
+        if el.get(field):
+            losses.append('%s: %s (IR v1.5) dropped; legacy geometry/shadow fallback.' % (eid, field))
+    for field in ('decoration', 'runs'):
+        if (el.get('text') or {}).get(field):
+            losses.append('%s: text.%s (IR v1.5) dropped.' % (eid, field))
     # 几何:父相对(render.js pass2 同款算法)
     px = parent.get("x", 0) if parent else 0
     py = parent.get("y", 0) if parent else 0

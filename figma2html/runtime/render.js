@@ -12,21 +12,71 @@
 // (见 assemble.js 的 assetBaseOf)。这里曾经写死过 '../../',那是**某一个工程**的目录深度
 // 被固化进了共享运行时:换个布局(比如 app.html 与素材同级)整屏图片就 404,而且不报错、
 // 只是"图没了",看着像设计如此。tree.html 那侧不用这套:它与素材同级,裸路径即可。
+function nextFigSvgId() {
+  window.__figkitSvgSequence = (window.__figkitSvgSequence || 0) + 1;
+  return 'figsvg_' + window.__figkitSvgSequence;
+}
+
+// cloneNode copies SVG document IDs too. List clones must not share clip/mask/filter refs.
+function namespaceSvgIds(root) {
+  for (const svg of root.querySelectorAll('svg')) {
+    const ids = new Map();
+    for (const el of svg.querySelectorAll('[id]')) {
+      const old = el.getAttribute('id'), id = nextFigSvgId();
+      ids.set(old, id); el.setAttribute('id', id);
+    }
+    for (const el of [svg, ...svg.querySelectorAll('*')]) {
+      for (const attr of Array.from(el.attributes)) {
+        let value = attr.value;
+        for (const [old, id] of ids) value = value.split('url(#' + old + ')').join('url(#' + id + ')');
+        if (value !== attr.value) el.setAttribute(attr.name, value);
+      }
+    }
+  }
+}
+
+function figMatrixMul(a, b) {
+  return [a[0]*b[0]+a[2]*b[1],a[1]*b[0]+a[3]*b[1],a[0]*b[2]+a[2]*b[3],a[1]*b[2]+a[3]*b[3],
+          a[0]*b[4]+a[2]*b[5]+a[4],a[1]*b[4]+a[3]*b[5]+a[5]];
+}
+function figMatrixInverse(m) {
+  const det=m[0]*m[3]-m[1]*m[2];
+  if (Math.abs(det)<1e-10) throw new Error('Singular IR matrix');
+  const a=m[3]/det,b=-m[1]/det,c=-m[2]/det,d=m[0]/det;
+  return [a,b,c,d,-a*m[4]-c*m[5],-b*m[4]-d*m[5]];
+}
+function figRecMatrix(el) { return el.matrix || [1,0,0,1,el.x,el.y]; }
+
 function applyRecStyle(el, div, assetBase) {
   const s = div.style;
   s.position  = 'absolute';
   s.boxSizing = 'border-box';
-  if (el.rot)            { s.transform = 'rotate(' + el.rot + 'deg)'; s.transformOrigin = 'center center'; }
+  if (el.rot && !el.matrix) { s.transform = 'rotate(' + el.rot + 'deg)'; s.transformOrigin = 'center center'; }
   if (el.opacity !== 1)  s.opacity = el.opacity;
   if (el.radius)         s.borderRadius = el.radius;
   if (el.clip)           s.overflow = 'hidden';   // figma 遮罩:capture 已把遮罩形状折进 radius,这里只管裁
   if (el.border)         s.border = el.border;
-  if (el.shadow)         s.boxShadow = el.shadow;
+  if (el.shadow && !(el.paths && el.paths.length && el.vectorShadows)) s.boxShadow = el.shadow;
   if (el.blur)           s.filter = el.blur;
 
   const t = el.text;
   if (t) {
     div.textContent  = t.content;
+    if (t.decoration && !t.runs) s.textDecorationLine = t.decoration;
+    if (t.runs && t.runs.length) {
+      div.textContent = '';
+      const line = document.createElement('span');
+      line.style.minWidth = '0'; line.style.maxWidth = '100%';
+      for (const run of t.runs) {
+        const span = document.createElement('span'); span.textContent = run.content;
+        span.style.textDecorationLine = run.decoration || 'none';
+        span.style.color = run.color; span.style.fontSize = run.size + 'px';
+        span.style.fontWeight = run.weight; span.style.letterSpacing = run.ls + 'px';
+        span.style.fontFamily = "'FigCJK','" + run.family + "',sans-serif";
+        line.appendChild(span);
+      }
+      div.appendChild(line);
+    }
     s.display        = 'flex';
     s.justifyContent = t.alignH;
     s.alignItems     = t.alignV;
@@ -52,7 +102,7 @@ function applyRecStyle(el, div, assetBase) {
     svg.style.cssText = 'width:100%;height:100%;display:block;overflow:visible';
     // figma 的 strokeGeometry 是「预裁带」(骑在边线上、总宽 2w),要按 strokeAlign 裁:
     // inside 裁进形状内,outside 裁到形状外,裁完各剩 w。不裁就两边各多一倍。
-    const uid = String(el.id).replace(/[^A-Za-z0-9_-]/g, '_');
+    const uid = nextFigSvgId();
     const shape = el.paths.filter(function (q) { return !q.clip; })
                           .map(function (q) { return q.d; }).join(' ');
     const need = {};
@@ -79,6 +129,31 @@ function applyRecStyle(el, div, assetBase) {
       }
       svg.appendChild(defs);
     }
+    let paintTarget = svg;
+    if (el.vectorShadows && el.vectorShadows.length) {
+      const make = (name, attrs, parent) => {
+        const e = document.createElementNS(NS, name);
+        for (const [key,value] of Object.entries(attrs)) e.setAttribute(key, value);
+        parent.appendChild(e); return e;
+      };
+      const vb=(el.viewBox || ('0 0 '+el.w+' '+el.h)).split(/\s+/).map(Number);
+      const pad=Math.max(...el.vectorShadows.map(e=>Math.max(Math.abs(e.x),Math.abs(e.y))+Math.abs(e.spread)+4*e.blur),1);
+      const defs=make('defs',{},svg);
+      const filter=make('filter',{id:'shadow_'+uid,filterUnits:'userSpaceOnUse',
+        x:vb[0]-pad,y:vb[1]-pad,width:vb[2]+2*pad,height:vb[3]+2*pad,'color-interpolation-filters':'sRGB'},defs);
+      el.vectorShadows.forEach((e,i)=>{
+        let input='SourceAlpha';
+        if(e.spread) { make('feMorphology',{in:input,operator:e.spread>0?'dilate':'erode',radius:Math.abs(e.spread),result:'spread'+i},filter); input='spread'+i; }
+        make('feGaussianBlur',{in:input,stdDeviation:e.blur,result:'blur'+i},filter);
+        make('feOffset',{in:'blur'+i,dx:e.x,dy:e.y,result:'offset'+i},filter);
+        make('feFlood',{'flood-color':e.color,result:'color'+i},filter);
+        make('feComposite',{in:'color'+i,in2:'offset'+i,operator:'in',result:'shadow'+i},filter);
+      });
+      const merge=make('feMerge',{},filter);
+      for(let i=el.vectorShadows.length-1;i>=0;i--) make('feMergeNode',{in:'shadow'+i},merge);
+      make('feMergeNode',{in:'SourceGraphic'},merge);
+      paintTarget=make('g',{filter:'url(#shadow_'+uid+')'},svg);
+    }
     el.paths.forEach(function (q) {
       const path = document.createElementNS(NS, 'path');
       path.setAttribute('d', q.d);
@@ -86,7 +161,7 @@ function applyRecStyle(el, div, assetBase) {
       path.setAttribute('fill-rule', q.rule);
       if (q.clip === 'inside')       path.setAttribute('clip-path', 'url(#cin_' + uid + ')');
       else if (q.clip === 'outside') path.setAttribute('mask', 'url(#cout_' + uid + ')');
-      svg.appendChild(path);
+      paintTarget.appendChild(path);
     });
     div.appendChild(svg);
   } else if (el.img) {
@@ -142,6 +217,13 @@ function renderScreen(cap, mountEl, assetBase) {
     const px  = p ? p.x + bi : 0, py = p ? p.y + bi : 0;
     div.style.left   = (el.x - px) + 'px';
     div.style.top    = (el.y - py) + 'px';
+    if (el.matrix || (p && p.matrix)) {
+      const matrix = p ? figMatrixMul(figMatrixInverse(figRecMatrix(p)),figRecMatrix(el)) : figRecMatrix(el).slice();
+      matrix[4] -= bi; matrix[5] -= bi;
+      div.style.left = '0px'; div.style.top = '0px';
+      div.style.transformOrigin = '0 0';
+      div.style.transform = 'matrix(' + matrix.join(',') + ')';
+    }
     div.style.width  = el.w + 'px';
     div.style.height = el.h + 'px';
     div.style.zIndex = el.z;

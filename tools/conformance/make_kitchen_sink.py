@@ -134,6 +134,7 @@ def build_tree():
 
         # paths:带 fillGeometry 的矢量 —— capture 拿 geometry=paths 后不再下 PNG,直接给路径
         _n("k:paths", "paths", "VECTOR", 40, 920, 120, 120,
+           effects=[{"type":"DROP_SHADOW", "offset":{"x":0,"y":4}, "radius":4, "spread":1, "color":{"r":0,"g":0,"b":0,"a":.3}}],
            fills=solid(C(.95, .3, .2)),
            fillGeometry=[{"path": "M0 0L120 0L120 120L0 120Z", "windingRule": "NONZERO"}],
            # 带一条 INSIDE 描边:figma 给的 strokeGeometry 是**预裁带**(骑边线、总宽 2w),

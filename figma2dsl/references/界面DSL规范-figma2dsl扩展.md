@@ -25,6 +25,10 @@ python3 figma_capture.py <nodes.json> <frameId> <sNN> <assetDir> <assetRelPrefix
 
 ### `.ui.json` schema(全保真,扁平绝对坐标)
 
+本节为历史最小示例；完整现行契约见 `../../figma2html/references/ui.json-schema.md`。
+v1.5 的 matrix、vectorShadows、text.decoration/runs、losses 在 capture 旁路保留并由 HTML 消费；
+语义 DSL 不表达这些像素细节（drop），不能把 DSL 输出当作无损渲染源。
+
 ```json
 { "frame": "46:8241", "w": 1080, "h": 1920,
   "stageBg": "url(_assets/s17/bg.png) center/cover no-repeat",

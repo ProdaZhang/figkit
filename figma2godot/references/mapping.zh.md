@@ -1,5 +1,14 @@
 # IR → Godot 4 映射全表(ui_to_tscn.py / flow_binder.gd 的契约)
 
+## IR v1.5 compatibility / 兼容声明
+
+`matrix`, `vectorShadows`, `text.decoration`, `text.runs`: **known-loss / drop**.
+This backend reports these fields and keeps legacy x/y/rot/shadow/plain-text rendering.
+HTML supports them; engine rendering has not been implemented or pixel-validated.
+本后端对这些字段告警并保留旧几何、阴影及纯文本回退，不宣称镜像、富文本或矢量投影正确。
+重复组已在 capture 展开为普通节点；带变换的重复仍受 matrix 缺口限制。
+捕获侧 `losses` 是已知缺陷清单，不是完整性证明；使用 capture --strict 可设门禁。
+
 输入 = figma2html 的中间表示(IR):`.ui.json`(像素快照,schema 见
 `../../figma2html/references/ui.json-schema.md`)+ `flow.json`(交互声明,见
 `../../figma2html/references/flow-events.md`)。本表是编译后端的唯一映射权威。
