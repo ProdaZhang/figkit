@@ -147,6 +147,7 @@ def _unity_chunk(text, eid):
 
 
 GODOT_SIGNALS = {
+    "img-opacity": "self_modulate",
     "matrix": "transform = Transform2D", "vectorShadows": "filterUnits",
     "radius-px": "corner_radius", "radius-pct": "corner_radius",
     # 非正方形上的百分比圆角**不再**走 corner_radius(那是标量,只能折成胶囊):
@@ -172,6 +173,7 @@ GODOT_SIGNALS = {
     "img-crop": "region_rect",
 }
 UNITY_SIGNALS = {
+    "img-opacity": "-unity-background-image-tint-color",
     "matrix": "transform: matrix", "vectorShadows": "filterUnits",
     "radius-px": "radius", "radius-pct": "radius", "radius-pct-oblong": "radius",
     "border": "border-width", "shadow": "shadow", "blur": "blur",
@@ -553,6 +555,20 @@ def _bad_event(f):
     f["events"][0]["el"] = "99:9999"
 
 
+def _bad_modal_target(f):
+    f['events'][0].update(do='openModal', arg='nonexistent-modal')
+
+
+def test_unicode_modal_selectors_accepted_by_every_consumer():
+    def use_unicode(f):
+        f['modals']['公告-详情'] = f['modals']['notice']
+        f['events'].extend([{'el': '@any:公告-详情', 'do': 'closeModal'},
+                            {'el': '@panelOutside:公告-详情', 'do': 'closeModal'}])
+        f['events'][0].update(do='openModal', arg='公告-详情')
+    bad = [(b, rc, text) for b, (rc, text) in _feed_flow(use_unicode, 'unicode').items() if rc != 0]
+    assert not bad, bad
+
+
 def _bad_modal_root(f):
     f["modals"][sorted(f["modals"])[0]]["roots"] = ["99:1"]
 
@@ -574,6 +590,7 @@ def _bad_in_node(f):
 
 
 BAD_FLOWS = {
+    "openModal target missing": _bad_modal_target,
     "事件 el 不存在": _bad_event,
     "modal root 不存在": _bad_modal_root,
     "checkbox el 不存在": _bad_checkbox,

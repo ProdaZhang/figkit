@@ -33,6 +33,7 @@ export interface CapPath { d: string; rule: string; fill: string; clip?: string 
 export interface CapEl {
   matrix?: number[];                                // v1.5: legacy fallback + warning
   vectorShadows?: unknown[];
+  imgOpacity?: number;                              // image paint only, independent of node/child opacity
   id: string; name: string; type: string; parent: string;
   x: number; y: number; w: number; h: number; z: number;
   rot: number; opacity: number;
@@ -43,7 +44,7 @@ export interface CapEl {
   paths?: CapPath[]; viewBox?: string;               // v1.2:矢量按路径画
   borderAlign?: string;                              // v1.2:inside / outside / center
 }
-export interface Cap { frame: string; w: number; h: number; stageBg: string; els: CapEl[] }
+export interface Cap { frame: string; w: number; h: number; stageBg: string; stageBgOpacity?: number; els: CapEl[] }
 
 // ── 工具 ─────────────────────────────────────────────────────────────────
 
@@ -527,6 +528,7 @@ function buildText(node: Node, t: CapText): void {
 /** 图片:resources.load 按 img 路径 stem(去扩展名),加 assetRoot 前缀;缺失 → 透明回退 + warn。 */
 function buildImage(node: Node, el: CapEl, assetRoot: string): void {
   const sprite = node.addComponent(Sprite);
+  if (el.imgOpacity != null) sprite.color = new Color(255, 255, 255, Math.round(255 * el.imgOpacity));
   sprite.sizeMode = Sprite.SizeMode.CUSTOM;   // 强制铺满 contentSize(cover/contain 差异见 known-loss)
   sprite.type = Sprite.Type.SIMPLE;
   // **必须关掉 trim**。Creator 导入 PNG 时默认把四周的全透明边裁掉,再配上
@@ -799,7 +801,7 @@ export class FigmaUI extends Component {
       clip: false, paths: [], viewBox: '', borderAlign: '',
     };
     const um = cap.stageBg.match(/url\(([^)]+)\)/);
-    if (um) bgEl.img = um[1].replace(/^['"]|['"]$/g, '');
+    if (um) { bgEl.img = um[1].replace(/^['"]|['"]$/g, ''); bgEl.imgOpacity = cap.stageBgOpacity; }
     else bgEl.fill = cap.stageBg;
     const node = adopt(new Node('stage-bg'), mount);
     const ut = node.addComponent(UITransform);

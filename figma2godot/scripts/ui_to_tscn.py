@@ -774,6 +774,8 @@ def _emit_el(em, e, parent_path, parent_rec, used, rounded_clips=frozenset()):
         L.append('stretch_mode = 0')                                  # SCALE:非等比拉满,对齐 preserveAspectRatio="none"
     elif kind == 'TextureRect':
         eid = em.add_ext('res://' + e['img'])
+        if e.get('imgOpacity', 1) != 1:
+            L.append('self_modulate = Color(1, 1, 1, %s)' % fnum(e['imgOpacity']))
         L.append('texture = ExtResource("%s")' % eid)
         L.append('expand_mode = 1')                                   # IGNORE_SIZE:贴满节点矩形
         L.append('stretch_mode = %d' % _STRETCH.get(e.get('imgSize') or 'cover', 0))
@@ -907,7 +909,7 @@ def convert_all(cap, stem, res_prefix='res://scenes'):
     used = {'StageBg'}
     bg = (cap.get('stageBg') or '').strip()
     if bg:
-        _emit_stage_bg(em, bg, w, h)
+        _emit_stage_bg(em, bg, w, h, cap.get('stageBgOpacity', 1))
 
     rounded_clips = pick_rounded_clips(els, kids)
 
@@ -924,10 +926,12 @@ def convert_all(cap, stem, res_prefix='res://scenes'):
     return em.text(), em.svgs
 
 
-def _emit_stage_bg(em, bg, w, h):
+def _emit_stage_bg(em, bg, w, h, opacity=1):
     """帧底(stageBg):纯色→ColorRect;url(...)→TextureRect(cover);线性渐变→渐变贴图。"""
     geo = ['offset_right = ' + fnum(w), 'offset_bottom = ' + fnum(h), 'mouse_filter = 2']
     if bg.startswith('url('):
+        if opacity != 1:
+            geo.append('self_modulate = Color(1, 1, 1, %s)' % fnum(opacity))
         m = re.match(r'url\(([^)]+)\)', bg)
         path = m.group(1).strip('\'" ') if m else ''
         if path:
@@ -962,12 +966,12 @@ def _emit_stage_bg(em, bg, w, h):
                     ['color = ' + color_str(c)])
 
 
-IR_SPEC_SUPPORTED = '1.4'
+IR_SPEC_SUPPORTED = '1.6'
 
 # 本后端**认识**的 els 字段。少于输入文件里实际出现的键 = 有东西被静默跳过。
 IR_FIELDS_KNOWN = frozenset((
     'id', 'name', 'type', 'parent', 'x', 'y', 'w', 'h', 'z', 'rot', 'opacity',
-    'radius', 'border', 'shadow', 'blur', 'fill', 'img', 'imgSize', 'imgPos',
+    'radius', 'border', 'shadow', 'blur', 'fill', 'img', 'imgSize', 'imgPos', 'imgOpacity',
     'clip', 'paths', 'viewBox', 'borderAlign', 'vec', 'text',
 ))
 

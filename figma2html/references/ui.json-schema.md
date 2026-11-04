@@ -5,9 +5,10 @@ A full-fidelity structured snapshot of one Figma frame: every visible node plus 
 
 ```jsonc
 {
-  "spec": "1.5",                          // IR contract version this capture follows (see spec/)
+  "spec": "1.6",                          // IR contract version this capture follows (see spec/)
   "frame": "46:8241", "w": 1080, "h": 1920,
   "stageBg": "url(_assets/s17/bg.png) center/cover no-repeat",   // frame backdrop (solid colour / gradient also allowed)
+  "stageBgOpacity": 1,                  // optional, image background paint only
   "els": [{
     "id": "46:8265", "name": "Frame 96", "type": "FRAME",
     "parent": "46:8263",                  // figma parent id (render nests by it; same key space, joinable with DSL/flow)
@@ -18,6 +19,7 @@ A full-fidelity structured snapshot of one Figma frame: every visible node plus 
     "radius": "37px", "border": "4.0px solid rgba(219,208,184,1)", "shadow": "0px 4px 0px rgba(0,0,0,0.6)", "blur": "",
     "fill": "rgba(255,251,242,1)",        // solid incl. alpha / linear or radial gradient css / empty
     "img": "", "imgSize": "", "imgPos": "",   // image fill (named after imageRef, shared across screens);
+    "imgOpacity": 1,                     // optional, image paint only; node opacity is separate
                                           // v1.4: figma crop fills carry px size + px offset here, else "cover"/"" (centred)
     "clip": false,                         // v1.1: true = clip children to this box (a figma isMask sibling folded in; its radius lands in `radius`)
     "paths": [], "viewBox": "",            // v1.2: vector drawn from figma geometry — [{d, rule, fill}] + the svg viewBox (sized by renderBounds)
@@ -49,3 +51,5 @@ A full-fidelity structured snapshot of one Figma frame: every visible node plus 
 `rot` is recovered by `geom()` from the node's `relativeTransform` (`atan2(m[1][0], m[0][0])`). **The Figma REST API often omits `relativeTransform` for nodes inside a component instance (INSTANCE/COMPONENT)** — for those nodes `rot` **falls back to 0** (and when a whole cluster is collapsed into an image, its interior angles are lost the same way). This is a property of the Figma API, **not a capture bug**, and cannot be repaired at the capture layer.
 
 **Escape hatch = the app hook**: when a node genuinely needs its angle (or any other visual capture cannot see, or that you want to override), locate the cloned element by `data-id` / `data-name` in `app.js` and set it yourself — e.g. for a diamond gem, `el.style.transform='rotate(45deg)'`. Capture provides ground truth; design overrides belong to the hook — see "engine vs hook" in the SKILL doc for the split.
+
+v1.6 adds optional `imgOpacity` and `stageBgOpacity` (0–1, default 1). They affect image paint only, independently of node/subtree opacity. HTML, Unity, Godot and Cocos map these fields; engine pixel acceptance remains unverified. Linear gradients retain handle endpoints in pixel space, including stops outside 0–100%.

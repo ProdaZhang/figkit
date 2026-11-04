@@ -707,6 +707,8 @@ def build_uss_props(el, parent, losses, asset_dir=None):
             losses.append("%s: font-family '%s' 与内置的 FigCJK 子集不同,已用 FigCJK 顶替" % (eid, fam))
     elif el.get("img"):
         props.append(("background-image", 'url("%s")' % el["img"]))
+        if el.get('imgOpacity', 1) != 1:
+            props.append(('-unity-background-image-tint-color', 'rgba(255,255,255,%s)' % fmt_num(el['imgOpacity'])))
         props.append(("background-size", el.get("imgSize") or "cover"))
         if el.get("imgPos"):
             losses.append("%s: 裁剪填充的位移 imgPos '%s' 丢弃(USS 无 background-position,"
@@ -745,6 +747,8 @@ def build_root_props(cap, losses):
         m = re.search(r"url\(([^)]+)\)", bg)
         if m:
             props.append(("background-image", 'url("%s")' % m.group(1).strip("'\"")))
+            if cap.get('stageBgOpacity', 1) != 1:
+                props.append(('-unity-background-image-tint-color', 'rgba(255,255,255,%s)' % fmt_num(cap['stageBgOpacity'])))
             props.append(("background-size", "cover"))
             props.append(("background-position", "center"))
             props.append(("background-repeat", "no-repeat"))
@@ -898,12 +902,12 @@ def convert_file(in_path, outdir):
     return uxml_path, uss_path
 
 
-IR_SPEC_SUPPORTED = '1.4'
+IR_SPEC_SUPPORTED = '1.6'
 
 # 本后端**认识**的 els 字段。少于输入文件里实际出现的键 = 有东西被静默跳过。
 IR_FIELDS_KNOWN = frozenset((
     'id', 'name', 'type', 'parent', 'x', 'y', 'w', 'h', 'z', 'rot', 'opacity',
-    'radius', 'border', 'shadow', 'blur', 'fill', 'img', 'imgSize', 'imgPos',
+    'radius', 'border', 'shadow', 'blur', 'fill', 'img', 'imgSize', 'imgPos', 'imgOpacity',
     'clip', 'paths', 'viewBox', 'borderAlign', 'vec', 'text',
 ))
 

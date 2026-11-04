@@ -1,5 +1,9 @@
 # IR → Unity UI Toolkit 映射全表(ui_to_unity.py 的权威依据)
 
+## IR v1.6 图片填充透明度
+
+`imgOpacity` 和 `stageBgOpacity` 默认 1，通过 background image tint alpha 仅作用于图片填充；节点透明度独立作用于子树。已做转换/源码测试，未新增引擎内像素验收。
+
 ## IR v1.5 compatibility / 兼容声明
 
 `matrix`, `vectorShadows`, `text.decoration`, `text.runs`: **known-loss / drop**.

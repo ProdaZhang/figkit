@@ -94,7 +94,7 @@ def build_tree():
         # img:三种 scaleMode(cover / contain / tile)—— 素材缺失时 capture 记 missing,
         # 这正是要测的:各后端对"声明了图但文件不在"的降级是否一致。
         _n("k:img-cover", "img-cover", "RECTANGLE", 40, 520, 160, 120,
-           fills=[{"type": "IMAGE", "visible": True, "scaleMode": "FILL", "imageRef": "ks-a"}]),
+            fills=[{"type": "IMAGE", "visible": True, "scaleMode": "FILL", "imageRef": "ks-a", "opacity": 0.4}]),
         _n("k:img-contain", "img-contain", "RECTANGLE", 220, 520, 160, 120,
            fills=[{"type": "IMAGE", "visible": True, "scaleMode": "FIT", "imageRef": "ks-b"}]),
         _n("k:img-tile", "img-tile", "RECTANGLE", 400, 520, 160, 120,

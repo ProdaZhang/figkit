@@ -1,5 +1,9 @@
 # IR → Cocos Creator 3.x 映射表(figma2cocos)
 
+## IR v1.6 图片填充透明度
+
+`imgOpacity` 和 `stageBgOpacity` 默认 1，通过 Sprite color alpha 仅作用于图片填充；节点透明度独立作用于子树。已做转换/源码测试，未新增引擎内像素验收。
+
 ## IR v1.5 compatibility / 兼容声明
 
 `matrix`, `vectorShadows`, `text.decoration`, `text.runs`: **known-loss / drop**.

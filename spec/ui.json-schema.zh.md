@@ -2,7 +2,7 @@
 > 改动先落英文,再镜像到这里。`tools/spec_parity.py` 会比对两边**代码块去注释后**的结构,
 > 只改一边会红(散文可以有出入,schema 不行)。
 
-> **FigKit IR Spec v1.5 — 2026-09-21**（v1.0 冻结于 2026-07-03）
+> **FigKit IR Spec v1.6 — 2026-11-04**（v1.0 冻结于 2026-07-03）
 > 本文件是五后端(html/dsl/unity/godot/cocos)共享 IR 契约的中文镜像，英文为权威版本;
 > `figma2html/references/` 下的同名文件是随 skill 分发的工作副本(内容同源)。
 > 冻结纪律:v1.0 起**只允许 additive**(新增可选字段/枚举值),不改既有字段形状;
@@ -17,9 +17,10 @@
 
 ```jsonc
 {
-  "spec": "1.5",                          // 本次捕获遵循的 IR 契约版本(见 spec/)
+  "spec": "1.6",                          // 本次捕获遵循的 IR 契约版本(见 spec/)
   "frame": "46:8241", "w": 1080, "h": 1920,
   "stageBg": "url(_assets/s17/bg.png) center/cover no-repeat",   // 帧底图(纯色/渐变亦可)
+  "stageBgOpacity": 1,                  // optional, image background paint only
   "els": [{
     "id": "46:8265", "name": "Frame 96", "type": "FRAME",
     "parent": "46:8263",                  // figma 父 id(render 据此嵌套;同键空间可与 DSL/flow join)
@@ -30,6 +31,7 @@
     "radius": "37px", "border": "4.0px solid rgba(219,208,184,1)", "shadow": "0px 4px 0px rgba(0,0,0,0.6)", "blur": "",
     "fill": "rgba(255,251,242,1)",        // 纯色含透明 / 线性·径向渐变 css / 空
     "img": "", "imgSize": "", "imgPos": "",   // 图片填充(按 imageRef 命名,跨屏复用);
+    "imgOpacity": 1,                     // optional, image paint only; node opacity is separate
                                           // v1.4:figma 裁剪填充在这里给 px 尺寸 + px 偏移,否则 "cover"/""(居中)
     "clip": false,                        // v1.1:true = 裁剪子节点(figma isMask 兄弟折进来的;遮罩圆角落在 radius)
     "paths": [], "viewBox": "",            // v1.2:矢量按 figma 几何绘制 —— [{d, rule, fill}] + svg viewBox(按 renderBounds 定框)
@@ -62,3 +64,5 @@
 `rot` 由 `geom()` 从节点的 `relativeTransform` 反解(`atan2(m[1][0], m[0][0])`)。**figma REST 对组件实例(INSTANCE/COMPONENT)内部子节点常不返回 `relativeTransform`**——这类节点的 `rot` 会**回退为 0**(整簇折叠成图时内部角度同样丢失)。这是 figma API 的特性,**不是 capture 的 bug**,无法在捕获层补救。
 
 **逃生口 = app hook**:某个节点确需角度(或任何 capture 拿不到/想覆盖的视觉),在 `app.js` 里按 `data-id`/`data-name` 定位克隆出的元素、手动覆盖即可(如宝石菱形:`el.style.transform='rotate(45deg)'`)。capture 给真值,设计覆盖归 hook —— 二者分工见 SKILL「引擎 vs hook」。
+
+v1.6 新增可选字段 `imgOpacity` 和 `stageBgOpacity`，范围 0–1、默认 1。只作用于图片填充，不改变节点或子节点透明度；旧产物行为不变。HTML、Unity、Godot、Cocos 已映射这些字段，引擎内画面尚未重新验收。线性渐变按节点像素尺寸保留起止位置，色标可超出 0–100%。

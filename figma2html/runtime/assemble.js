@@ -36,6 +36,8 @@ function assetBaseOf(capPath) {
     // ── 构建 ──
     build(flow, caps, net) {
       this.flow = flow; this.caps = caps; this.net = net;
+      this.restTransforms = new WeakMap();
+      this.rowTemplates = new WeakMap();
       this.state = Object.assign({}, flow.state || {});
       const w = (flow.stage && flow.stage.w) || 1080, h = (flow.stage && flow.stage.h) || 1920;
       this.stage = { w: w, h: h };     // 转场位移的基准(见 transitionCss);弹窗层 inset:0 = 同尺寸
@@ -129,11 +131,28 @@ function assetBaseOf(capPath) {
     // ⚠️ **位移/缩放只贴面板本体,遮罩只跟着淡。** 早先把 transform 贴在弹窗**层**上,
     // 而遮罩是层的子元素 —— 于是遮罩跟着面板一起滑/缩:顶部不变暗、四边缩进露出底屏。
     // 数值层面完全看不出来(曲线取值一个不差),是 Godot 实机截图才抓到的,html 同构同病。
+    _restTransform(el) {
+      if (!this.restTransforms) this.restTransforms = new WeakMap();
+      if (!this.restTransforms.has(el)) this.restTransforms.set(el, el.style.transform || '');
+      return this.restTransforms.get(el);
+    },
+
+    _motionTransform(el, motion) {
+      const base = this._restTransform(el);
+      // Translation is in parent/stage coordinates; scale is local to the painted box.
+      // Matrix nodes use origin 0 0 for positioning; press/scale still pivots at the box centre.
+      if (base.startsWith('matrix(') && motion && motion.startsWith('scale(')) {
+        const x = (parseFloat(el.style.width) || 0) / 2, y = (parseFloat(el.style.height) || 0) / 2;
+        return base + ' translate(' + x + 'px,' + y + 'px) ' + motion + ' translate(' + (-x) + 'px,' + (-y) + 'px)';
+      }
+      return (motion && motion.startsWith('scale(') ? [base, motion] : [motion, base]).filter(Boolean).join(' ');
+    },
+
     _play(layer, panel, t, forward, done) {
       const px = panel || layer;
       const set = (o, tr) => {
         layer.style.opacity = o;
-        px.style.transform = tr;
+        px.style.transform = this._motionTransform(px, tr);
       };
       layer.style.transition = 'none';
       px.style.transition = 'none';
@@ -155,8 +174,9 @@ function assetBaseOf(capPath) {
     _hideAll() { Object.keys(this.modals).forEach(k => this.modals[k].el.style.display = 'none'); },
 
     openModal(name, transition) {
-      this._hideAll();
       const m = this.modals[name];
+      if (!Object.prototype.hasOwnProperty.call(this.modals, name) || !m) { console.warn('[assemble] 未知弹窗:', name); return; }
+      this._hideAll();
       if (m) {
         const el = m.el, t = this.transitionCss(transition);
         el.style.display = '';
@@ -186,8 +206,8 @@ function assetBaseOf(capPath) {
       if (!m) return;
       const p = this._panelOf(name);
       m.el.style.transition = ''; m.el.style.opacity = '';
-      if (p) { p.style.transition = ''; p.style.transform = ''; }
-      else { m.el.style.transform = ''; }
+      if (p) { p.style.transition = ''; p.style.transform = this._restTransform(p); }
+      else { m.el.style.transform = this._restTransform(m.el); }
     },
 
     // ── 默认动效:按压 / 逐项入场 / guard 失败(flow.motion,来源见其 source 字段)──
@@ -198,7 +218,8 @@ function assetBaseOf(capPath) {
       const p = this.motionOf('press');
       if (!p) return;
       const ease = this.easeCss(p.easing) || 'ease-out';
-      const set = s => { el.style.transition = 'transform ' + p.duration + 'ms ' + ease; el.style.transform = s; };
+      this._restTransform(el);
+      const set = s => { el.style.transition = 'transform ' + p.duration + 'ms ' + ease; el.style.transform = this._motionTransform(el, s); };
       el.addEventListener('pointerdown', () => set('scale(' + (p.scale || 0.96) + ')'));
       ['pointerup', 'pointercancel', 'pointerleave'].forEach(e => el.addEventListener(e, () => set('')));
     },
@@ -218,8 +239,8 @@ function assetBaseOf(capPath) {
       const amp = g.amp || 6, N = 24, frames = [];
       for (let i = 0; i <= N; i++) {
         const x = i / N;
-        frames.push({ transform: 'translateX(' +
-          (Math.sin(x * Math.PI * 2) * amp * (1 - x)).toFixed(3) + 'px)' });
+        frames.push({ transform: this._motionTransform(el, 'translateX(' +
+          (Math.sin(x * Math.PI * 2) * amp * (1 - x)).toFixed(3) + 'px)') });
       }
       el.animate(frames, { duration: g.duration || 120, easing: 'linear' });
     },
@@ -254,7 +275,7 @@ function assetBaseOf(capPath) {
             el.addEventListener('click', e => { e.stopPropagation(); self.dispatch(ev, e); });
             return;
           }
-          const sp = String(sel).match(/^@(\w+):(\w+)$/);   // @any:modal / @panelOutside:modal
+          const sp = String(sel).match(/^@(any|panelOutside):([^:]+)$/);   // Unicode modal names, same grammar as the offline checker.
           if (sp) {
             const kind = sp[1], modal = sp[2], layer = self.layers[modal];
             if (!layer) return;
@@ -329,31 +350,44 @@ function assetBaseOf(capPath) {
       if (!list) { console.warn('[assemble] 列表容器未找到:', containerId); return; }
       list.style.overflowY = 'auto'; list.style.overflowX = 'hidden';
       const rows = Array.prototype.slice.call(list.querySelectorAll('[data-parent="' + containerId + '"]'));
-      if (!rows.length) { console.warn('[assemble] 无模板行'); return; }
-      const tpl = rows[0].cloneNode(true);
-      const baseTop = parseFloat(rows[0].style.top) || 0;
-      const step = rows.length > 1 ? (parseFloat(rows[1].style.top) - baseTop) : (parseFloat(rows[0].style.height) || 104);
+      if (!this.rowTemplates) this.rowTemplates = new WeakMap();
+      let template = this.rowTemplates.get(list);
+      if (!template) {
+        if (!rows.length) { console.warn('[assemble] 无模板行'); return; }
+        // Keep a pristine template and original spacing even after [] or a single result.
+        const origin = row => {
+          const m = (row.style.transform || '').match(/^matrix\(([^)]+)\)$/);
+          const v = m ? m[1].split(',').map(Number) : [1, 0, 0, 1, 0, 0];
+          return [(parseFloat(row.style.left) || 0) + v[4], (parseFloat(row.style.top) || 0) + v[5]];
+        };
+        const first = origin(rows[0]), second = rows.length > 1 ? origin(rows[1]) : [first[0], first[1] + (parseFloat(rows[0].style.height) || 104)];
+        template = { tpl: rows[0].cloneNode(true), left: parseFloat(rows[0].style.left) || 0,
+          top: parseFloat(rows[0].style.top) || 0, dx: second[0] - first[0], dy: second[1] - first[1] };
+        this.rowTemplates.set(list, template);
+      }
       rows.forEach(r => r.remove());
       // 逐项入场:全部同时出现 = 一整块东西闪进来,量感全无;错开一点才读得出"有几条"。
       // 间隔来自 flow.motion.stagger(figma 里没有这个概念,所以它必然是预设补的)。
       const st = this.motionOf('stagger');
       const ease = st ? (this.easeCss(st.easing) || 'ease-out') : null;
       items.forEach((item, idx) => {
-        const row = tpl.cloneNode(true);
+        const row = template.tpl.cloneNode(true);
         namespaceSvgIds(row);
-        row.style.top = (baseTop + idx * step) + 'px';
+        row.style.left = (template.left + idx * template.dx) + 'px';
+        row.style.top = (template.top + idx * template.dy) + 'px';
         row.dataset.row = '1';
         rowFn(row, item, idx);
         list.appendChild(row);
         if (!st) return;
+        const opacity = row.style.opacity;
         row.style.transition = 'none';
         row.style.opacity = '0';
-        row.style.transform = 'translateY(' + (st.from || 24) + 'px)';
+        row.style.transform = this._motionTransform(row, 'translateY(' + (st.from || 24) + 'px)');
         void row.offsetWidth;
         setTimeout(() => {
           row.style.transition = 'opacity ' + st.duration + 'ms ' + ease +
                                  ', transform ' + st.duration + 'ms ' + ease;
-          row.style.opacity = ''; row.style.transform = '';
+          row.style.opacity = opacity; row.style.transform = this._restTransform(row);
         }, idx * (st.step || 45));
       });
     },

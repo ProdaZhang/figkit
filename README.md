@@ -44,14 +44,16 @@ figma REST ──► figma_capture ──►  IR: <screen>.ui.json (pixels) + fl
 
 | backend | offline tests | in-engine | vs design |
 |---|---|---|---|
-| figma2html | ✅ 106 | Edge, plus 8 behavioural checks in [`tools/html-smoke/`](tools/html-smoke/) that read numbers out of the live page — offsets, row texts, guard outcome, whether each string fits its box | **0.81** |
+| figma2html | ✅ 112 | Chromium, plus 15 behavioural checks in [`tools/html-smoke/`](tools/html-smoke/) covering offsets, row data, guards, text fit, transformed interactions, empty-list recovery, Unicode modal names and paint opacity | **0.81** |
 | figma2dsl | ✅ 19 | same render pipeline | — |
 | figma2unity | ✅ 31 | **Unity 6000.4.8f1** and **2022.3.62f3**, the latter a real built Windows player at 1080×1920 | **0.81** |
 | figma2godot | ✅ 34 | **Godot 4.3**, re-verified on **4.7.1** | **1.13** |
 | figma2cocos | ✅ 19 | **Cocos Creator 3.8.8**, built for `web-desktop` and screenshotted at 1080×1920 | **1.13** |
 | figkit-motion | ✅ 6 | 📖 not a backend — the motion catalog the other five share | — |
 
-Per-backend tests only compare a backend against its own expectations, so **31 more live in [`tools/conformance/`](tools/conformance/)**: one fixture exercising every IR feature, a table where each backend declares what it renders / approximates / drops, and a check that the declaration matches the real artifact and that every degradation is logged. The same suite pins all backends to identical handling of malformed IR, broken `flow.json` refs, and sampled curve points. (`tools/run_all_tests.py` verifies the counts above, so they can't go stale.)
+Per-backend tests only compare a backend against its own expectations, so **32 more live in [`tools/conformance/`](tools/conformance/)**: one fixture exercising every IR feature, a table where each backend declares what it renders / approximates / drops, and a check that the declaration matches the real artifact and that every degradation is logged. The same suite pins all backends to identical handling of malformed IR, broken `flow.json` refs, and sampled curve points. (`tools/run_all_tests.py` verifies the counts above, so they can't go stale.)
+
+Optional Godot behavior checks: set `GODOT_PATH` and run `python tools/godot-smoke/check.py`. It imports an isolated temporary project and checks empty-list recovery/spacing, invalid modal targets and image-paint alpha. Verified headlessly with Godot 4.7.1; this does not update the screenshot comparison scores above.
 
 What each engine run actually found — every defect, in the order it surfaced — is in [`docs/verification.md`](docs/verification.md).
 

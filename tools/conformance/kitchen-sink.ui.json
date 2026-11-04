@@ -1,9 +1,9 @@
 {
- "spec": "1.5",
+ "spec": "1.6",
  "frame": "k:frame",
  "w": 800,
  "h": 940,
- "stageBg": "linear-gradient(180.0deg, rgba(13,26,38,1) 0.0%, rgba(38,51,64,1) 100.0%)",
+ "stageBg": "linear-gradient(180.0000deg, rgba(13,26,38,1) 0.0000%, rgba(38,51,64,1) 100.0000%)",
  "els": [
   {
    "id": "k:radius-px",
@@ -245,7 +245,7 @@
    "border": "",
    "shadow": "",
    "blur": "",
-   "fill": "linear-gradient(135.0deg, rgba(255,0,0,1) 0.0%, rgba(0,0,255,1) 100.0%)",
+   "fill": "linear-gradient(120.9638deg, rgba(255,0,0,1) 0.0000%, rgba(0,0,255,1) 100.0000%)",
    "img": "",
    "imgSize": "",
    "imgPos": "",
@@ -308,7 +308,8 @@
    "paths": [],
    "viewBox": "",
    "borderAlign": "",
-   "vec": false
+   "vec": false,
+   "imgOpacity": 0.4
   },
   {
    "id": "k:img-contain",

@@ -250,6 +250,13 @@ def main():
                     print("     " + b)
             else:
                 print("PASS " + name)
+        for result in run_case(browser, os.path.join(HERE, 'regressions.html'), 0)['results']:
+            name = result['name']
+            if result['passed']:
+                print('PASS ' + name)
+            else:
+                failed.append(name)
+                print('FAIL ' + name + ': ' + result.get('error', 'unknown error'))
     finally:
         for f in set(litter):
             if os.path.exists(f):

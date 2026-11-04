@@ -55,3 +55,5 @@
 - `init`: late initialisation — e.g. `applyBoot`: fetch the server list → `app.renderRows(...)`, select the first entry by default, fill in the notice.
 
 The engine owns **structure and mechanics** (base screen, modals, events, guards, checkbox, row cloning); the app owns **domain semantics** (server data → rows, writing the selection back, status colours).
+
+Modal names may contain Unicode and hyphens, but not colons in selectors. `@any:<modal>` and `@panelOutside:<modal>` share the offline/runtime grammar. Built-in `openModal` requires an `arg` naming a declared modal; an invalid runtime target warns and leaves the current modal visible.

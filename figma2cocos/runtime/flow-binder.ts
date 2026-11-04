@@ -51,7 +51,7 @@ export interface FigmaAppHook {
 }
 
 type ActionFn = (...args: unknown[]) => unknown;
-const SEL_RE = /^@(\w+):(\w+)$/;
+const SEL_RE = /^@(any|panelOutside):([^:]+)$/;
 const IN_RE = /^@in:([^:]+):(.+)$/;    // @in:<modal>:<nodeId>;id 自带冒号,只切第一段
 
 /** motion.json 里一条烘好的曲线(采样点 + 该怎么把进度贴到画面上所需的元数据)。 */
@@ -382,12 +382,12 @@ export class FlowBinder extends Component {
   // ── 弹窗显隐(底屏常驻)──────────────────────────────────────────────
 
   openModal(name: string, c: CurveDef | null = null): void {
+    const layer = this.layers[name];
+    if (!this.flow?.modals?.[name] || !layer) { console.warn('[flow-binder] Unknown modal:', name); return; }
     for (const k of Object.keys(this.flow?.modals || {})) {
       if (this.layers[k]) this.layers[k].active = false;
     }
     this.current = name;
-    const layer = this.layers[name];
-    if (!layer) return;
     layer.active = true;
     if (c) this.play(c, false, v => this.applyProgress(name, c, v));
     else this.resetModal(name);

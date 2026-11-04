@@ -35,7 +35,7 @@ except Exception:
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(errors="replace")
 
-SEL_RE = re.compile(r"^@(\w+):(\w+)$")   # @any:modal / @panelOutside:modal
+SEL_RE = re.compile(r"^@(any|panelOutside):([^:]+)$")
 # @in:<modal>:<nodeId> —— 弹窗**内部**的元素(v1.1)。节点 id 自带冒号("4:99"),
 # 所以 @in: 之后只有第一段是弹窗名,其余整段都是 id。
 IN_RE = re.compile(r"^@in:([^:]+):(.+)$")
@@ -120,6 +120,10 @@ def check_flow(flow, caps):
 
     # events[].el → base cap;@选择器 → modal 名存在
     for i, ev in enumerate(flow.get("events") or []):
+        if ev.get("do") == "openModal":
+            target = ev.get("arg")
+            if not isinstance(target, str) or target not in modals:
+                errors.append("events[%d]: openModal 目标 '%s' 未在 flow.modals 声明" % (i, target))
         sels = ev.get("el")
         sels = sels if isinstance(sels, list) else [sels]
         for sel in sels:

@@ -1,5 +1,9 @@
 # IR → Unity UI Toolkit: the full mapping (the authority `ui_to_unity.py` implements)
 
+## IR v1.6 image paint opacity
+
+`imgOpacity` and `stageBgOpacity` default to 1 and affect only image paint through background image tint alpha. Node opacity continues to cover descendants independently. Conversion/source tests cover this mapping; no new engine pixel acceptance is claimed.
+
 ## IR v1.5 compatibility
 
 `matrix`, `vectorShadows`, `text.decoration`, `text.runs`: **known-loss / drop**.

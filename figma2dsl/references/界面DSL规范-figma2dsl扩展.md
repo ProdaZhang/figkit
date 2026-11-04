@@ -124,3 +124,5 @@ DSL 文件头部声明:
 - 宽或高 = 0
 
 parent 追溯时同样跳过:被跳过的中间组不作任何元素的 parent,取最近的**被发射**祖先(或根级 `""`)。
+
+v1.6 的 `imgOpacity` / `stageBgOpacity` 在 capture 旁路保留；语义 Markdown 仍不表达逐层图片透明度，像素还原以 `.ui.json` 为准。

@@ -35,6 +35,9 @@
   "z"
  ],
  "features": {
+  "img-opacity": {
+   "el": "k:img-cover", "field": "imgOpacity", "doc": "imgOpacity", "godot": "render", "unity": "render"
+  },
   "matrix": {
    "el": "k:rot", "field": "matrix", "doc": "matrix", "godot": "known-loss", "unity": "known-loss"
   },

@@ -47,6 +47,18 @@ function figMatrixInverse(m) {
 }
 function figRecMatrix(el) { return el.matrix || [1,0,0,1,el.x,el.y]; }
 
+// Paint alpha belongs to the background only; node opacity still covers its subtree.
+function figImagePaint(div, opacity) {
+  if (opacity == null || opacity === 1) return div.style;
+  const paint = document.createElement('div');
+  paint.dataset.figPaint = '1';
+  Object.assign(paint.style, {position:'absolute', inset:'0', borderRadius:'inherit',
+    pointerEvents:'none', zIndex:'-1', opacity:String(opacity)});
+  div.style.isolation = 'isolate';
+  div.appendChild(paint);
+  return paint.style;
+}
+
 function applyRecStyle(el, div, assetBase) {
   const s = div.style;
   s.position  = 'absolute';
@@ -165,12 +177,13 @@ function applyRecStyle(el, div, assetBase) {
     });
     div.appendChild(svg);
   } else if (el.img) {
-    s.backgroundImage    = "url('" + (assetBase || '') + el.img + "')";
-    s.backgroundSize     = el.imgSize || 'cover';
+    const paint = figImagePaint(div, el.imgOpacity);
+    paint.backgroundImage = "url('" + (assetBase || '') + el.img + "')";
+    paint.backgroundSize  = el.imgSize || 'cover';
     // v1.4:figma 的裁剪填充(scaleMode STRETCH + imageTransform)把图放在格子里的
     // 某个位置、并不铺满,capture 已把它算成 px。缺这个字段的旧产物照旧居中。
-    s.backgroundPosition = el.imgPos || 'center';
-    s.backgroundRepeat   = 'no-repeat';
+    paint.backgroundPosition = el.imgPos || 'center';
+    paint.backgroundRepeat   = 'no-repeat';
   } else if (el.fill) {
     s.background = el.fill;
   }
@@ -233,7 +246,7 @@ function renderScreen(cap, mountEl, assetBase) {
 
   // 层背景(帧自身的图片/纯色/渐变);里面的 url 同样相对 .ui.json,按 assetBase 改写
   if (cap.stageBg) {
-    mountEl.style.background = base
+    figImagePaint(mountEl, cap.stageBgOpacity).background = base
       ? cap.stageBg.replace(/url\(/g, 'url(' + base)
       : cap.stageBg;
   }

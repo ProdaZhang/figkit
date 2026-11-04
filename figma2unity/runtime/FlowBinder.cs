@@ -425,9 +425,9 @@ namespace Figma2Unity
         // (可访问性不一致)。对外 API 仍是无参那两个,保持向后兼容。
         void OpenModal(string name, Curve c)
         {
-            foreach (var kv in _modals) kv.Value.layer.style.display = DisplayStyle.None;
             ModalInfo m;
-            if (!_modals.TryGetValue(name, out m)) { _current = name; return; }
+            if (name == null || !_modals.TryGetValue(name, out m)) { Debug.LogWarning("[FlowBinder] Unknown modal: " + name); return; }
+            foreach (var kv in _modals) kv.Value.layer.style.display = DisplayStyle.None;
             m.layer.style.display = DisplayStyle.Flex;
             _current = name;
             if (c != null) Play(m.layer, c, false, (e, v) => ApplyProgress(name, c, v), null);

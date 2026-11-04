@@ -1,5 +1,9 @@
 # IR → Godot 4: the full mapping (the contract `ui_to_tscn.py` / `flow_binder.gd` implement)
 
+## IR v1.6 image paint opacity
+
+`imgOpacity` and `stageBgOpacity` default to 1 and affect only image paint through TextureRect self_modulate. Node opacity continues to cover descendants independently. Conversion/source tests cover this mapping; no new engine pixel acceptance is claimed.
+
 ## IR v1.5 compatibility
 
 `matrix`, `vectorShadows`, `text.decoration`, `text.runs`: **known-loss / drop**.

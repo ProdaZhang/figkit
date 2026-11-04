@@ -22,7 +22,7 @@ import sys, json, io, os, math, html, re, copy, hashlib
 # 将来 v1.1 的 capture 产物喂给旧后端时**两边都无从察觉** —— 消费者连"我看不懂这个"
 # 都说不出口。带上之后,后端至少能在主版本对不上时告警(而不是静默按旧规矩解释)。
 # 缺失该字段的旧产物一律按 "1.0" 处理,向后兼容。
-IR_SPEC = '1.5'
+IR_SPEC = '1.6'
 
 VEC = {'VECTOR', 'BOOLEAN_OPERATION', 'STAR', 'LINE', 'REGULAR_POLYGON'}
 
@@ -104,18 +104,35 @@ def opaque_rgb(paints):
     return (p['color']['r'], p['color']['g'], p['color']['b'])
 
 
-def gradient_css(f):
+def gradient_css(f, w=1, height=1):
     stops = f.get('gradientStops') or []
     cs = ', '.join('%s %.1f%%' % (col(s['color'], f.get('opacity', 1)), s['position'] * 100) for s in stops)
     h = f.get('gradientHandlePositions') or []
     if f['type'] == 'GRADIENT_RADIAL':
         return 'radial-gradient(%s)' % cs
     if len(h) >= 2:
-        dx = h[1]['x'] - h[0]['x']; dy = h[1]['y'] - h[0]['y']
-        ang = (math.degrees(math.atan2(dx, -dy))) % 360   # CSS:0deg=向上,y朝下
+        # Figma handles are normalised to the node box. CSS stops are measured
+        # along a line through the box centre, whose length depends on its aspect ratio.
+        dx = (h[1]['x'] - h[0]['x']) * w
+        dy = (h[1]['y'] - h[0]['y']) * height
+        distance = math.hypot(dx, dy)
+        if distance < 1e-10:
+            return col(stops[-1]['color'], f.get('opacity', 1)) if stops else ''
+        ux, uy = dx / distance, dy / distance
+        length = abs(ux) * w + abs(uy) * height
+        start = ((h[0]['x'] - .5) * w * ux + (h[0]['y'] - .5) * height * uy + length / 2)
+        cs = ', '.join('%s %.4f%%' % (col(s['color'], f.get('opacity', 1)),
+                                     (start + s['position'] * distance) / length * 100) for s in stops)
+        ang = (math.degrees(math.atan2(dx, -dy))) % 360
     else:
         ang = 180
-    return 'linear-gradient(%.1fdeg, %s)' % (ang, cs)
+    return 'linear-gradient(%.4fdeg, %s)' % (ang, cs)
+
+
+def image_opacity(node):
+    paint = next((f for f in node.get('fills') or []
+                  if f.get('visible', True) and f.get('type') == 'IMAGE'), {})
+    return max(0, min(1, paint.get('opacity', 1)))
 
 
 def crop_css(f, w, h, lost=None, nid='', name=''):
@@ -1015,11 +1032,14 @@ def capture(root, asset_dir, asset_rel):
         iu, isize, ipos = img_fill(node, asset_dir, asset_rel, missing)
         if iu:
             rec['img'] = iu; rec['imgSize'] = isize; rec['imgPos'] = ipos
+            if image_opacity(node) != 1:
+                rec['imgOpacity'] = image_opacity(node)
         else:
             grad = next((f for f in (node.get('fills') or [])
                          if f.get('visible', True) and f.get('type', '').startswith('GRADIENT')), None)
             if grad:
-                rec['fill'] = gradient_css(grad)
+                size = node.get('size') or {}
+                rec['fill'] = gradient_css(grad, size.get('x', w), size.get('y', h))
             else:
                 fp2 = solid_paint(node.get('fills'))
                 if fp2:
@@ -1069,7 +1089,7 @@ def capture(root, asset_dir, asset_rel):
         else:
             grad = next((f for f in (root.get('fills') or []) if f.get('type', '').startswith('GRADIENT')), None)
             if grad:
-                stage_bg = gradient_css(grad)
+                stage_bg = gradient_css(grad, SW, SH)
 
     root_bg = opaque_rgb(root.get('fills'))
     for ch in root.get('children') or []:
@@ -1078,6 +1098,8 @@ def capture(root, asset_dir, asset_rel):
     source, world = resolve_geometry(root, records, losses)
     expand_repeats(records, source, world, losses)
     cap = dict(spec=IR_SPEC, frame=root.get('id'), w=SW, h=SH, stageBg=stage_bg, els=records)
+    if stage_bg.startswith('url(') and image_opacity(root) != 1:
+        cap['stageBgOpacity'] = image_opacity(root)
     if losses:
         cap['losses'] = losses
     return cap, missing
@@ -1191,13 +1213,22 @@ def rec_to_css(rec, parent=None):
     elif rec.get('paths'):
         inner = svg_markup(rec)
     elif rec['img']:
-        sty.append('background:url(%s) %s/%s no-repeat' % (html.escape(rec['img']),
-                                                            rec.get('imgPos') or 'center', rec['imgSize'] or 'cover'))
+        bg = 'url(%s) %s/%s no-repeat' % (html.escape(rec['img']), rec.get('imgPos') or 'center', rec['imgSize'] or 'cover')
+        if rec.get('imgOpacity', 1) != 1:
+            sty.append('isolation:isolate')
+            inner = image_paint_markup(bg, rec['imgOpacity'])
+        else:
+            sty.append('background:' + bg)
     elif rec['fill']:
         sty.append('background:' + rec['fill'])
     return '<div data-id="%s" title="%s" style="%s">%s' % (
         html.escape(str(rec['id'])),
         html.escape(rec['name'] + ' <' + str(rec['type']) + '>'), ';'.join(sty), inner)
+
+
+def image_paint_markup(background, opacity):
+    return ('<div data-fig-paint="1" style="position:absolute;inset:0;border-radius:inherit;'
+            'pointer-events:none;z-index:-1;opacity:%g;background:%s"></div>' % (opacity, background))
 
 
 def to_html(cap, sNN):
@@ -1220,6 +1251,9 @@ def to_html(cap, sNN):
 
     divs = render('', None)
     bg = ('background:' + cap['stageBg']) if cap['stageBg'] else ''
+    if cap.get('stageBgOpacity', 1) != 1 and cap['stageBg']:
+        divs = image_paint_markup(html.escape(cap['stageBg']), cap['stageBgOpacity']) + divs
+        bg = 'isolation:isolate'
     # 设计字体:同级 `fonts/FigCJK-*.woff2` 在就用,不在就退系统字体(浏览器自己回退,不报错)。
     # 这份预览是**像素比对的基准**,基准用什么字体、其它端就得用什么字体 —— 各端各拿
     # 系统默认字体时连换行位置都不一样,比出来的差异全是字形噪声。

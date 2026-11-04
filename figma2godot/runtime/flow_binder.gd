@@ -6,6 +6,7 @@
 # 交互链未实机点验)。2026-07-29 实机核验 motion:6 条曲线读成 Curve,sample(0.3) 与 python
 # 求解器 + Unity 侧三方一致到小数点后 6 位;转场真播(中途 alpha=0.509/offsetY=942.5 → 终态 1.0/0.0)。
 # 注意:新工程先 `godot --headless --import` 一次,否则 class_name 未注册。
+# 2026-11-04: Godot 4.7.1 headless 通过空列表恢复/行距、无效弹窗目标、图片填充透明度行为测试；非像素验收。
 #
 # 用法(见 app_hook.example.gd):
 #   var binder := FlowBinder.new()
@@ -39,9 +40,17 @@ var actions: Dictionary = {}     # do 名 -> Callable(对齐 registerActions)
 var layers: Dictionary = {}      # "base" / modal 名 -> Control
 var modals: Dictionary = {}      # modal 名 -> { "el": Control, "panel": String }
 var current: Variant = null      # 当前弹窗名(无 → null)
+var _list_templates: Dictionary = {} # instance id -> pristine row and original spacing
 var _last_pressed: Control = null # 最后被按下的元素(guard 拒绝时抖它)
 
 const _FORBIDDEN := [".", ":", "@", "/", "\"", "%"]
+
+
+func _exit_tree() -> void:
+	for t in _list_templates.values():
+		if is_instance_valid(t["tpl"]):
+			t["tpl"].free()
+	_list_templates.clear()
 
 
 # ── 命名/查找(与 ui_to_tscn.py 的 node_name 同规则)──────────────────
@@ -279,11 +288,12 @@ func _reset_panel(mname: String) -> void:
 # ── 弹窗显隐(底屏常驻)────────────────────────────────────────────────
 
 func open_modal(mname: String, c: Variant = null) -> void:
+	if not modals.has(mname):
+		push_warning("[flow_binder] Unknown modal: " + mname)
+		return
 	for k in modals.keys():
 		(modals[k]["el"] as Control).visible = false
 	current = mname
-	if not modals.has(mname):
-		return
 	var el := modals[mname]["el"] as Control
 	el.visible = true
 	if c is Dictionary:
@@ -512,14 +522,20 @@ func render_rows(modal_name: String, container_id: String, items: Array, row_fn:
 	for ch in list.get_children():
 		if ch is Control:
 			rows.append(ch)
-	if rows.is_empty():
-		push_warning("[flow_binder] 无模板行")
-		return
-	var tpl := (rows[0] as Control).duplicate() as Control
-	var base_top: float = rows[0].offset_top
-	var height: float = rows[0].offset_bottom - rows[0].offset_top
-	var step: float = (rows[1].offset_top - base_top) if rows.size() > 1 \
-			else (height if height > 0.0 else 104.0)
+	var key := list.get_instance_id()
+	if not _list_templates.has(key):
+		if rows.is_empty():
+			push_warning("[flow_binder] 无模板行")
+			return
+		var first := rows[0] as Control
+		var row_height := first.offset_bottom - first.offset_top
+		var spacing: float = rows[1].offset_top - first.offset_top if rows.size() > 1 else (row_height if row_height > 0.0 else 104.0)
+		_list_templates[key] = {"tpl": first.duplicate(), "top": first.offset_top, "height": row_height, "step": spacing}
+	var template: Dictionary = _list_templates[key]
+	var tpl := template["tpl"] as Control
+	var base_top: float = template["top"]
+	var height: float = template["height"]
+	var step: float = template["step"]
 	for r in rows:
 		(r as Node).free()
 	var on_click := String((flow.get("list", {}) as Dictionary).get("onRowClick", ""))
